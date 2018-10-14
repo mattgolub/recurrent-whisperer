@@ -10,7 +10,7 @@ setup(
     license='Apache 2.0',
     packages = find_packages(),
     install_requires = [
-        'numpy >= 1.15.2', 
+        'numpy >= 1.13.3', 
         'scipy >= 1.1.0', 
         'matplotlib >= 2.2.3',
         'pyyaml >= 3.13'],
