@@ -7,7 +7,10 @@ setup(
     author = 'Matt Golub',
     author_email = 'mgolub@stanford.edu',
     description = 'A general class template for training recurrent neural networks using Tensorflow',
+    license='Apache 2.0',
     packages = find_packages(),
     install_requires = ['numpy >= 1.15.2', 'scipy >= 1.1.0', 'pyyaml >= 3.13'],
-    license='Apache 2.0',
+    extras_require={
+        'tensorflow': ['tensorflow>=1.9.0'],
+        'tensorflow_gpu': ['tensorflow-gpu>=1.9.0'],
 )
