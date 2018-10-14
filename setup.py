@@ -9,7 +9,11 @@ setup(
     description = 'A general class template for training recurrent neural networks using Tensorflow',
     license='Apache 2.0',
     packages = find_packages(),
-    install_requires = ['numpy >= 1.15.2', 'scipy >= 1.1.0', 'pyyaml >= 3.13'],
+    install_requires = [
+        'numpy >= 1.15.2', 
+        'scipy >= 1.1.0', 
+        'matplotlib >= 2.2.3',
+        'pyyaml >= 3.13'],
     extras_require={
         'cpu': ['tensorflow>=1.9.0'],
         'gpu': ['tensorflow-gpu>=1.9.0'],},
