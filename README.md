@@ -1,8 +1,43 @@
 # RecurrentWhisperer - A general class template for training recurrent neural networks using Tensorflow.
 
-## Prerequisites
+Written using Python 2.7.6.
 
-The code is written in Python 2.7.6. You will also need:
+## Recommended Installation
+
+The recommended installation is to assemble all dependencies in a virtual environment. 
+
+To create a new virtual environment, enter at the command line:
+```bash
+$ virtualenv your-virtual-env-name
+```
+where `your-virtual-env-name` is a path to the the virtual environment you would like to create (e.g.: `/home/rwhisp`). Then activate your new virtual environment:
+```bash
+$ source your-virtual-env-name/bin/activate
+```
+
+Next, install all dependencies in your virtual environment. This step will depend on whether you require Tensorflow with GPU support.
+
+For GPU-enabled TensorFlow, use:
+
+```bash
+$ pip install -e git+https://github.com/mattgolub/recurrent-whisperer.git@master#egg=v1.0.0[gpu]
+```
+
+For CPU-only TensorFlow, use:
+
+```bash
+$ pip install -e git+https://github.com/mattgolub/recurrent-whisperer.git@master#egg=v1.0.0[cpu]
+```
+
+When you are finished working in your virtual environment, enter:
+
+```bash
+$ deactivate
+```
+
+## Advanced Users
+
+Advanced Python users may skip the Recommended Installation, opting to instead clone this repository and ensure that compatible versions of the following prerequisites are available:
 
 * **TensorFlow** version 1.10 ([install](https://www.tensorflow.org/install/))
 * **NumPy and SciPy** ([install SciPy stack](https://www.scipy.org/install.html), contains both)
