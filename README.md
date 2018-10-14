@@ -40,7 +40,7 @@ $ deactivate
 Advanced Python users may skip the Recommended Installation, opting to instead clone this repository and ensure that compatible versions of the following prerequisites are available:
 
 * **TensorFlow** version 1.10 ([install](https://www.tensorflow.org/install/))
-* **NumPy and SciPy** ([install SciPy stack](https://www.scipy.org/install.html), contains both)
+* **NumPy, SciPy and Matplotlib** ([install SciPy stack](https://www.scipy.org/install.html), contains both)
 * **PyYaml** ([install](https://pyyaml.org))
 
 ## Getting started
