@@ -11,6 +11,6 @@ setup(
     packages = find_packages(),
     install_requires = ['numpy >= 1.15.2', 'scipy >= 1.1.0', 'pyyaml >= 3.13'],
     extras_require={
-        'tensorflow': ['tensorflow>=1.9.0'],
-        'tensorflow_gpu': ['tensorflow-gpu>=1.9.0'],},
+        'cpu': ['tensorflow>=1.9.0'],
+        'gpu': ['tensorflow-gpu>=1.9.0'],},
 )
