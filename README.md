@@ -6,9 +6,9 @@ Written using Python 2.7.6.
 
 The recommended installation is to assemble all dependencies in a virtual environment. 
 
-To create a new virtual environment, enter at the command line:
+To create a new virtual environment specific to Pyhon 2.7, enter at the command line:
 ```bash
-$ virtualenv your-virtual-env-name
+$ virtualenv --system-site-packages -p python2.7 your-virtual-env-name
 ```
 where `your-virtual-env-name` is a path to the the virtual environment you would like to create (e.g.: `/home/rwhisp`). Then activate your new virtual environment:
 ```bash
