@@ -6,7 +6,7 @@ Written using Python 2.7.6.
 
 The recommended installation is to assemble all dependencies in a virtual environment. 
 
-To create a new virtual environment specific to Pyhon 2.7, enter at the command line:
+To create a new virtual environment specific to Python 2.7, enter at the command line:
 ```bash
 $ virtualenv --system-site-packages -p python2.7 your-virtual-env-name
 ```
