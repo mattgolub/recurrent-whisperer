@@ -1,6 +1,6 @@
 # RecurrentWhisperer - A general class template for training recurrent neural networks using Tensorflow.
 
-Written using Python 2.7.6.
+Written using Python 2.7.12.
 
 ## Recommended Installation
 
