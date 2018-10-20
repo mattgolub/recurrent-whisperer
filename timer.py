@@ -31,14 +31,17 @@ class timer(object):
 		--> 	Task 1: 2.00s (12.5%)
 		--> 	Task 2: 8.00s (50.0%)
 		--> 	Task 3: 6.00s (37.5%)
-
 	'''
 
-	def __init__(self, n_tasks):
+	def __init__(self, n_tasks, n_indent=0):
 		'''Builds a timer object.
 
 		Args:
-			n_tasks: An int specifying the total number of tasks to be timed.
+			n_tasks: int specifying the total number of tasks to be timed.
+
+			n_indent (optional): int specifying the number of indentation
+				to prefix into print statements. Useful when utilizing multiple
+				timer objects for profile nested code.
 
 		Returns:
 			None.
@@ -56,18 +59,18 @@ class timer(object):
 		''' Note that self.t has n+1 elements (to include a start value) while
 		self.task_names has n elements'''
 
+		self.print_prefix = '\t' * n_indent
+
 		self.idx = np.nan
 		self.start_time = np.nan
 		self.is_running = False
 
 	def __call__(self):
-		'''Returns the time elapsed since the timer was started'''
+		'''Returns the time elapsed since the timer was started.
+		   If start() has not yet been called, returns NaN.
+		'''
 
-		if self.is_running:
-			return time.time() - start_time
-		else:
-			raise ValueError(
-				'Cannot evaluate Timer until it has been started.')
+		return time.time() - start_time
 
 	def start(self):
 		'''Starts the timer'''
@@ -91,7 +94,8 @@ class timer(object):
 			self.task_names[self.idx - 1] = task_name
 			self.idx += 1
 		else:
-			print('Timer cannot take a split until it has been started.')
+			print('%sTimer cannot take a split until it has been started.' %
+			      self.print_prefix)
 
 	def disp(self):
 		'''Prints the profile of the tasks that have been timed thus far.
@@ -102,12 +106,11 @@ class timer(object):
 		Returns:
 			None.
 		'''
-
 		if self.idx > 1:
 			total_time = self.t[self.idx-1] - self.t[0]
 			split_times = np.diff(self.t)
 
-			print('Total time: %.2fs' % total_time)
+			print('%sTotal time: %.2fs' % (self.print_prefix, total_time))
 
 			# allows printing before all tasks have been run
 			for idx in range(self.idx-1):
@@ -115,9 +118,11 @@ class timer(object):
 					task_name = 'Task' + str(idx+1)
 				else:
 					task_name = self.task_names[idx]
-				print('\t%s: %.2fs (%.1f%%)'
-					% (task_name,
+				print('\t%s%s: %.2fs (%.1f%%)'
+					% (self.print_prefix,
+					   task_name,
 					   split_times[idx],
 					   100*split_times[idx]/total_time))
 		else:
-			print('Timer has not yet taken any splits to time.')
+			print('%sTimer has not yet taken any splits to time.' %
+			      self.print_prefix)
