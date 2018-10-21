@@ -728,9 +728,9 @@ class RecurrentWhisperer(object):
             self.lvl_saver.save(self.session,
                                 self.lvl_ckpt_path,
                                 global_step=self._step())
-            self._save_lvl_predictions(train_data, valid_data)
+            self.save_lvl_predictions(train_data, valid_data)
 
-    def _restore_from_lvl_checkpoint(self):
+    def restore_from_lvl_checkpoint(self):
         '''Restores a model from a previously saved lowest-validation-loss
         checkpoint.
 
@@ -753,7 +753,7 @@ class RecurrentWhisperer(object):
               % ntpath.basename(lvl_ckpt.model_checkpoint_path))
         self.lvl_saver.restore(self.session, lvl_ckpt.model_checkpoint_path)
 
-    def _save_lvl_predictions(self, train_data, valid_data):
+    def save_lvl_predictions(self, train_data, valid_data):
         '''Saves all data and model predictions as .mat files.
 
         Args:
