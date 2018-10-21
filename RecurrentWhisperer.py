@@ -132,15 +132,17 @@ class RecurrentWhisperer(object):
                 on the loss function evaluated across the training data (the
                 epoch training loss). Default: 0.
 
-                max_n_epochs: int specifying the maximum number of training
-                epochs to perform (one epoch = one full pass through the
-                entire training dataset). Default: 1000.
+                max_n_epochs: int specifying optimization termination criteria
+                on the number of training epochs performed (one epoch = one
+                full pass through the entire training dataset). Default: 1000.
 
-                max_n_epochs_without_lvl_improvement: int specifying the
-                maximum number of training epochs to perform without
-                improvements in the lowest validation error. If the lowest
-                validation error does not improve over a block of this many
-                epochs, training will terminate. Default: 200.
+                max_n_epochs_without_lvl_improvement: int specifying
+                optimization termination criteria on the number of training
+                epochs performed without improvements to the lowest validation
+                error. If the lowest validation error does not improve over a
+                block of this many epochs, training will terminate. If
+                validation data are not provided to train(...), this
+                termination criteria is ignored. Default: 200.
 
                 min_learning_rate: float specifying optimization termination
                 criteria on the learning rate. Optimization terminates if the
