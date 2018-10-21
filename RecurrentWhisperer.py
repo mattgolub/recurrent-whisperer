@@ -72,6 +72,7 @@ class RecurrentWhisperer(object):
     _DEFAULT_SUPER_NON_HASH_HPS = {
         'min_loss': 0.,
         'max_n_epochs': 1000,
+        'max_n_epochs_without_lvl_improvement': 200,
         'min_learning_rate': 1e-10,
         'log_dir': '/tmp/rnn_logs/',
         'do_restart_run': False,
@@ -110,7 +111,8 @@ class RecurrentWhisperer(object):
                 random generator used for randomly batching data and
                 initializing model parameters. Default: 0
 
-                dtype: string indicating the Tensorflow data type to use for all Tensorflow objects. Default: 'float32' --> tf.float32.
+                dtype: string indicating the Tensorflow data type to use for
+                all Tensorflow objects. Default: 'float32' --> tf.float32.
 
                 adam_hps: dict specifying hyperparameters for TF's
                 AdamOptimizer. Default: {'epsilon': 0.01}. See
@@ -133,6 +135,12 @@ class RecurrentWhisperer(object):
                 max_n_epochs: int specifying the maximum number of training
                 epochs to perform (one epoch = one full pass through the
                 entire training dataset). Default: 1000.
+
+                max_n_epochs_without_lvl_improvement: int specifying the
+                maximum number of training epochs to perform without
+                improvements in the lowest validation error. If the lowest
+                validation error does not improve over a block of this many
+                epochs, training will terminate. Default: 200.
 
                 min_learning_rate: float specifying optimization termination
                 criteria on the learning rate. Optimization terminates if the
@@ -315,6 +323,9 @@ class RecurrentWhisperer(object):
             # lowest validation loss
             self.lvl = tf.Variable(
                 np.inf, name='lvl', trainable=False, dtype=self.dtype)
+
+            self.epoch_last_lvl_improvement = tf.Variable(
+                0, name='lvl', trainable=False, dtype=self.dtype)
 
             # lowest training loss
             self.ltl = tf.Variable(
@@ -501,7 +512,7 @@ class RecurrentWhisperer(object):
 
             t.split('save')
 
-            if self._is_training_complete(epoch_loss):
+            if self._is_training_complete(epoch_loss, valid_data is not None):
                 break
 
             t.split('other')
@@ -510,9 +521,17 @@ class RecurrentWhisperer(object):
         # Save checkpoint upon completing training
         self._save_checkpoint()
 
-    def _is_training_complete(self, loss):
+    def _is_training_complete(self, loss, do_check_lvl=False):
         '''Determines whether the training optimization procedure should
-        terminate.
+        terminate. Termination criteria, goverened by hyperparameters, are
+        thresholds on the following:
+
+            1) the training loss
+            2) the learning rate
+            3) the number of training epochs performed
+            4) the number of training epochs performed since the lowest
+               validation loss improved (only if validation data are provided
+               to train(...).
 
         Args:
             loss: float indicating the most recent loss evaluation across the
@@ -520,24 +539,31 @@ class RecurrentWhisperer(object):
 
         Returns:
             bool indicating whether any of the termination criteria have been
-            met. Termination criteria relate to the number of training epochs
-            transpired, the current learning rate, and the loss value from the
-            most recent training epoch..
+            met.
         '''
         hps = self.hps
 
-        if self._epoch() >= hps.max_n_epochs:
-            print('Stopping optimization:'
-                  ' reached maximum number of training epochs.')
+        if loss <= hps.min_loss:
+            print ('\nStopping optimization: loss meets convergence criteria.')
             return True
 
         if self._epoch() > self.adaptive_learning_rate.n_warmup_steps and \
             self.adaptive_learning_rate() <= hps.min_learning_rate:
-            print ('Stopping optimization: minimum learning rate reached.')
+            print ('\nStopping optimization: minimum learning rate reached.')
             return True
 
-        if loss <= hps.min_loss:
-            print ('Stopping optimization: loss meets convergence criteria.')
+        if self._epoch() >= hps.max_n_epochs:
+            print('\nStopping optimization:'
+                  ' reached maximum number of training epochs.')
+            return True
+
+        if do_check_lvl and \
+            self._epoch() - self._epoch_last_lvl_improvement() >= \
+                hps.max_n_epochs_without_lvl_improvement:
+
+            print('\nStopping optimization:'
+                  ' reached maximum number of training epochs'
+                  ' without improvement to the lowest validation loss.')
             return True
 
         return False
@@ -724,7 +750,11 @@ class RecurrentWhisperer(object):
         '''
         if self._epoch()==0 or valid_loss < self._lvl():
             print('Achieved lowest validation loss. Saving checkpoint...')
-            self.session.run(tf.assign(self.lvl, valid_loss))
+
+            assign_ops = [tf.assign(self.lvl, valid_loss),
+                tf.assign(self.epoch_last_lvl_improvement, self._epoch())]
+            self.session.run(assign_ops)
+
             self.lvl_saver.save(self.session,
                                 self.lvl_ckpt_path,
                                 global_step=self._step())
@@ -798,6 +828,18 @@ class RecurrentWhisperer(object):
             epoch: int specifying the current epoch number.
         '''
         return self.session.run(self.epoch)
+
+    def _epoch_last_lvl_improvement(self):
+        '''Returns the epoch of the last improvement of the lowest validation
+        loss.
+
+        Args:
+            None.
+
+        Returns:
+            epoch: int specifying the epoch number.
+        '''
+        return self.session.run(self.epoch_last_lvl_improvement)
 
     def _lvl(self):
         '''Returns the lowest validation loss encountered thus far during
