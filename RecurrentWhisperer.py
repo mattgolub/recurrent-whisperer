@@ -486,7 +486,7 @@ class RecurrentWhisperer(object):
         # Training loop
         print('Entering training loop.')
         while True:
-            t = timer(N_TIMER_SPLITS)
+            t = timer(N_TIMER_SPLITS, n_indent=1)
             t.start()
 
             data_batches = self._get_data_batches(train_data)
