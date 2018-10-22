@@ -216,8 +216,6 @@ class RecurrentWhisperer(object):
 
         ckpt = self._setup_run_dir()
         self._setup_model()
-        self._setup_optimizer()
-        self._setup_visualization()
 
         # Each of these will create run_dir if it doesn't exist
         # (do not move above the os.path.isdir check that is in _setup_run_dir)
@@ -474,6 +472,9 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
+
+        self._setup_optimizer()
+        self._setup_visualization()
         self._initialize_or_restore()
 
         N_TIMER_SPLITS = 6
