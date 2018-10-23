@@ -222,7 +222,9 @@ class RecurrentWhisperer(object):
         self._setup_tensorboard()
         self._setup_savers()
 
+        self._setup_optimizer()
         self._setup_session()
+
 
     @staticmethod
     def _integrate_hps(superclass_default_hps, subclass_default_hps):
@@ -325,7 +327,8 @@ class RecurrentWhisperer(object):
                 np.inf, name='lvl', trainable=False, dtype=self.dtype)
 
             self.epoch_last_lvl_improvement = tf.Variable(
-                0, name='lvl', trainable=False, dtype=self.dtype)
+                0, name='epoch_last_lvl_improvement',
+                trainable=False, dtype=self.dtype)
 
             # lowest training loss
             self.ltl = tf.Variable(
@@ -472,8 +475,6 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-
-        self._setup_optimizer()
         self._setup_visualization()
         self._initialize_or_restore()
 
