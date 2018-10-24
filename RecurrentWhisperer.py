@@ -225,7 +225,6 @@ class RecurrentWhisperer(object):
         self._setup_optimizer()
         self._setup_session()
 
-
     @staticmethod
     def _integrate_hps(superclass_default_hps, subclass_default_hps):
         '''Integrates default hyperparameters defined in this superclass with
@@ -248,6 +247,47 @@ class RecurrentWhisperer(object):
 
         return default_hps
 
+    @staticmethod
+    def get_paths(log_dir, run_hash):
+        '''Generates all paths relevant for saving and loading model data.
+
+        Args:
+            log_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+            run_hash: string containing the hyperparameters hash used to
+            establish the run directory. Returned by
+            Hyperparameters.get_hash().
+
+        Returns:
+            dict containing all paths relevant for saving and loading model
+            data. Keys are strings, with suffixes '_dir' and '_path' referring
+            to directories and filenames, respectively.
+        '''
+
+        run_dir = os.path.join(log_dir, run_hash)
+        hps_dir = os.path.join(run_dir, 'hps')
+        ckpt_dir = os.path.join(run_dir, 'ckpt')
+        lvl_dir = os.path.join(run_dir, 'lvl')
+
+        return {
+            'run_dir': run_dir,
+            'hps_dir': hps_dir,
+            'hps_path': os.path.join(hps_dir, 'hyperparameters.pkl'),
+            'hps_yaml_path': os.path.join(hps_dir, 'hyperparameters.yml'),
+            'alr_path': os.path.join(hps_dir, 'learn_rate.pkl'),
+            'agnc_path': os.path.join(hps_dir, 'norm_clip.pkl'),
+            'ckpt_dir': ckpt_dir,
+            'ckpt_path': os.path.join(ckpt_dir, 'checkpoint.ckpt'),
+            'lvl_dir': lvl_dir,
+            'lvl_ckpt_path': os.path.join(lvl_dir, 'lvl.ckpt'),
+            'lvl_train_pred_path':
+                os.path.join(lvl_dir, 'train_predictions.mat'),
+            'lvl_valid_pred_path':
+                os.path.join(lvl_dir, 'valid_predictions.mat'),
+            'events_dir': os.path.join(run_dir, 'events')
+            }
+
     def _setup_run_dir(self):
         '''Sets up a directory for this training run. The directory name is
         derived from a hash of the hyperparameter settings. Subdirectories are
@@ -261,26 +301,27 @@ class RecurrentWhisperer(object):
             None.
         '''
         hps = self.hps
+        log_dir = hps.log_dir
+        run_hash = hps.get_hash()
+        paths = self.get_paths(log_dir, run_hash)
 
-        self.run_dir = os.path.join(hps.log_dir, hps.get_hash())
-        self.hps_dir = os.path.join(self.run_dir, 'hps')
-        self.hps_path = os.path.join(self.hps_dir, 'hyperparameters.pkl')
-        self.hps_yaml_path = os.path.join(self.hps_dir, 'hyperparameters.yml')
-        self.alr_path = os.path.join(self.hps_dir, 'learn_rate.pkl')
-        self.agnc_path = os.path.join(self.hps_dir, 'norm_clip.pkl')
+        self.run_dir = paths['run_dir']
+        self.hps_dir = paths['hps_dir']
+        self.hps_path = paths['hps_path']
+        self.hps_yaml_path = paths['hps_yaml_path']
+        self.alr_path = paths['alr_path']
+        self.agnc_path = paths['agnc_path']
 
-        self.ckpt_dir = os.path.join(self.run_dir, 'ckpt')
-        self.ckpt_path = os.path.join(self.ckpt_dir, 'checkpoint.ckpt')
+        self.ckpt_dir = paths['ckpt_dir']
+        self.ckpt_path = paths['ckpt_path']
 
-        self.lvl_dir = os.path.join(self.run_dir, 'lvl')
-        self.lvl_ckpt_path = os.path.join(self.lvl_dir, 'lvl.ckpt')
-        self.lvl_train_pred_path = os.path.join(self.lvl_dir,
-                                                'train_predictions.mat')
-        self.lvl_valid_pred_path = os.path.join(self.lvl_dir,
-                                                'valid_predictions.mat')
+        self.lvl_dir = paths['lvl_dir']
+        self.lvl_ckpt_path = paths['lvl_ckpt_path']
+        self.lvl_train_pred_path = paths['lvl_train_pred_path']
+        self.lvl_valid_pred_path = paths['lvl_valid_pred_path']
 
         # For managing Tensorboard events
-        self.events_dir = os.path.join(self.run_dir, 'events')
+        self.events_dir = paths['events_dir']
 
         if os.path.isdir(self.run_dir):
             print('\nRun directory found: %s.' % self.run_dir)
@@ -807,6 +848,32 @@ class RecurrentWhisperer(object):
         valid_summary = self.predict(valid_data)
         valid_summary.update(valid_data)
         spio.savemat(self.lvl_valid_pred_path, valid_summary)
+
+    @staticmethod
+    def load_hyperparameters(log_dir, run_hash):
+        '''Load previously saved Hyperparameters.
+
+        Args:
+            log_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+            run_hash: string containing the hyperparameters hash used to
+            establish the run directory. Returned by
+            Hyperparameters.get_hash().
+
+        Returns:
+            dict containing the loaded hyperparameters.
+        '''
+
+        paths = RecurrentWhisperer.get_paths(log_dir, run_hash)
+        hps_path = paths['hps_path']
+
+        if os.path.exists(hps_path):
+            hps_dict = Hyperparameters.restore(hps_path)
+        else:
+            raise IOError('%s not found.' % hps_path)
+
+        return hps_dict
 
     def _step(self):
         '''Returns the number of training steps taken thus far. A step is
