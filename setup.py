@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name = 'recurrent-whisperer',
-    version = '1.0.0',
+    version = '1.0.2',
     url = 'https://github.com/mattgolub/recurrent-whisperer',
     author = 'Matt Golub',
     author_email = 'mgolub@stanford.edu',
@@ -10,8 +10,8 @@ setup(
     license='Apache 2.0',
     packages = find_packages(),
     install_requires = [
-        'numpy >= 1.13.3', 
-        'scipy >= 1.1.0', 
+        'numpy >= 1.13.3',
+        'scipy >= 1.1.0',
         'matplotlib >= 2.2.3',
         'pyyaml >= 3.13'],
     extras_require={
