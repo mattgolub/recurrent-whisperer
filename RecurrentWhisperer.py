@@ -225,6 +225,7 @@ class RecurrentWhisperer(object):
         self._setup_savers()
 
         self._setup_session()
+        self._initialize_or_restore()
 
     @staticmethod
     def _integrate_hps(superclass_default_hps, subclass_default_hps):
