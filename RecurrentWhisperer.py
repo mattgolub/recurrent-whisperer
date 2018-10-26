@@ -418,7 +418,7 @@ class RecurrentWhisperer(object):
             summaries.append(tf.summary.scalar('grad clip diff',
                                                clipped_grad_norm_diff))
 
-            self.merged_opt_summaries = tf.summary.merge(summaries)
+            self.merged_opt_summary = tf.summary.merge(summaries)
 
     def _setup_tensorboard(self):
         '''Sets up the Tensorboard FileWriter.
@@ -1093,7 +1093,7 @@ class RecurrentWhisperer(object):
 
     def _train_batch(self, batch_data):
         '''Runs one training step. This function must evaluate the Tensorboard
-        summary: self.merged_opt_summaries.
+        summary: self.merged_opt_summary.
 
         Args:
             batch_data: dict containing one batch of training data. Key/value
