@@ -829,7 +829,7 @@ class RecurrentWhisperer(object):
         self.lvl_saver.restore(self.session, lvl_ckpt.model_checkpoint_path)
 
     def save_lvl_predictions(self, train_data, valid_data):
-        '''Saves all data and model predictions as .mat files.
+        '''Saves all model predictions as .mat files.
 
         Args:
             train_data: dict containing the training data.
@@ -841,13 +841,41 @@ class RecurrentWhisperer(object):
         '''
         print('\tSaving lvl training data predictions.')
         train_summary = self.predict(train_data)
-        train_summary.update(train_data)
         spio.savemat(self.lvl_train_pred_path, train_summary)
 
         print('\tSaving lvl validation data predictions.')
         valid_summary = self.predict(valid_data)
-        valid_summary.update(valid_data)
         spio.savemat(self.lvl_valid_pred_path, valid_summary)
+
+    @staticmethod
+    def load_lvl_predictions(log_dir, run_hash):
+        '''Loads all model predictions from .mat files. Provided as a
+        complement to save_lvl_predictions(...).
+
+        Args:
+            log_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+            run_hash: string containing the hyperparameters hash used to
+            establish the run directory. Returned by
+            Hyperparameters.get_hash().
+
+        Returns:
+            train_summary:
+                dict containing saved predictions on the training data by the
+                lvl model.
+
+            valid_summary:
+                dict containing saved predictions on the validation data, by
+                the lvl model.
+        '''
+
+        paths = RecurrentWhisperer.get_paths(log_dir, run_hash)
+
+        train_summary = spio.loadmat(paths['lvl_train_pred_path'])
+        valid_summary = spio.loadmat(paths['lvl_valid_pred_path'])
+
+        return train_summary, valid_summary
 
     @staticmethod
     def load_hyperparameters(log_dir, run_hash):
