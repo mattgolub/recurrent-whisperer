@@ -20,6 +20,7 @@ import pdb
 import tensorflow as tf
 import numpy as np
 import numpy.random as npr
+import cPickle
 import scipy.io as spio
 
 from AdaptiveLearningRate import AdaptiveLearningRate
@@ -75,6 +76,7 @@ class RecurrentWhisperer(object):
         'max_n_epochs_without_lvl_improvement': 200,
         'min_learning_rate': 1e-10,
         'log_dir': '/tmp/rnn_logs/',
+        'do_save_lvl_mat_files': False,
         'do_restart_run': False,
         'max_ckpt_to_keep': 1,
         'max_lvl_ckpt_to_keep': 1,
@@ -139,7 +141,7 @@ class RecurrentWhisperer(object):
                 max_n_epochs_without_lvl_improvement: int specifying
                 optimization termination criteria on the number of training
                 epochs performed without improvements to the lowest validation
-                error. If the lowest validation error does not improve over a
+                loss. If the lowest validation error does not improve over a
                 block of this many epochs, training will terminate. If
                 validation data are not provided to train(...), this
                 termination criteria is ignored. Default: 200.
@@ -153,6 +155,12 @@ class RecurrentWhisperer(object):
                 a different set of hyperparameter settings). When tuning
                 hyperparameters, log_dir is meant to be constant across
                 models. Default: '/tmp/rnn_logs/'.
+
+                do_save_lvl_mat_files: bool indicating whether to save .mat
+                files containing predictions over the training and validation
+                data each time a new lowest validation loss is achieved.
+                Regardless of this setting, .pkl files are saved. Default:
+                False.
 
                 do_restart_run: bool indicating whether to force a restart of
                 a training run (e.g., if a previous run with the same
@@ -283,10 +291,14 @@ class RecurrentWhisperer(object):
             'ckpt_path': os.path.join(ckpt_dir, 'checkpoint.ckpt'),
             'lvl_dir': lvl_dir,
             'lvl_ckpt_path': os.path.join(lvl_dir, 'lvl.ckpt'),
-            'lvl_train_pred_path':
+            'lvl_train_pred_path_mat':
                 os.path.join(lvl_dir, 'train_predictions.mat'),
-            'lvl_valid_pred_path':
+            'lvl_train_pred_path_pkl':
+                os.path.join(lvl_dir, 'train_predictions.pkl'),
+            'lvl_valid_pred_path_mat':
                 os.path.join(lvl_dir, 'valid_predictions.mat'),
+            'lvl_valid_pred_path_pkl':
+                os.path.join(lvl_dir, 'valid_predictions.pkl'),
             'events_dir': os.path.join(run_dir, 'events')
             }
 
@@ -319,8 +331,10 @@ class RecurrentWhisperer(object):
 
         self.lvl_dir = paths['lvl_dir']
         self.lvl_ckpt_path = paths['lvl_ckpt_path']
-        self.lvl_train_pred_path = paths['lvl_train_pred_path']
-        self.lvl_valid_pred_path = paths['lvl_valid_pred_path']
+        self.lvl_train_pred_path_pkl = paths['lvl_train_pred_path_pkl']
+        self.lvl_valid_pred_path_pkl = paths['lvl_valid_pred_path_pkl']
+        self.lvl_train_pred_path_mat = paths['lvl_train_pred_path_mat']
+        self.lvl_valid_pred_path_mat = paths['lvl_valid_pred_path_mat']
 
         # For managing Tensorboard events
         self.events_dir = paths['events_dir']
@@ -839,17 +853,31 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
+        def save_pkl(save_path, save_obj):
+            file = open(save_path, 'wb')
+            file.write(cPickle.dumps(save_obj))
+            file.close()
+
         print('\tSaving lvl training data predictions.')
         train_summary = self.predict(train_data)
-        spio.savemat(self.lvl_train_pred_path, train_summary)
+
+        # Save as .pkl file
+        save_pkl(self.lvl_train_pred_path_pkl, train_summary)
 
         print('\tSaving lvl validation data predictions.')
         valid_summary = self.predict(valid_data)
-        spio.savemat(self.lvl_valid_pred_path, valid_summary)
+
+        # Save as .pkl file
+        save_pkl(self.lvl_valid_pred_path_pkl, valid_summary)
+
+        if self.hps.do_save_lvl_mat_files:
+            # Save as .mat files
+            spio.savemat(self.lvl_train_pred_path_mat, train_summary)
+            spio.savemat(self.lvl_valid_pred_path_mat, valid_summary)
 
     @staticmethod
     def load_lvl_predictions(log_dir, run_hash):
-        '''Loads all model predictions from .mat files. Provided as a
+        '''Loads all model predictions from .pkl files. Provided as a
         complement to save_lvl_predictions(...).
 
         Args:
@@ -869,11 +897,16 @@ class RecurrentWhisperer(object):
                 dict containing saved predictions on the validation data, by
                 the lvl model.
         '''
+        def load_pkl(load_path):
+            file = open(load_path, 'rb')
+            load_path = file.read()
+            file.close()
+            return cPickle.loads(load_path)
 
         paths = RecurrentWhisperer.get_paths(log_dir, run_hash)
 
-        train_summary = spio.loadmat(paths['lvl_train_pred_path'])
-        valid_summary = spio.loadmat(paths['lvl_valid_pred_path'])
+        train_summary = load_pkl(paths['lvl_train_pred_path_pkl'])
+        valid_summary = load_pkl(paths['lvl_valid_pred_path_pkl'])
 
         return train_summary, valid_summary
 
