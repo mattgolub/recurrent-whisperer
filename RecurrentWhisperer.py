@@ -291,14 +291,6 @@ class RecurrentWhisperer(object):
             'ckpt_path': os.path.join(ckpt_dir, 'checkpoint.ckpt'),
             'lvl_dir': lvl_dir,
             'lvl_ckpt_path': os.path.join(lvl_dir, 'lvl.ckpt'),
-            'lvl_train_pred_path_mat':
-                os.path.join(lvl_dir, 'train_predictions.mat'),
-            'lvl_train_pred_path_pkl':
-                os.path.join(lvl_dir, 'train_predictions.pkl'),
-            'lvl_valid_pred_path_mat':
-                os.path.join(lvl_dir, 'valid_predictions.mat'),
-            'lvl_valid_pred_path_pkl':
-                os.path.join(lvl_dir, 'valid_predictions.pkl'),
             'events_dir': os.path.join(run_dir, 'events')
             }
 
@@ -331,10 +323,6 @@ class RecurrentWhisperer(object):
 
         self.lvl_dir = paths['lvl_dir']
         self.lvl_ckpt_path = paths['lvl_ckpt_path']
-        self.lvl_train_pred_path_pkl = paths['lvl_train_pred_path_pkl']
-        self.lvl_valid_pred_path_pkl = paths['lvl_valid_pred_path_pkl']
-        self.lvl_train_pred_path_mat = paths['lvl_train_pred_path_mat']
-        self.lvl_valid_pred_path_mat = paths['lvl_valid_pred_path_mat']
 
         # For managing Tensorboard events
         self.events_dir = paths['events_dir']
@@ -554,9 +542,6 @@ class RecurrentWhisperer(object):
 
             epoch_loss = self._train_epoch(data_batches)
 
-            print('Epoch %d; loss: %.2e; learning rate: %.2e.'
-                % (self._epoch(), epoch_loss, self.adaptive_learning_rate()))
-
             t.split('train')
 
             self._maybe_update_validation(train_data, valid_data)
@@ -683,6 +668,9 @@ class RecurrentWhisperer(object):
 
         self._increment_epoch()
 
+        print('Epoch %d; loss: %.2e; learning rate: %.2e.'
+            % (self._epoch(), epoch_loss, self.adaptive_learning_rate()))
+
         return epoch_loss
 
     def _maybe_update_validation(self, train_data, valid_data):
@@ -700,9 +688,10 @@ class RecurrentWhisperer(object):
 
         if valid_data is None:
             pass
-        elif np.mod(self._epoch(),
-                    self.hps.n_epochs_per_validation_update) == 0:
-            self._update_validation(train_data, valid_data)
+        else:
+            n = self.hps.n_epochs_per_validation_update
+            if np.mod(self._epoch(), n) == 0:
+                self._update_validation(train_data, valid_data)
 
     def _update_validation(self, train_data, valid_data):
         '''Evaluates the validation data, updates the corresponding
@@ -717,13 +706,12 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        valid_summary = self.predict(valid_data)
-        print('\tValidation loss: %.2e' % valid_summary['loss'])
+        predictions, summary = self.predict(valid_data)
+        print('\tValidation loss: %.2e' % summary['loss'])
 
-        self._update_valid_tensorboard(valid_summary)
-        self._maybe_save_lvl_checkpoint(valid_summary['loss'],
-                                        train_data,
-                                        valid_data)
+        self._update_valid_tensorboard(summary)
+        self._maybe_save_lvl_checkpoint(
+            summary['loss'], train_data, valid_data)
 
     def _maybe_update_visualization(self, train_data, valid_data):
         '''Updates visualizations if the current epoch number indicates that
@@ -737,8 +725,9 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        if np.mod(self._epoch(),
-                  self.hps.n_epochs_per_visualization_update) == 0:
+
+        n = self.hps.n_epochs_per_visualization_update
+        if np.mod(self._epoch(), n) == 0:
             self._update_visualization(train_data, valid_data)
 
     def _maybe_save_checkpoint(self):
@@ -812,12 +801,15 @@ class RecurrentWhisperer(object):
 
             assign_ops = [tf.assign(self.lvl, valid_loss),
                 tf.assign(self.epoch_last_lvl_improvement, self._epoch())]
+
             self.session.run(assign_ops)
 
             self.lvl_saver.save(self.session,
                                 self.lvl_ckpt_path,
                                 global_step=self._step())
-            self.save_lvl_predictions(train_data, valid_data)
+
+            self.save_lvl_predictions(train_data, 'train')
+            self.save_lvl_predictions(valid_data, 'valid')
 
     def restore_from_lvl_checkpoint(self):
         '''Restores a model from a previously saved lowest-validation-loss
@@ -842,43 +834,113 @@ class RecurrentWhisperer(object):
               % ntpath.basename(lvl_ckpt.model_checkpoint_path))
         self.lvl_saver.restore(self.session, lvl_ckpt.model_checkpoint_path)
 
-    def save_lvl_predictions(self, train_data, valid_data):
-        '''Saves all model predictions as .mat files.
+    def save_lvl_predictions(self, data, train_or_valid_str):
+        '''Saves all model predictions in .pkl files (and optionally in .mat
+        files as well).
+
+        If prediction summaries are generated, those summaries are saved in
+        separate .pkl files (and optional .mat files). See docstring for
+        predict() for additional detail.
 
         Args:
-            train_data: dict containing the training data.
+            data: dict containing either training or validation data.
 
-            valid_data: dict containing the validation data.
+            train_or_valid_str: either 'train' or 'valid', indicating wheter
+            data contains training data or validation data, respectively.
 
         Returns:
             None.
         '''
-        def save_pkl(save_path, save_obj):
+
+        def save_helper(data_to_save, suffix_str):
+            # E.g., train_predictions or valid_summary
+            filename_no_extension = train_or_valid_str + '_' + suffix_str
+
+            pkl_path = os.path.join(self.lvl_dir, filename_no_extension)
+            save_pkl(data_to_save, pkl_path)
+
+            if self.hps.do_save_lvl_mat_files:
+                mat_path = os.path.join(self.lvl_dir, filename_no_extension)
+                save_mat(data_to_save, pkl_path)
+
+        def save_pkl(data_to_save, save_path_no_extension):
+            '''Pickle and save data as .pkl file.
+
+            Args:
+                save_path_no_extension: path at which to save the data,
+                including an extensionless filename.
+
+                data_to_save: any pickle-able object to be pickled and saved.
+
+            Returns:
+                None.
+            '''
+
+            save_path = save_path_no_extension + '.pkl'
             file = open(save_path, 'wb')
-            file.write(cPickle.dumps(save_obj))
+            file.write(cPickle.dumps(data_to_save))
             file.close()
 
-        print('\tSaving lvl training data predictions.')
-        train_summary = self.predict(train_data)
+        def save_mat(data_to_save, save_path_no_extension):
+            '''Save data as .mat file.
 
-        # Save as .pkl file
-        save_pkl(self.lvl_train_pred_path_pkl, train_summary)
+            Args:
+                save_path_no_extension: path at which to save the data,
+                including an extensionless filename.
 
-        print('\tSaving lvl validation data predictions.')
-        valid_summary = self.predict(valid_data)
+                data_to_save: dict containing data to be saved.
 
-        # Save as .pkl file
-        save_pkl(self.lvl_valid_pred_path_pkl, valid_summary)
+            Returns:
+                None.
+            '''
 
-        if self.hps.do_save_lvl_mat_files:
-            # Save as .mat files
-            spio.savemat(self.lvl_train_pred_path_mat, train_summary)
-            spio.savemat(self.lvl_valid_pred_path_mat, valid_summary)
+            save_path = save_path_no_extension + '.mat'
+            spio.savemat(save_path, data_to_save)
+
+        print('\tSaving lvl predictions (%s).' % train_or_valid_str)
+        predictions, summary = self.predict(data)
+        save_helper(predictions, 'predictions')
+        if summary is not None:
+            save_helper(summary, 'summary')
 
     @staticmethod
-    def load_lvl_predictions(log_dir, run_hash):
-        '''Loads all model predictions from .pkl files. Provided as a
-        complement to save_lvl_predictions(...).
+    def _load_lvl_helper(log_dir, run_hash,
+        train_or_valid_str, predictions_or_summary_str):
+        '''Loads previously saved model predictions or summaries thereof.
+
+        Args:
+            log_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+            run_hash: string containing the hyperparameters hash used to
+            establish the run directory. Returned by
+            Hyperparameters.get_hash().
+
+            train_or_valid_str: either 'train' or 'valid', indicating wheter
+            to load predictions/summary from the training data or validation
+            data, respectively.
+
+            predictions_or_summary_str: either 'predictions' or 'summary',
+            indicating whether to load model predictions or summaries thereof,
+            respectively.
+
+        Returns:
+            dict containing saved data.
+        '''
+        paths = RecurrentWhisperer.get_paths(log_dir, run_hash)
+        filename = train_or_valid_str + '_' + \
+            predictions_or_summary_str + '.pkl'
+        load_path = os.path.join(paths['lvl_dir'], filename)
+
+        file = open(load_path, 'rb')
+        load_path = file.read()
+        file.close()
+        return cPickle.loads(load_path)
+
+    @staticmethod
+    def load_lvl_train_predictions(log_dir, run_hash):
+        '''Loads all model predictions made over the training data by the lvl
+        model.
 
         Args:
             log_dir: string containing the path to the directory where the
@@ -889,26 +951,68 @@ class RecurrentWhisperer(object):
             Hyperparameters.get_hash().
 
         Returns:
-            train_summary:
+            dict containing saved predictions.
+        '''
+        return RecurrentWhisperer._load_lvl_helper(
+            log_dir, run_hash, 'train', 'predictions')
+
+    @staticmethod
+    def load_lvl_train_summary(log_dir, run_hash):
+        '''Loads summary of the model predictions made over the training data
+        by the lvl model.
+
+        Args:
+            log_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+            run_hash: string containing the hyperparameters hash used to
+            establish the run directory. Returned by
+            Hyperparameters.get_hash().
+
+        Returns:
+            dict containing saved summaries.
+        '''
+        return RecurrentWhisperer._load_lvl_helper(
+            log_dir, run_hash, 'train', 'summary')
+
+    @staticmethod
+    def load_lvl_valid_predictions(log_dir, run_hash):
+        '''Loads all model predictions from train_predictions.pkl.
+
+        Args:
+            log_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+            run_hash: string containing the hyperparameters hash used to
+            establish the run directory. Returned by
+            Hyperparameters.get_hash().
+
+        Returns:
+            train_predictions:
                 dict containing saved predictions on the training data by the
                 lvl model.
-
-            valid_summary:
-                dict containing saved predictions on the validation data, by
-                the lvl model.
         '''
-        def load_pkl(load_path):
-            file = open(load_path, 'rb')
-            load_path = file.read()
-            file.close()
-            return cPickle.loads(load_path)
+        return RecurrentWhisperer._load_lvl_helper(
+            log_dir, run_hash, 'valid', 'predictions')
 
-        paths = RecurrentWhisperer.get_paths(log_dir, run_hash)
+    @staticmethod
+    def load_lvl_valid_summary(log_dir, run_hash):
+        '''Loads summary of the model predictions made over the validation
+         data by the lvl model.
 
-        train_summary = load_pkl(paths['lvl_train_pred_path_pkl'])
-        valid_summary = load_pkl(paths['lvl_valid_pred_path_pkl'])
+        Args:
+            log_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
 
-        return train_summary, valid_summary
+            run_hash: string containing the hyperparameters hash used to
+            establish the run directory. Returned by
+            Hyperparameters.get_hash().
+
+        Returns:
+            dict containing saved summaries.
+        '''
+        return RecurrentWhisperer._load_lvl_helper(
+            log_dir, run_hash, 'valid', 'summary')
 
     @staticmethod
     def load_hyperparameters(log_dir, run_hash):
@@ -1184,8 +1288,35 @@ class RecurrentWhisperer(object):
             Key/value pairs will be specific to the subclass implementation.
 
         Returns:
-            predictions: dict containing model predictions based on data.
+            predictions: dict containing model predictions based on data. Key/
+            value pairs will be specific to the subclass implementation. Must
+            contain key: 'loss' whose value is a scalar indicating the
+            evaluation of the overall objective function being minimized
+            during training.
+
+            summary: dict containing high-level summaries of the predictions.
             Key/value pairs will be specific to the subclass implementation.
+
+            If validation data are provided to train(), predictions and
+            summary will be maintained in separate saved files that are
+            updated each time a new lowest validation loss is achieved. By
+            placing lightweight objects as values in summary (e.g., scalars),
+            the summary file can be loaded faster for post-training analyses
+            that do not require loading the potentially bulky predictions.
+        '''
+        raise StandardError(
+            '%s must be implemented by RecurrentWhisperer subclass'
+             % sys._getframe().f_code.co_name)
+
+    def _update_valid_tensorboard(self, valid_summary):
+        '''Updates the Tenorboard summaries corresponding to the validation
+        data.
+
+        Args:
+            valid_summary: dict returned by predict().
+
+        Returns:
+            None.
         '''
         raise StandardError(
             '%s must be implemented by RecurrentWhisperer subclass'
