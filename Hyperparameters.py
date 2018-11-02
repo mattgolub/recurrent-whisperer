@@ -10,6 +10,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import pdb
 from copy import deepcopy
 import hashlib
@@ -145,7 +146,7 @@ class Hyperparameters(object):
                     'and non-hash.' % key)
 
         # Combine default hash and default non-hash hps
-        default_hps = deepcopy(default_hash_hps)
+        default_hps = default_hash_hps
         default_hps.update(default_non_hash_hps)
 
         # Initialize hps with default values
@@ -281,3 +282,151 @@ class Hyperparameters(object):
         restore_data = file.read()
         file.close()
         return cPickle.loads(restore_data)
+
+    @staticmethod
+    def parse_command_line(default_hps, description=None):
+        '''Parses command-line arguments into a dict of hyperparameters.
+
+        Args:
+            default_hps: dict specifying all default hyperparameter settings.
+            All values must have type bool, int, float, str, or dict. Values
+            that are dicts must themselves have values of only the
+            aforementioned types.
+
+                Nesting of dicts is supported at the command line using
+                colon delimiters, e.g.:
+
+                    python your_script.py --d1:d2:n 10
+
+                will update the value in default_hps['d1']['d2']['n'] to be 10.
+
+            description (optional): string containing text to display if help
+            commands (-h, --help) are invoked at the command line. See
+            argparse.ArugmentParser for further details. Default: None.
+
+        Returns:
+            dict matching default_hps, but with values replaced by any
+            corresponding values provided at the command line.
+        '''
+
+        def str2bool(v):
+            if v.lower() in ('yes', 'true', 't', 'y', '1'):
+                return True
+            elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+                return False
+            else:
+                raise argparse.ArgumentTypeError('Boolean value expected.')
+
+        def parse_helper(D, str_prefix=''):
+            '''
+            Validates value types and recurses appropriately when encountering
+            colon delimiters in keys.
+
+            Args:
+                D: dict containing default hyperparameter values. Values must
+                be of type bool, int, float, str, or dict.
+
+            Returns:
+                None.
+            '''
+            for key, val in D.iteritems():
+                if isinstance(val, bool) or \
+                    isinstance(val, int) or \
+                    isinstance(val, float) or \
+                    isinstance(val, str):
+
+                    if isinstance(val, bool):
+                        type_val = str2bool
+                    else:
+                        type_val = type(val)
+
+                    parser.add_argument('--' + str_prefix + str(key),
+                        default=val, type=type_val)
+
+                elif isinstance(val, dict):
+                    # Recursion
+                    parse_helper(val, str_prefix=str_prefix + str(key) + ':')
+
+                else:
+                    raise argparse.ArgumentTypeError('Default value must be '
+                        'bool, int, float, str, or dict, but was %s. ')
+
+        def reconstruct_helper(D_flat):
+            '''
+            Args:
+                D_flat: dict containing default hyperparameters, with values
+                replaced by any corresponding values provided at the command
+                line. Values must be of type bool, int, float, or str (no
+                dicts allowed).
+
+            Returns:
+                D_unflattened: dict, nested with other dicts as specified by
+                colon delimitting in keys of D_flat.
+            '''
+
+            def parse_key(key):
+                '''
+                Args:
+                    key is string containing at least 1 colon.
+
+                Returns:
+                    dict_name: key up to (but not including) the first colon.
+
+                    rem_key: key from first char after colon to end.
+                '''
+                if not ':' in key:
+                    raise ValueError('key does not contain delimitting colon.')
+
+                first_colon_idx = key.index(':')
+                dict_name = key[:first_colon_idx]
+                rem_key = key[(first_colon_idx + 1):]
+
+                return dict_name, rem_key
+
+            def assign_leaf(key, val):
+                '''
+                Handles the case where we are writing the first entry of a
+                potentially nested dict. Because it's the first entry, there
+                is no chance of overwriting an existing dict.
+                '''
+                if ':' in key:
+                    dict_name, rem_key = parse_key(key)
+                    return {dict_name: assign_leaf(rem_key, val)}
+                else:
+                    return {key: val}
+
+            def add_helper(D, key, val):
+                if ':' in key:
+                    dict_name, rem_key = parse_key(key)
+
+                    if dict_name == 'data_hps':
+                        pdb.set_trace()
+
+                    if dict_name in D:
+                        D[dict_name] = add_helper(D[dict_name], rem_key, val)
+                    else:
+                        D[dict_name] = assign_leaf(rem_key, val)
+                else:
+                    D[key] = val
+
+                return D
+
+            D_unflattened = dict()
+            for key, val in D_flat.iteritems():
+                # Don't need to check type here (handled by parse_helper).
+                D_unflattened = add_helper(D_unflattened, key, val)
+
+            return D_unflattened
+
+        parser = argparse.ArgumentParser(description=description)
+        parse_helper(default_hps)
+
+        args = parser.parse_args()
+
+        # This has no dicts (all values are bool, int, float, or str)
+        hps_flat = vars(args)
+
+        # Recursively reconstruct any dicts (based on colon delimiters)
+        hps = reconstruct_helper(hps_flat)
+
+        return hps
