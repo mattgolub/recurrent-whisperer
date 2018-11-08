@@ -264,7 +264,7 @@ class Hyperparameters(object):
         Returns:
             None.
         '''
-        self.self.maybe_print('Saving Hyperparameters.')
+        self._maybe_print('Saving Hyperparameters.')
         file = open(save_path, 'wb')
         file.write(cPickle.dumps(self._all_hps_as_dict))
         file.close()
