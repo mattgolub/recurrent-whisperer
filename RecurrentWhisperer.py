@@ -930,12 +930,14 @@ class RecurrentWhisperer(object):
         paths = RecurrentWhisperer.get_paths(log_dir, run_hash)
         filename = train_or_valid_str + '_' + \
             predictions_or_summary_str + '.pkl'
-        load_path = os.path.join(paths['lvl_dir'], filename)
+        path_to_file = os.path.join(paths['lvl_dir'], filename)
 
-        file = open(load_path, 'rb')
+        file = open(path_to_file, 'rb')
         load_path = file.read()
+        data = cPickle.loads(load_path)
         file.close()
-        return cPickle.loads(load_path)
+        
+        return data
 
     @staticmethod
     def load_lvl_train_predictions(log_dir, run_hash):
