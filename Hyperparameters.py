@@ -27,7 +27,8 @@ class Hyperparameters(object):
                  hps=None,
                  default_hash_hps=None,
                  default_non_hash_hps=None,
-                 hash_len=10):
+                 hash_len=10,
+                 verbose=False):
         '''Creates a Hyperparameters object.
 
         The resulting object contains hyperparameters as class attributes,
@@ -50,11 +51,14 @@ class Hyperparameters(object):
             included in the hash. These hyperparameters should not influence
             the model architecture or the trajectory of fitting.
 
-            hash_len: int between 1 and 512 specifying the number of hex
-            characters to include in the hyperparameters hash (all others are
-            truncated). Larger values in this range may be necessary for
+            hash_len (optional): int between 1 and 512 specifying the number of 
+            hex characters to include in the hyperparameters hash (all others 
+            are truncated). Larger values in this range may be necessary for
             massive hyperparameter searches, where the likelihood of hash
             collisions may be non-negligible. Default: 10.
+
+            verbose (optional): bool indicating whether to print status updates.
+            Default: False.
 
         Returns:
             None.
@@ -68,6 +72,7 @@ class Hyperparameters(object):
                 'default_non_hash_hps must be specified, but both were None.')
 
         self._hash_len = hash_len
+        self._verbose = verbose
         self._all_hps_as_dict, self._hash_hps_as_dict = \
             self._parse(hps, default_hash_hps, default_non_hash_hps)
 
@@ -233,7 +238,7 @@ class Hyperparameters(object):
     def write_yaml(self, save_path):
         # Note, this doesn't do well with numpy variables.
         # Ideally, make sure everything is bool, int, float, string, etc.
-        print('Writing Hyperparameters YAML file.')
+        self._maybe_print('Writing Hyperparameters YAML file.')
         with open(save_path, 'w') as yaml_file:
             yaml.dump(self._all_hps_as_dict,
                       yaml_file,
@@ -244,7 +249,7 @@ class Hyperparameters(object):
         # This is for use on runs created before save/restore was implemented
         # Preferred usage is with save/restore
 
-        print('Reading Hyperparameters YAML file.')
+        self._maybe_print('Reading Hyperparameters YAML file.')
         with open(yaml_path, 'r') as yaml_file:
             return yaml.load(yaml_file)
 
@@ -259,10 +264,22 @@ class Hyperparameters(object):
         Returns:
             None.
         '''
-        print('Saving Hyperparameters.')
+        self.self.maybe_print('Saving Hyperparameters.')
         file = open(save_path, 'wb')
         file.write(cPickle.dumps(self._all_hps_as_dict))
         file.close()
+
+    def _maybe_print(self, s):
+        '''Depending on verbosity level, print a status update.
+
+        Args:
+            s: string containing a status update.
+
+        Returns:
+            None.
+        '''
+        if self._verbose:
+            print(s)
 
     @staticmethod
     def restore(restore_path):
@@ -277,7 +294,6 @@ class Hyperparameters(object):
             dict containing all hyperparameter names and settings from the
             previously saved Hyperparameters object.
         '''
-        print('Restoring Hyperparameters.')
         file = open(restore_path, 'rb')
         restore_data = file.read()
         file.close()
