@@ -75,7 +75,6 @@ class RecurrentWhisperer(object):
         'max_n_epochs': 1000,
         'max_n_epochs_without_lvl_improvement': 200,
         'min_learning_rate': 1e-10,
-        'log_dir': '/tmp/rnn_logs/',
         'do_save_lvl_mat_files': False,
         'do_restart_run': False,
         'max_ckpt_to_keep': 1,
@@ -85,7 +84,11 @@ class RecurrentWhisperer(object):
         'n_epochs_per_visualization_update': 100,
         'disable_gpus': False,
         'allow_gpu_growth': True,
-        'per_process_gpu_memory_fraction': None}
+        'per_process_gpu_memory_fraction': None,
+        'log_dir': '/tmp/rnn_logs/',
+        'dataset_name': None,
+        'n_folds': None,
+        'fold_idx': None,}
 
     def __init__(self, **kwargs):
         '''Creates a RecurrentWhisperer object.
@@ -258,7 +261,8 @@ class RecurrentWhisperer(object):
         return default_hps
 
     @staticmethod
-    def get_paths(log_dir, run_hash):
+    def get_paths(log_dir, run_hash,
+        dataset_name=None, n_folds=None, fold_idx=None):
         '''Generates all paths relevant for saving and loading model data.
 
         Args:
@@ -274,8 +278,14 @@ class RecurrentWhisperer(object):
             data. Keys are strings, with suffixes '_dir' and '_path' referring
             to directories and filenames, respectively.
         '''
-
         run_dir = os.path.join(log_dir, run_hash)
+
+        if dataset_name is not None:
+            # Advanced usage: cross-validation and multiple datasets.
+            # Not yet documented.
+            fold_str = str('fold-%d-of-%d' % (fold_idx+1, n_folds))
+            run_dir = os.path.join(run_dir, dataset_name, fold_str)
+
         hps_dir = os.path.join(run_dir, 'hps')
         ckpt_dir = os.path.join(run_dir, 'ckpt')
         lvl_dir = os.path.join(run_dir, 'lvl')
@@ -308,8 +318,12 @@ class RecurrentWhisperer(object):
         '''
         hps = self.hps
         log_dir = hps.log_dir
+        dataset_name = hps.dataset_name
+        n_folds = hps.n_folds
+        fold_idx = hps.fold_idx
         run_hash = hps.get_hash()
-        paths = self.get_paths(log_dir, run_hash)
+        paths = self.get_paths(log_dir, run_hash,
+            dataset_name, n_folds, fold_idx)
 
         self.run_dir = paths['run_dir']
         self.hps_dir = paths['hps_dir']
@@ -904,8 +918,9 @@ class RecurrentWhisperer(object):
             save_helper(summary, 'summary')
 
     @staticmethod
-    def _load_lvl_helper(log_dir, run_hash,
-        train_or_valid_str, predictions_or_summary_str):
+    def _load_lvl_helper(train_or_valid_str, predictions_or_summary_str,
+        log_dir, run_hash,
+        dataset_name=None, n_folds=None, fold_idx=None):
         '''Loads previously saved model predictions or summaries thereof.
 
         Args:
@@ -927,7 +942,8 @@ class RecurrentWhisperer(object):
         Returns:
             dict containing saved data.
         '''
-        paths = RecurrentWhisperer.get_paths(log_dir, run_hash)
+        paths = RecurrentWhisperer.get_paths(log_dir, run_hash,
+            dataset_name, n_folds, fold_idx)
         filename = train_or_valid_str + '_' + \
             predictions_or_summary_str + '.pkl'
         path_to_file = os.path.join(paths['lvl_dir'], filename)
@@ -936,11 +952,12 @@ class RecurrentWhisperer(object):
         load_path = file.read()
         data = cPickle.loads(load_path)
         file.close()
-        
+
         return data
 
     @staticmethod
-    def load_lvl_train_predictions(log_dir, run_hash):
+    def load_lvl_train_predictions(log_dir, run_hash,
+        dataset_name=None, n_folds=None, fold_idx=None):
         '''Loads all model predictions made over the training data by the lvl
         model.
 
@@ -956,10 +973,13 @@ class RecurrentWhisperer(object):
             dict containing saved predictions.
         '''
         return RecurrentWhisperer._load_lvl_helper(
-            log_dir, run_hash, 'train', 'predictions')
+            'train', 'predictions',
+            log_dir, run_hash,
+            dataset_name, n_folds, fold_idx)
 
     @staticmethod
-    def load_lvl_train_summary(log_dir, run_hash):
+    def load_lvl_train_summary(log_dir, run_hash,
+        dataset_name=None, n_folds=None, fold_idx=None):
         '''Loads summary of the model predictions made over the training data
         by the lvl model.
 
@@ -975,10 +995,13 @@ class RecurrentWhisperer(object):
             dict containing saved summaries.
         '''
         return RecurrentWhisperer._load_lvl_helper(
-            log_dir, run_hash, 'train', 'summary')
+            'train', 'summary',
+            log_dir, run_hash,
+            dataset_name, n_folds, fold_idx)
 
     @staticmethod
-    def load_lvl_valid_predictions(log_dir, run_hash):
+    def load_lvl_valid_predictions(log_dir, run_hash,
+        dataset_name=None, n_folds=None, fold_idx=None):
         '''Loads all model predictions from train_predictions.pkl.
 
         Args:
@@ -995,10 +1018,13 @@ class RecurrentWhisperer(object):
                 lvl model.
         '''
         return RecurrentWhisperer._load_lvl_helper(
-            log_dir, run_hash, 'valid', 'predictions')
+            'valid', 'predictions',
+            log_dir, run_hash,
+            dataset_name, n_folds, fold_idx)
 
     @staticmethod
-    def load_lvl_valid_summary(log_dir, run_hash):
+    def load_lvl_valid_summary(log_dir, run_hash,
+        dataset_name=None, n_folds=None, fold_idx=None):
         '''Loads summary of the model predictions made over the validation
          data by the lvl model.
 
@@ -1014,10 +1040,13 @@ class RecurrentWhisperer(object):
             dict containing saved summaries.
         '''
         return RecurrentWhisperer._load_lvl_helper(
-            log_dir, run_hash, 'valid', 'summary')
+            'valid', 'summary',
+            log_dir, run_hash,
+            dataset_name, n_folds, fold_idx)
 
     @staticmethod
-    def load_hyperparameters(log_dir, run_hash):
+    def load_hyperparameters(log_dir, run_hash,
+        dataset_name=None, n_folds=None, fold_idx=None):
         '''Load previously saved Hyperparameters.
 
         Args:
@@ -1032,7 +1061,9 @@ class RecurrentWhisperer(object):
             dict containing the loaded hyperparameters.
         '''
 
-        paths = RecurrentWhisperer.get_paths(log_dir, run_hash)
+        paths = RecurrentWhisperer.get_paths(log_dir, run_hash,
+            dataset_name=dataset_name, n_folds=n_folds, fold_idx=fold_idx)
+
         hps_path = paths['hps_path']
 
         if os.path.exists(hps_path):
