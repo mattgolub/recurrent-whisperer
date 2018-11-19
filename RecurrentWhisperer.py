@@ -261,30 +261,40 @@ class RecurrentWhisperer(object):
         return default_hps
 
     @staticmethod
-    def get_paths(log_dir, run_hash,
+    def get_run_dir(log_dir, run_hash,
         dataset_name=None, n_folds=None, fold_idx=None):
-        '''Generates all paths relevant for saving and loading model data.
+        '''
 
-        Args:
-            log_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
 
             run_hash: string containing the hyperparameters hash used to
             establish the run directory. Returned by
             Hyperparameters.get_hash().
+        '''
+
+        run_dir = os.path.join(log_dir, run_hash)
+
+        if (dataset_name is not None) and \
+            (n_folds is not None) and \
+            (fold_idx is not None):
+
+            fold_str = str('fold-%d-of-%d' % (fold_idx+1, n_folds))
+            run_dir = os.path.join(run_dir, dataset_name, fold_str)
+
+        return run_dir
+
+    @staticmethod
+    def get_paths(run_dir):
+        '''Generates all paths relevant for saving and loading model data.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
 
         Returns:
             dict containing all paths relevant for saving and loading model
             data. Keys are strings, with suffixes '_dir' and '_path' referring
             to directories and filenames, respectively.
         '''
-        run_dir = os.path.join(log_dir, run_hash)
-
-        if dataset_name is not None:
-            # Advanced usage: cross-validation and multiple datasets.
-            # Not yet documented.
-            fold_str = str('fold-%d-of-%d' % (fold_idx+1, n_folds))
-            run_dir = os.path.join(run_dir, dataset_name, fold_str)
 
         hps_dir = os.path.join(run_dir, 'hps')
         ckpt_dir = os.path.join(run_dir, 'ckpt')
@@ -304,6 +314,28 @@ class RecurrentWhisperer(object):
             'events_dir': os.path.join(run_dir, 'events')
             }
 
+    @staticmethod
+    def is_run_dir(run_dir):
+        '''Determines whether a run exists in the filesystem.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__().
+
+        Returns:
+            bool indicating whether a run exists.
+        '''
+
+        paths = RecurrentWhisperer.get_paths(run_dir)
+
+        # Check for existence of all directories that would have been created
+        # if a run was executed.
+        for key in paths:
+            if 'dir' in key and not os.path.exists(paths[key]):
+                return False
+
+        return True
+
     def _setup_run_dir(self):
         '''Sets up a directory for this training run. The directory name is
         derived from a hash of the hyperparameter settings. Subdirectories are
@@ -322,8 +354,9 @@ class RecurrentWhisperer(object):
         n_folds = hps.n_folds
         fold_idx = hps.fold_idx
         run_hash = hps.get_hash()
-        paths = self.get_paths(log_dir, run_hash,
+        run_dir = self.get_run_dir(log_dir, run_hash,
             dataset_name, n_folds, fold_idx)
+        paths = self.get_paths(run_dir)
 
         self.run_dir = paths['run_dir']
         self.hps_dir = paths['hps_dir']
@@ -918,20 +951,39 @@ class RecurrentWhisperer(object):
             save_helper(summary, 'summary')
 
     @staticmethod
-    def _load_lvl_helper(train_or_valid_str, predictions_or_summary_str,
-        log_dir, run_hash,
-        dataset_name=None, n_folds=None, fold_idx=None):
+    def get_run_info(run_dir):
+        '''Advanced functionality for models invoking K-fold cross-validation.
+        '''
+        run_info = {}
+        if self.is_run_dir(run_dir):
+            pass
+        else:
+            dataset_names = list_dirs(run_dir)
+
+            for dataset_name in dataset_names:
+                cv_dir = os.path.join(run_dir, dataset_name)
+                fold_names = list_dirs(cv_dir)
+
+                run_info[dataset_name] = []
+                for fold_name in fold_names:
+                    if self.is_run_dir(cv_dir, fold_name):
+                        run_info[dataset_name].append(fold_name)
+
+        return run_info
+
+
+    @staticmethod
+    def _load_lvl_helper(
+        run_dir,
+        train_or_valid_str,
+        predictions_or_summary_str):
         '''Loads previously saved model predictions or summaries thereof.
 
         Args:
-            log_dir: string containing the path to the directory where the
+            run_dir: string containing the path to the directory where the
             model run was saved. See definition in __init__()
 
-            run_hash: string containing the hyperparameters hash used to
-            establish the run directory. Returned by
-            Hyperparameters.get_hash().
-
-            train_or_valid_str: either 'train' or 'valid', indicating wheter
+            train_or_valid_str: either 'train' or 'valid', indicating whether
             to load predictions/summary from the training data or validation
             data, respectively.
 
@@ -942,127 +994,96 @@ class RecurrentWhisperer(object):
         Returns:
             dict containing saved data.
         '''
-        paths = RecurrentWhisperer.get_paths(log_dir, run_hash,
-            dataset_name, n_folds, fold_idx)
+        paths = RecurrentWhisperer.get_paths(run_dir)
         filename = train_or_valid_str + '_' + \
             predictions_or_summary_str + '.pkl'
         path_to_file = os.path.join(paths['lvl_dir'], filename)
 
-        file = open(path_to_file, 'rb')
-        load_path = file.read()
-        data = cPickle.loads(load_path)
-        file.close()
+        if os.path.exists(path_to_file):
+            file = open(path_to_file, 'rb')
+            load_path = file.read()
+            data = cPickle.loads(load_path)
+            file.close()
+        else:
+            raise IOError('%s not found.' % path_to_file)
 
         return data
 
     @staticmethod
-    def load_lvl_train_predictions(log_dir, run_hash,
-        dataset_name=None, n_folds=None, fold_idx=None):
+    def load_lvl_train_predictions(run_dir):
         '''Loads all model predictions made over the training data by the lvl
         model.
 
         Args:
-            log_dir: string containing the path to the directory where the
+            run_dir: string containing the path to the directory where the
             model run was saved. See definition in __init__()
-
-            run_hash: string containing the hyperparameters hash used to
-            establish the run directory. Returned by
-            Hyperparameters.get_hash().
 
         Returns:
             dict containing saved predictions.
         '''
         return RecurrentWhisperer._load_lvl_helper(
-            'train', 'predictions',
-            log_dir, run_hash,
-            dataset_name, n_folds, fold_idx)
+            run_dir, 'train', 'predictions')
 
     @staticmethod
-    def load_lvl_train_summary(log_dir, run_hash,
-        dataset_name=None, n_folds=None, fold_idx=None):
+    def load_lvl_train_summary(run_dir):
         '''Loads summary of the model predictions made over the training data
         by the lvl model.
 
         Args:
-            log_dir: string containing the path to the directory where the
+            run_dir: string containing the path to the directory where the
             model run was saved. See definition in __init__()
-
-            run_hash: string containing the hyperparameters hash used to
-            establish the run directory. Returned by
-            Hyperparameters.get_hash().
 
         Returns:
             dict containing saved summaries.
         '''
         return RecurrentWhisperer._load_lvl_helper(
-            'train', 'summary',
-            log_dir, run_hash,
-            dataset_name, n_folds, fold_idx)
+            run_dir, 'train', 'summary')
 
     @staticmethod
-    def load_lvl_valid_predictions(log_dir, run_hash,
-        dataset_name=None, n_folds=None, fold_idx=None):
+    def load_lvl_valid_predictions(run_dir):
         '''Loads all model predictions from train_predictions.pkl.
 
         Args:
-            log_dir: string containing the path to the directory where the
+            run_dir: string containing the path to the directory where the
             model run was saved. See definition in __init__()
-
-            run_hash: string containing the hyperparameters hash used to
-            establish the run directory. Returned by
-            Hyperparameters.get_hash().
 
         Returns:
             train_predictions:
                 dict containing saved predictions on the training data by the
                 lvl model.
         '''
+
         return RecurrentWhisperer._load_lvl_helper(
-            'valid', 'predictions',
-            log_dir, run_hash,
-            dataset_name, n_folds, fold_idx)
+            run_dir, 'valid', 'predictions')
 
     @staticmethod
-    def load_lvl_valid_summary(log_dir, run_hash,
-        dataset_name=None, n_folds=None, fold_idx=None):
+    def load_lvl_valid_summary(run_dir):
         '''Loads summary of the model predictions made over the validation
          data by the lvl model.
 
         Args:
-            log_dir: string containing the path to the directory where the
+            run_dir: string containing the path to the directory where the
             model run was saved. See definition in __init__()
-
-            run_hash: string containing the hyperparameters hash used to
-            establish the run directory. Returned by
-            Hyperparameters.get_hash().
 
         Returns:
             dict containing saved summaries.
         '''
         return RecurrentWhisperer._load_lvl_helper(
-            'valid', 'summary',
-            log_dir, run_hash,
-            dataset_name, n_folds, fold_idx)
+            run_dir, 'valid', 'summary')
 
     @staticmethod
-    def load_hyperparameters(log_dir, run_hash,
-        dataset_name=None, n_folds=None, fold_idx=None):
+    def load_hyperparameters(run_dir):
         '''Load previously saved Hyperparameters.
 
         Args:
-            log_dir: string containing the path to the directory where the
+            run_dir: string containing the path to the directory where the
             model run was saved. See definition in __init__()
-
-            run_hash: string containing the hyperparameters hash used to
-            establish the run directory. Returned by
-            Hyperparameters.get_hash().
 
         Returns:
             dict containing the loaded hyperparameters.
         '''
 
-        paths = RecurrentWhisperer.get_paths(log_dir, run_hash,
-            dataset_name=dataset_name, n_folds=n_folds, fold_idx=fold_idx)
+        paths = RecurrentWhisperer.get_paths(run_dir)
 
         hps_path = paths['hps_path']
 
