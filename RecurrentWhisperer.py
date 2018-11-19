@@ -953,6 +953,14 @@ class RecurrentWhisperer(object):
     @staticmethod
     def get_run_info(run_dir):
         '''Advanced functionality for models invoking K-fold cross-validation.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            dict with each key being a dataset name and each value is the corresponding set of cross-validation runs performed on that dataset. Jointly, these key, val pairs can reconstruct all of the "leaves" of the cross validation runs by using get_run_dir(...).
+
         '''
         run_info = {}
         if self.is_run_dir(run_dir):
@@ -970,7 +978,6 @@ class RecurrentWhisperer(object):
                         run_info[dataset_name].append(fold_name)
 
         return run_info
-
 
     @staticmethod
     def _load_lvl_helper(
