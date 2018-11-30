@@ -962,8 +962,13 @@ class RecurrentWhisperer(object):
             dict with each key being a dataset name and each value is the corresponding set of cross-validation runs performed on that dataset. Jointly, these key, val pairs can reconstruct all of the "leaves" of the cross validation runs by using get_run_dir(...).
 
         '''
+
+        def list_dirs(path_str):
+            return [name for name in os.listdir(path_str) \
+                if os.path.isdir(os.path.join(path_str, name)) ]
+
         run_info = {}
-        if self.is_run_dir(run_dir):
+        if RecurrentWhisperer.is_run_dir(run_dir):
             pass
         else:
             dataset_names = list_dirs(run_dir)
@@ -974,7 +979,8 @@ class RecurrentWhisperer(object):
 
                 run_info[dataset_name] = []
                 for fold_name in fold_names:
-                    if self.is_run_dir(cv_dir, fold_name):
+                    run_dir = os.path.join(cv_dir, fold_name)
+                    if RecurrentWhisperer.is_run_dir(run_dir):
                         run_info[dataset_name].append(fold_name)
 
         return run_info
@@ -1203,6 +1209,24 @@ class RecurrentWhisperer(object):
         W = np.multiply(scale,self.rng.randn(input_size, output_size))
         b = np.zeros(output_size)
         return W, b
+
+    def get_n_params(self, scope=None):
+        ''' Counts the number of trainable parameters in a Tensorflow model
+        (or scope within a model).
+
+        Args:
+            scope (optional): string specifying optional scope in which to
+            count parameters. See docstring for tf.trainable_variables.
+
+        Returns:
+            integer specifying the number of trainable parameters.
+        '''
+
+        n_params = sum([np.prod(v.shape).value \
+            for v in tf.trainable_variables(scope)])
+
+        return n_params
+
 
     # *************************************************************************
     # The following class methods MUST be implemented by any subclass that
