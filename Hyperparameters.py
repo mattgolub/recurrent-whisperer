@@ -51,14 +51,14 @@ class Hyperparameters(object):
             included in the hash. These hyperparameters should not influence
             the model architecture or the trajectory of fitting.
 
-            hash_len (optional): int between 1 and 512 specifying the number of 
-            hex characters to include in the hyperparameters hash (all others 
-            are truncated). Larger values in this range may be necessary for
-            massive hyperparameter searches, where the likelihood of hash
-            collisions may be non-negligible. Default: 10.
+            hash_len (optional): int between 1 and 512 specifying the number
+            of hex characters to include in the hyperparameters hash (all
+            others are truncated). Larger values in this range may be
+            necessary for massive hyperparameter searches, where the
+            likelihood of hash collisions may be non-negligible. Default: 10.
 
-            verbose (optional): bool indicating whether to print status updates.
-            Default: False.
+            verbose (optional): bool indicating whether to print status
+            updates. Default: False.
 
         Returns:
             None.
