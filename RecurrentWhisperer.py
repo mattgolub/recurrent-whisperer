@@ -71,7 +71,7 @@ class RecurrentWhisperer(object):
         'agnc_hps': {}}
 
     _DEFAULT_SUPER_NON_HASH_HPS = {
-        'min_loss': 0.,
+        'min_loss': 0.0,
         'max_n_epochs': 1000,
         'max_n_epochs_without_lvl_improvement': 200,
         'min_learning_rate': 1e-10,
@@ -382,6 +382,10 @@ class RecurrentWhisperer(object):
             if self.hps.do_restart_run:
                 print('\tDeleting run directory.')
                 shutil.rmtree(self.run_dir)
+
+                # Avoids pathological behavior whereby it is impossible to
+                # restore a run that was started with do_restart_run = True.
+                self.hps.do_restart_run = False
 
         if not os.path.isdir(self.run_dir):
             print('\nCreating run directory: %s.' % self.run_dir)
