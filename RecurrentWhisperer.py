@@ -26,7 +26,7 @@ import scipy.io as spio
 from AdaptiveLearningRate import AdaptiveLearningRate
 from AdaptiveGradNormClip import AdaptiveGradNormClip
 from Hyperparameters import Hyperparameters
-from timer import timer
+from Timer import Timer
 
 
 class RecurrentWhisperer(object):
@@ -71,9 +71,10 @@ class RecurrentWhisperer(object):
         'agnc_hps': {}}
 
     _DEFAULT_SUPER_NON_HASH_HPS = {
-        'min_loss': 0.0,
+        'min_loss': None,
         'max_n_epochs': 1000,
         'max_n_epochs_without_lvl_improvement': 200,
+        'max_train_time': None,
         'min_learning_rate': 1e-10,
         'do_save_lvl_mat_files': False,
         'do_restart_run': False,
@@ -135,7 +136,8 @@ class RecurrentWhisperer(object):
 
                 min_loss: float specifying optimization termination criteria
                 on the loss function evaluated across the training data (the
-                epoch training loss). Default: 0.
+                epoch training loss). If None, this termination criteria is
+                not applied. Default: None.
 
                 max_n_epochs: int specifying optimization termination criteria
                 on the number of training epochs performed (one epoch = one
@@ -148,6 +150,10 @@ class RecurrentWhisperer(object):
                 block of this many epochs, training will terminate. If
                 validation data are not provided to train(...), this
                 termination criteria is ignored. Default: 200.
+
+                max_train_time: float specifying the maximum amount of time
+                allowed for training, expressed in seconds. If None, this
+                termination criteria is not applied. Default: None.
 
                 min_learning_rate: float specifying optimization termination
                 criteria on the learning rate. Optimization terminates if the
@@ -409,6 +415,11 @@ class RecurrentWhisperer(object):
         with tf.name_scope('optimizer'):
             '''Maintain state using TF framework for seamless saving and
             restoring of runs'''
+
+            self.train_timer = Timer()
+            self.train_time = tf.Variable(
+                0, name='train_time', trainable=False, dtype=tf.float32)
+
             self.global_step = tf.Variable(
                 0, name='global_step', trainable=False, dtype=tf.int32)
 
@@ -548,8 +559,14 @@ class RecurrentWhisperer(object):
             self.hps.write_yaml(self.hps_yaml_path) # For visual inspection
             self.hps.save(self.hps_path) # For restoring a run via its run_dir
             # (i.e., without needing to manually specify hps)
+
+            # Start training timer from scratch
+            self.train_time_offset = 0.0
         else:
             self._restore_from_checkpoint(ckpt)
+
+            # Resume training timer from value at last save.
+            self.train_time_offset = self.session.run(self.train_time)
 
     def train(self, train_data=None, valid_data=None):
         '''Trains the model with respect to a set of training data. Manages
@@ -572,7 +589,7 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        N_TIMER_SPLITS = 6
+        N_EPOCH_SPLITS = 6
 
         self._setup_training(train_data, valid_data)
 
@@ -581,37 +598,51 @@ class RecurrentWhisperer(object):
             # and do not save a new checkpoint.
             return
 
+        self.train_timer.start()
+
         # Training loop
         print('Entering training loop.')
         while True:
-            t = timer(N_TIMER_SPLITS, n_indent=1)
-            t.start()
+            epoch_timer = Timer(N_EPOCH_SPLITS, n_indent=1, name='Epoch')
+            epoch_timer.start()
+
+            # *****************************************************************
 
             data_batches = self._get_data_batches(train_data)
 
-            t.split('data')
+            epoch_timer.split('data')
+
+            # *****************************************************************
 
             epoch_loss = self._train_epoch(data_batches)
 
-            t.split('train')
+            epoch_timer.split('train')
+
+            # *****************************************************************
 
             self._maybe_update_validation(train_data, valid_data)
 
-            t.split('validation')
+            epoch_timer.split('validation')
+
+            # *****************************************************************
 
             self._maybe_update_visualization(train_data, valid_data)
 
-            t.split('visualize')
+            epoch_timer.split('visualize')
+
+            # *****************************************************************
 
             self._maybe_save_checkpoint()
 
-            t.split('save')
+            epoch_timer.split('save')
+
+            # *****************************************************************
 
             if self._is_training_complete(epoch_loss, valid_data is not None):
                 break
 
-            t.split('other')
-            t.disp()
+            epoch_timer.split('other')
+            epoch_timer.disp()
 
         # Save checkpoint upon completing training
         self._save_checkpoint()
@@ -638,7 +669,7 @@ class RecurrentWhisperer(object):
         '''
         hps = self.hps
 
-        if loss <= hps.min_loss:
+        if hps.min_loss is not None and loss <= hps.min_loss:
             print ('\nStopping optimization: loss meets convergence criteria.')
             return True
 
@@ -650,6 +681,13 @@ class RecurrentWhisperer(object):
         if self._epoch() >= hps.max_n_epochs:
             print('\nStopping optimization:'
                   ' reached maximum number of training epochs.')
+            return True
+
+        if hps.max_train_time is not None and \
+            self._get_train_time() > hps.max_train_time:
+
+            print ('\nStopping optimization: training time exceeds '
+                'maximum allowed.')
             return True
 
         if do_check_lvl and \
@@ -721,6 +759,7 @@ class RecurrentWhisperer(object):
 
         print('Epoch %d; loss: %.2e; learning rate: %.2e.'
             % (self._epoch(), epoch_loss, self.adaptive_learning_rate()))
+        print('\tTrain time: %.2fs' % self._get_train_time())
 
         return epoch_loss
 
@@ -804,6 +843,7 @@ class RecurrentWhisperer(object):
             None.
         '''
         print('\tSaving checkpoint...')
+        self._update_train_time()
         self.seso_saver.save(self.session,
                              self.ckpt_path,
                              global_step=self._step())
@@ -854,6 +894,7 @@ class RecurrentWhisperer(object):
                 tf.assign(self.epoch_last_lvl_improvement, self._epoch())]
 
             self.session.run(assign_ops)
+            self._update_train_time()
 
             self.lvl_saver.save(self.session,
                                 self.lvl_ckpt_path,
@@ -1171,6 +1212,30 @@ class RecurrentWhisperer(object):
             ltl: float specifying the lowest training loss.
         '''
         return self.session.run(self.ltl)
+
+    def _get_train_time(self):
+        '''Returns the time elapsed during training, measured in seconds, and
+        accounting for restoring from previously saved runs.
+
+        Args:
+            None.
+
+        Returns:
+            float indicating time elapsed during training..
+        '''
+        return self.train_time_offset + self.train_timer()
+
+    def _update_train_time(self):
+        '''Runs the TF op that updates the time elapsed during training.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+        time_val = self._get_train_time()
+        self.session.run(tf.assign(self.train_time, time_val))
 
     def _increment_epoch(self):
         '''Runs the TF op that increments the epoch number.

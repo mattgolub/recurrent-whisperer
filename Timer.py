@@ -1,5 +1,5 @@
 '''
-timer.py
+Timer.py
 Version 1.0
 Written using Python 2.7.12
 @ Matt Golub, August 2018.
@@ -9,11 +9,11 @@ Please direct correspondence to mgolub@stanford.edu.
 import numpy as np
 import time
 
-class timer(object):
+class Timer(object):
 	'''Class for profiling computation time.
 
 	Example usage:
-		t = timer(3)		# Build a timer object to profile three tasks.
+		t = Timer(3)		# Build a timer object to profile three tasks.
 		t.start()    		# Start the timer.
 
 		run_task_1() 		# Run task 1 of 3.
@@ -33,7 +33,7 @@ class timer(object):
 		--> 	Task 3: 6.00s (37.5%)
 	'''
 
-	def __init__(self, n_tasks, n_indent=0):
+	def __init__(self, n_tasks=1, n_indent=0, name='Total'):
 		'''Builds a timer object.
 
 		Args:
@@ -41,7 +41,10 @@ class timer(object):
 
 			n_indent (optional): int specifying the number of indentation
 				to prefix into print statements. Useful when utilizing multiple
-				timer objects for profile nested code.
+				timer objects for profile nested code. Default: 0.
+
+			name (optional): string specifying name for this timer, used only
+				when printing updates. Default: 'Total'.
 
 		Returns:
 			None.
@@ -60,17 +63,19 @@ class timer(object):
 		self.task_names has n elements'''
 
 		self.print_prefix = '\t' * n_indent
+		self.name = name
 
-		self.idx = np.nan
-		self.start_time = np.nan
+		self.idx = 0
 		self.is_running = False
 
 	def __call__(self):
 		'''Returns the time elapsed since the timer was started.
 		   If start() has not yet been called, returns NaN.
 		'''
-
-		return time.time() - start_time
+		if self.is_running:
+			return time.time() - self.t[0]
+		else:
+			return 0.0
 
 	def start(self):
 		'''Starts the timer'''
@@ -110,7 +115,8 @@ class timer(object):
 			total_time = self.t[self.idx-1] - self.t[0]
 			split_times = np.diff(self.t)
 
-			print('%sTotal time: %.2fs' % (self.print_prefix, total_time))
+			print('%s%s time: %.2fs'
+				% (self.print_prefix, self.name, total_time))
 
 			# allows printing before all tasks have been run
 			for idx in range(self.idx-1):
