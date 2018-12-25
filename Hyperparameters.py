@@ -349,9 +349,12 @@ class Hyperparameters(object):
                 if isinstance(val, bool) or \
                     isinstance(val, int) or \
                     isinstance(val, float) or \
-                    isinstance(val, str):
+                    isinstance(val, str) or \
+                    val is None:
 
-                    if isinstance(val, bool):
+                    if val is None:
+                        type_val = None
+                    elif isinstance(val, bool):
                         type_val = str2bool
                     else:
                         type_val = type(val)
@@ -365,7 +368,8 @@ class Hyperparameters(object):
 
                 else:
                     raise argparse.ArgumentTypeError('Default value must be '
-                        'bool, int, float, str, or dict, but was %s. ')
+                        'bool, int, float, str, dict, or None, but was %s. ' %
+                        type(val))
 
         def reconstruct_helper(D_flat):
             '''
