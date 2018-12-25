@@ -71,18 +71,26 @@ class RecurrentWhisperer(object):
         'agnc_hps': {}}
 
     _DEFAULT_SUPER_NON_HASH_HPS = {
-        'min_loss': None,
+        'min_learning_rate': 1e-10,
         'max_n_epochs': 1000,
         'max_n_epochs_without_lvl_improvement': 200,
+        'min_loss': None,
         'max_train_time': None,
-        'min_learning_rate': 1e-10,
-        'do_save_lvl_mat_files': False,
+
         'do_restart_run': False,
+        'do_save_ckpt': True,
+        'do_save_lvl_ckpt': True,
+        'do_save_lvl_train_predictions': True,
+        'do_save_lvl_valid_predictions': True,
+        'do_save_lvl_mat_files': False,
+
         'max_ckpt_to_keep': 1,
         'max_lvl_ckpt_to_keep': 1,
+
         'n_epochs_per_ckpt': 100,
         'n_epochs_per_validation_update': 100,
         'n_epochs_per_visualization_update': 100,
+
         'disable_gpus': False,
         'allow_gpu_growth': True,
         'per_process_gpu_memory_fraction': None,
@@ -165,6 +173,14 @@ class RecurrentWhisperer(object):
                 hyperparameters, log_dir is meant to be constant across
                 models. Default: '/tmp/rnn_logs/'.
 
+                do_save_lvl_train_predictions: bool indicating whether to
+                maintain a .pkl file containing predictions over the training
+                data based on the lowest-validation-loss parameters.
+
+                do_save_lvl_valid_predictions: bool indicating whether to
+                maintain a .pkl file containing predictions over the validation
+                data based on the lowest-validation-loss parameters.
+
                 do_save_lvl_mat_files: bool indicating whether to save .mat
                 files containing predictions over the training and validation
                 data each time a new lowest validation loss is achieved.
@@ -176,8 +192,16 @@ class RecurrentWhisperer(object):
                 hyperparameters has saved checkpoints--the previous run will
                 be deleted and restarted rather than resumed). Default: False.
 
+                do_save_ckpt: bool indicating whether or not to save model
+                checkpoints. Needed because setting max_ckpt_to_keep=0 results
+                in TF never deleting checkpoints. Default: True.
+
                 max_ckpt_to_keep: int specifying the maximum number of model
                 checkpoints to keep around. Default: 1.
+
+                do_save_lvl_ckpt: bool indicating whether or not to save model
+                checkpoints specifically when a new lowest validation loss is
+                achieved. Default: True.
 
                 max_lvl_ckpt_to_keep: int specifying the maximum number
                 of lowest validation loss (lvl) checkpoints to maintain.
@@ -759,7 +783,6 @@ class RecurrentWhisperer(object):
 
         print('Epoch %d; loss: %.2e; learning rate: %.2e.'
             % (self._epoch(), epoch_loss, self.adaptive_learning_rate()))
-        print('\tTrain time: %.2fs' % self._get_train_time())
 
         return epoch_loss
 
@@ -830,7 +853,10 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        if np.mod(self._epoch(), self.hps.n_epochs_per_ckpt) == 0:
+        if self.hps.do_save_ckpt and \
+            np.mod(self._epoch(), self.hps.n_epochs_per_ckpt) == 0:
+
+            self._update_train_time()
             self._save_checkpoint()
 
     def _save_checkpoint(self):
@@ -843,7 +869,6 @@ class RecurrentWhisperer(object):
             None.
         '''
         print('\tSaving checkpoint...')
-        self._update_train_time()
         self.seso_saver.save(self.session,
                              self.ckpt_path,
                              global_step=self._step())
@@ -874,7 +899,12 @@ class RecurrentWhisperer(object):
 
     def _maybe_save_lvl_checkpoint(self, valid_loss, train_data, valid_data):
         '''Saves a model checkpoint if the current validation loss values is
-        lower than all previously evaluated validation loss values.
+        lower than all previously evaluated validation loss values. This
+        includes saving model predictions over the traiing and validation data.
+
+        If prediction summaries are generated, those summaries are saved in
+        separate .pkl files (and optional .mat files). See docstring for
+        predict() for additional detail.
 
         Args:
             valid_loss: float indicating the current loss evaluated over the
@@ -887,21 +917,22 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        if self._epoch()==0 or valid_loss < self._lvl():
+        if (self._epoch()==0 or valid_loss < self._lvl()):
+
             print('Achieved lowest validation loss. Saving checkpoint...')
 
             assign_ops = [tf.assign(self.lvl, valid_loss),
                 tf.assign(self.epoch_last_lvl_improvement, self._epoch())]
 
             self.session.run(assign_ops)
-            self._update_train_time()
 
-            self.lvl_saver.save(self.session,
-                                self.lvl_ckpt_path,
-                                global_step=self._step())
+            if self.hps.do_save_lvl_ckpt:
+                self._update_train_time()
+                self.lvl_saver.save(self.session,
+                    self.lvl_ckpt_path, global_step=self._step())
 
-            self.save_lvl_predictions(train_data, 'train')
-            self.save_lvl_predictions(valid_data, 'valid')
+            self._maybe_save_lvl_predictions(train_data, 'train')
+            self._maybe_save_lvl_predictions(valid_data, 'valid')
 
     def restore_from_lvl_checkpoint(self):
         '''Restores a model from a previously saved lowest-validation-loss
@@ -926,18 +957,14 @@ class RecurrentWhisperer(object):
               % ntpath.basename(lvl_ckpt.model_checkpoint_path))
         self.lvl_saver.restore(self.session, lvl_ckpt.model_checkpoint_path)
 
-    def save_lvl_predictions(self, data, train_or_valid_str):
+    def _maybe_save_lvl_predictions(self, data, train_or_valid_str):
         '''Saves all model predictions in .pkl files (and optionally in .mat
         files as well).
-
-        If prediction summaries are generated, those summaries are saved in
-        separate .pkl files (and optional .mat files). See docstring for
-        predict() for additional detail.
 
         Args:
             data: dict containing either training or validation data.
 
-            train_or_valid_str: either 'train' or 'valid', indicating wheter
+            train_or_valid_str: either 'train' or 'valid', indicating whether
             data contains training data or validation data, respectively.
 
         Returns:
@@ -989,11 +1016,15 @@ class RecurrentWhisperer(object):
             save_path = save_path_no_extension + '.mat'
             spio.savemat(save_path, data_to_save)
 
-        print('\tSaving lvl predictions (%s).' % train_or_valid_str)
         predictions, summary = self.predict(data)
-        save_helper(predictions, 'predictions')
+
         if summary is not None:
+            print('\tSaving lvl summary (%s).' % train_or_valid_str)
             save_helper(summary, 'summary')
+
+        if self.hps.do_save_lvl_train_predictions and predictions is not None:
+            print('\tSaving lvl predictions (%s).' % train_or_valid_str)
+            save_helper(predictions, 'predictions')
 
     @staticmethod
     def get_run_info(run_dir):
