@@ -669,7 +669,8 @@ class RecurrentWhisperer(object):
             epoch_timer.disp()
 
         # Save checkpoint upon completing training
-        self._save_checkpoint()
+        if self.hps.do_save_ckpt:
+            self._save_checkpoint()
 
     def _is_training_complete(self, loss, do_check_lvl=False):
         '''Determines whether the training optimization procedure should
