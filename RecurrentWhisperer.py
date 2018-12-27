@@ -78,6 +78,8 @@ class RecurrentWhisperer(object):
         'max_train_time': None,
 
         'do_restart_run': False,
+        'do_generate_visualizations': True,
+        'do_save_tensorboard_events': True,
         'do_save_ckpt': True,
         'do_save_lvl_ckpt': True,
         'do_save_lvl_train_predictions': True,
@@ -94,6 +96,7 @@ class RecurrentWhisperer(object):
         'disable_gpus': False,
         'allow_gpu_growth': True,
         'per_process_gpu_memory_fraction': None,
+
         'log_dir': '/tmp/rnn_logs/',
         'dataset_name': None,
         'n_folds': None,
@@ -140,12 +143,11 @@ class RecurrentWhisperer(object):
                 AdaptiveGradNormClip.
 
             Hyperparameters not included in the run directory hash (defined in
-            _default_non_hash_hyperparamet:
+            _default_non_hash_hyperparameters):
 
-                min_loss: float specifying optimization termination criteria
-                on the loss function evaluated across the training data (the
-                epoch training loss). If None, this termination criteria is
-                not applied. Default: None.
+                min_learning_rate: float specifying optimization termination
+                criteria on the learning rate. Optimization terminates if the
+                learning rate falls below this value. Default: 1e-10.
 
                 max_n_epochs: int specifying optimization termination criteria
                 on the number of training epochs performed (one epoch = one
@@ -159,19 +161,35 @@ class RecurrentWhisperer(object):
                 validation data are not provided to train(...), this
                 termination criteria is ignored. Default: 200.
 
+                min_loss: float specifying optimization termination criteria
+                on the loss function evaluated across the training data (the
+                epoch training loss). If None, this termination criteria is
+                not applied. Default: None.
+
                 max_train_time: float specifying the maximum amount of time
                 allowed for training, expressed in seconds. If None, this
                 termination criteria is not applied. Default: None.
 
-                min_learning_rate: float specifying optimization termination
-                criteria on the learning rate. Optimization terminates if the
-                learning rate falls below this value. Default: 1e-10.
+                do_restart_run: bool indicating whether to force a restart of
+                a training run (e.g., if a previous run with the same
+                hyperparameters has saved checkpoints--the previous run will
+                be deleted and restarted rather than resumed). Default: False.
 
-                log_dir: string specifying the top-level directory for saving
-                various training runs (where each training run is specified by
-                a different set of hyperparameter settings). When tuning
-                hyperparameters, log_dir is meant to be constant across
-                models. Default: '/tmp/rnn_logs/'.
+                do_generate_visualizations: bool indicating whether or not to
+                generate visualizations periodically throughout training.
+                Frequency is controlled by n_epoochs_per_visualization_update.
+                Default: True.
+
+                do_save_tensorboard_events: bool indicating whether or not to
+                save summaries for Tensorboard monitoring. Default: True.
+
+                do_save_ckpt: bool indicating whether or not to save model
+                checkpoints. Needed because setting max_ckpt_to_keep=0 results
+                in TF never deleting checkpoints. Default: True.
+
+                do_save_lvl_ckpt: bool indicating whether or not to save model
+                checkpoints specifically when a new lowest validation loss is
+                achieved. Default: True.
 
                 do_save_lvl_train_predictions: bool indicating whether to
                 maintain a .pkl file containing predictions over the training
@@ -187,21 +205,8 @@ class RecurrentWhisperer(object):
                 Regardless of this setting, .pkl files are saved. Default:
                 False.
 
-                do_restart_run: bool indicating whether to force a restart of
-                a training run (e.g., if a previous run with the same
-                hyperparameters has saved checkpoints--the previous run will
-                be deleted and restarted rather than resumed). Default: False.
-
-                do_save_ckpt: bool indicating whether or not to save model
-                checkpoints. Needed because setting max_ckpt_to_keep=0 results
-                in TF never deleting checkpoints. Default: True.
-
                 max_ckpt_to_keep: int specifying the maximum number of model
                 checkpoints to keep around. Default: 1.
-
-                do_save_lvl_ckpt: bool indicating whether or not to save model
-                checkpoints specifically when a new lowest validation loss is
-                achieved. Default: True.
 
                 max_lvl_ckpt_to_keep: int specifying the maximum number
                 of lowest validation loss (lvl) checkpoints to maintain.
@@ -231,6 +236,12 @@ class RecurrentWhisperer(object):
                 disable_gpus), enable_gpu_growth, and
                 per_process_gpu_memory_fraction. Default: None.
 
+                log_dir: string specifying the top-level directory for saving
+                various training runs (where each training run is specified by
+                a different set of hyperparameter settings). When tuning
+                hyperparameters, log_dir is meant to be constant across
+                models. Default: '/tmp/rnn_logs/'.
+
         Returns:
             None.
         '''
@@ -258,11 +269,11 @@ class RecurrentWhisperer(object):
         ckpt = self._setup_run_dir()
         self._setup_model()
         self._setup_optimizer()
-        self._setup_visualization()
+        self._maybe_setup_visualizations()
 
         # Each of these will create run_dir if it doesn't exist
         # (do not move above the os.path.isdir check that is in _setup_run_dir)
-        self._setup_tensorboard()
+        self._maybe_setup_tensorboard()
         self._setup_savers()
 
         self._setup_session()
@@ -426,9 +437,7 @@ class RecurrentWhisperer(object):
             os.makedirs(self.events_dir)
 
     def _setup_optimizer(self):
-        '''Sets up an AdamOptimizer with gradient norm clipping, along with
-        supporting variables (and corresponding Tensorboard summaries) for
-        tracking optimization progress.
+        '''Sets up an AdamOptimizer with gradient norm clipping.
 
         Args:
             None.
@@ -474,10 +483,10 @@ class RecurrentWhisperer(object):
             clipped_grads, self.grad_global_norm = tf.clip_by_global_norm(
                 grads, self.grad_norm_clip_val)
 
-            clipped_grad_global_norm = tf.global_norm(clipped_grads)
+            self.clipped_grad_global_norm = tf.global_norm(clipped_grads)
 
-            clipped_grad_norm_diff = \
-                self.grad_global_norm - clipped_grad_global_norm
+            self.clipped_grad_norm_diff = \
+                self.grad_global_norm - self.clipped_grad_global_norm
 
             zipped_grads = zip(clipped_grads, tf.trainable_variables())
 
@@ -490,26 +499,15 @@ class RecurrentWhisperer(object):
             self.train_op = optimizer.apply_gradients(
                 zipped_grads, global_step=self.global_step)
 
-        # Tensorboard summaries (updated during training via _train_epoch)
-        with tf.name_scope('tb-optimizer'):
-            summaries = []
-            summaries.append(tf.summary.scalar('loss', self.loss))
-            summaries.append(tf.summary.scalar('lvl', self.lvl))
-            summaries.append(tf.summary.scalar('learning rate',
-                                               self.learning_rate))
-            summaries.append(tf.summary.scalar('grad global norm',
-                                               self.grad_global_norm))
-            summaries.append(tf.summary.scalar('grad norm clip val',
-                                               self.grad_norm_clip_val))
-            summaries.append(tf.summary.scalar('clipped grad global norm',
-                                               clipped_grad_global_norm))
-            summaries.append(tf.summary.scalar('grad clip diff',
-                                               clipped_grad_norm_diff))
+    def _maybe_setup_visualizations(self):
 
-            self.merged_opt_summary = tf.summary.merge(summaries)
+        if self.hps.do_generate_visualizations:
 
-    def _setup_tensorboard(self):
-        '''Sets up the Tensorboard FileWriter.
+            self._setup_visualizations()
+
+    def _maybe_setup_tensorboard(self):
+        '''Sets up the Tensorboard FileWriter and Tensorboard summaries for
+        monitoring the optimization.
 
         Args:
             None.
@@ -517,8 +515,34 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        self.writer = tf.summary.FileWriter(self.events_dir)
-        self.writer.add_graph(tf.get_default_graph())
+
+        if self.hps.do_save_tensorboard_events:
+
+            self.writer = tf.summary.FileWriter(self.events_dir)
+            self.writer.add_graph(tf.get_default_graph())
+
+            # Tensorboard summaries (updated during training via _train_epoch)
+            with tf.name_scope('tb-optimizer'):
+                summaries = []
+                summaries.append(tf.summary.scalar('loss', self.loss))
+                summaries.append(tf.summary.scalar('lvl', self.lvl))
+                summaries.append(tf.summary.scalar(
+                    'learning rate',
+                    self.learning_rate))
+                summaries.append(tf.summary.scalar(
+                    'grad global norm',
+                    self.grad_global_norm))
+                summaries.append(tf.summary.scalar(
+                    'grad norm clip val',
+                    self.grad_norm_clip_val))
+                summaries.append(tf.summary.scalar(
+                    'clipped grad global norm',
+                    self.clipped_grad_global_norm))
+                summaries.append(tf.summary.scalar(
+                    'grad clip diff',
+                    self.clipped_grad_norm_diff))
+
+                self.merged_opt_summary = tf.summary.merge(summaries)
 
     def _setup_savers(self):
         '''Sets up Tensorflow checkpoint saving.
@@ -650,7 +674,7 @@ class RecurrentWhisperer(object):
 
             # *****************************************************************
 
-            self._maybe_update_visualization(train_data, valid_data)
+            self._maybe_update_visualizations(train_data, valid_data)
 
             epoch_timer.split('visualize')
 
@@ -823,11 +847,13 @@ class RecurrentWhisperer(object):
         predictions, summary = self.predict(valid_data)
         print('\tValidation loss: %.2e' % summary['loss'])
 
-        self._update_valid_tensorboard(summary)
+        if self.hps.do_save_tensorboard_events:
+            self._update_valid_tensorboard(summary)
+
         self._maybe_save_lvl_checkpoint(
             summary['loss'], train_data, valid_data)
 
-    def _maybe_update_visualization(self, train_data, valid_data):
+    def _maybe_update_visualizations(self, train_data, valid_data):
         '''Updates visualizations if the current epoch number indicates that
         an update is due.
 
@@ -840,9 +866,11 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        n = self.hps.n_epochs_per_visualization_update
-        if np.mod(self._epoch(), n) == 0:
-            self._update_visualization(train_data, valid_data)
+        hps = self.hps
+        if hps.do_generate_visualizations and \
+            np.mod(self._epoch(), hps.n_epochs_per_visualization_update) == 0:
+
+            self._update_visualizations(train_data, valid_data)
 
     def _maybe_save_checkpoint(self):
         '''Saves a model checkpoint if the current epoch number indicates that
@@ -1454,7 +1482,7 @@ class RecurrentWhisperer(object):
             batch_summary: dict containing summary data from this training
             step. Minimally, this includes the following key/val pairs:
 
-                'loss': scalar float evalutaion of the loss function over the
+                'loss': scalar float evaluation of the loss function over the
                 data batch (i.e., an evaluation of self.loss).
 
                 'grad_global_norm': scalar float evaluation of the norm of the
@@ -1495,8 +1523,8 @@ class RecurrentWhisperer(object):
              % sys._getframe().f_code.co_name)
 
     def _update_valid_tensorboard(self, valid_summary):
-        '''Updates the Tenorboard summaries corresponding to the validation
-        data.
+        '''Updates the Tensorboard summaries corresponding to the validation
+        data. Only called if do_save_tensorboard_events.
 
         Args:
             valid_summary: dict returned by predict().
@@ -1508,8 +1536,8 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def _setup_visualization(self):
-        '''Sets up visualizations.
+    def _setup_visualizations(self):
+        '''Sets up visualizations. Only called if do_generate_visualizations.
 
         Args:
             None.
@@ -1521,8 +1549,8 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def _update_visualization(self, train_data, valid_data):
-        '''Updates visualizations.
+    def _update_visualizations(self, train_data, valid_data):
+        '''Updates visualizations. Only called if do_generate_visualizations.
 
         Args:
             train_data: dict containing the training data.
