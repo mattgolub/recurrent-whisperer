@@ -445,6 +445,9 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
+
+        vars_to_train = tf.trainable_variables()
+
         with tf.name_scope('optimizer'):
             '''Maintain state using TF framework for seamless saving and
             restoring of runs'''
@@ -475,7 +478,7 @@ class RecurrentWhisperer(object):
                 np.inf, name='ltl', trainable=False, dtype=self.dtype)
 
             # Gradient clipping
-            grads = tf.gradients(self.loss, tf.trainable_variables())
+            grads = tf.gradients(self.loss, vars_to_train)
 
             self.grad_norm_clip_val = tf.placeholder(
                 self.dtype, name='grad_norm_clip_val')
@@ -488,16 +491,80 @@ class RecurrentWhisperer(object):
             self.clipped_grad_norm_diff = \
                 self.grad_global_norm - self.clipped_grad_global_norm
 
-            zipped_grads = zip(clipped_grads, tf.trainable_variables())
+            zipped_grads = zip(clipped_grads, vars_to_train)
 
             self.learning_rate = tf.placeholder(
                 self.dtype, name='learning_rate')
 
-            optimizer = tf.train.AdamOptimizer(
+            self.optimizer = tf.train.AdamOptimizer(
                 learning_rate=self.learning_rate, **self.hps.adam_hps)
 
-            self.train_op = optimizer.apply_gradients(
+            self.train_op = self.optimizer.apply_gradients(
                 zipped_grads, global_step=self.global_step)
+
+    def update_variables_optimized(self, vars_to_train,
+        do_reset_termination_criteria=True,
+        do_reset_loss_history=True,
+        do_reset_learning_rate=True,
+        do_reset_gradient_clipping=True):
+        '''
+        Updates the list of variables optimized during training. Note: this
+        does not update tf.trainable_variables(), but simply updates the set
+        of gradients that are computed and applied.
+
+        Args:
+            vars_to_train (optional): list of TF variables to be optimized.
+            Each variable must be in tf.trainable_variables().
+
+            do_reset_termination_criteria (optional): bool indicating whether
+            to reset training termination criteria. Default: True.
+
+            do_reset_loss_history (optional): bool indicating whether to reset
+            records of the lowest training and validation losses (so that
+            rescaling terms in the loss function does not upset saving model
+            checkpoints.
+
+            do_reset_learning_rate (optional): bool indicating whether to
+            reset the adaptive learning rate. Default: True.
+
+            do_reset_gradient_clipping (optional): bool indicating whether
+            to reset the adaptive gradient clipping. Default: True.
+
+        Returns:
+            None.
+        '''
+
+        hps = self.hps
+
+        if do_reset_termination_criteria:
+            self.session.run(
+                tf.assign(self.epoch_last_lvl_improvement, self._epoch()))
+
+        if do_reset_loss_history:
+            self.session.run(tf.assign(self.ltl, np.inf))
+            self.session.run(tf.assign(self.lvl, np.inf))
+
+        if do_reset_learning_rate:
+            self.adaptive_learning_rate = AdaptiveLearningRate(**hps.alr_hps)
+
+        if do_reset_gradient_clipping:
+            self.adaptive_grad_norm_clip = AdaptiveGradNormClip(**hps.agnc_hps)
+
+        # Gradient clipping
+        grads = tf.gradients(self.loss, vars_to_train)
+
+        clipped_grads, self.grad_global_norm = tf.clip_by_global_norm(
+            grads, self.grad_norm_clip_val)
+
+        self.clipped_grad_global_norm = tf.global_norm(clipped_grads)
+
+        self.clipped_grad_norm_diff = \
+            self.grad_global_norm - self.clipped_grad_global_norm
+
+        zipped_grads = zip(clipped_grads, vars_to_train)
+
+        self.train_op = self.optimizer.apply_gradients(
+            zipped_grads, global_step=self.global_step)
 
     def _maybe_setup_visualizations(self):
 
