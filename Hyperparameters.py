@@ -161,6 +161,10 @@ class Hyperparameters(object):
 
         # Add non-default entries to dict for hashing
         for key, val in input_hps.iteritems():
+            # Allows for 'None' to be used in command line arguments.
+            if val == 'None':
+                val = None
+
             # Check to make sure all input_hps are valid
             # (i.e., have default values)
             # Otherwise, user may have mistyped an hp name.
@@ -346,17 +350,20 @@ class Hyperparameters(object):
                 None.
             '''
             for key, val in D.iteritems():
-                if isinstance(val, bool) or \
+
+                if val is None or val=='None':
+                    # Don't set default. This results in default set to None.
+                    # setting default=None can result in default='None' (bad).
+                    parser.add_argument('--' + str_prefix + str(key))
+
+                elif isinstance(val, bool) or \
                     isinstance(val, int) or \
                     isinstance(val, float) or \
-                    isinstance(val, str) or \
-                    val is None:
+                    isinstance(val, str):
 
-                    if val is None:
-                        type_val = None
-                    elif isinstance(val, bool):
+                    if isinstance(val, bool):
                         type_val = str2bool
-                    else:
+                    elif val is not None:
                         type_val = type(val)
 
                     parser.add_argument('--' + str_prefix + str(key),
