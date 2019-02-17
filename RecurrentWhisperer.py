@@ -1118,9 +1118,15 @@ class RecurrentWhisperer(object):
             print('\tSaving lvl summary (%s).' % train_or_valid_str)
             save_helper(summary, 'summary')
 
-        if self.hps.do_save_lvl_train_predictions and predictions is not None:
-            print('\tSaving lvl predictions (%s).' % train_or_valid_str)
-            save_helper(predictions, 'predictions')
+
+        if predictions is not None:
+            if (self.hps.do_save_lvl_train_predictions and
+                train_or_valid_str == 'train') or \
+                (self.hps.do_save_lvl_valid_predictions and
+                train_or_valid_str == 'valid'):
+
+                print('\tSaving lvl predictions (%s).' % train_or_valid_str)
+                save_helper(predictions, 'predictions')
 
     @staticmethod
     def get_run_info(run_dir):
