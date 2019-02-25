@@ -1030,12 +1030,15 @@ class RecurrentWhisperer(object):
             self._maybe_save_lvl_predictions(train_data, 'train')
             self._maybe_save_lvl_predictions(valid_data, 'valid')
 
-    def restore_from_lvl_checkpoint(self):
+    def restore_from_lvl_checkpoint(self, model_checkpoint_path=None):
         '''Restores a model from a previously saved lowest-validation-loss
         checkpoint.
 
         Args:
-            None.
+            model_checkpoint_path (optional): string containing a path to 
+            a model checkpoint. Use this as an override if needed for 
+            loading models that were saved under a different directory
+            structure (e.g., on another machine).
 
         Returns:
             None.
@@ -1043,15 +1046,18 @@ class RecurrentWhisperer(object):
         Raises:
             FileNotFoundError (if no lowest-validation-loss checkpoint exists).
         '''
-        lvl_ckpt = tf.train.get_checkpoint_state(self.lvl_dir)
-        if not(tf.train.checkpoint_exists(lvl_ckpt.model_checkpoint_path)):
+        if model_checkpoint_path is None:
+            lvl_ckpt = tf.train.get_checkpoint_state(self.lvl_dir)
+            model_checkpoint_path = lvl_ckpt.model_checkpoint_path
+
+        if not(tf.train.checkpoint_exists(model_checkpoint_path)):
             raise FileNotFoundError('Checkpoint does not exist: %s'
-                                    % lvl_ckpt.model_checkpoint_path)
+                                    % model_checkpoint_path)
 
         # Restore previous session
         print('\tLoading lvl checkpoint: %s.'
-              % ntpath.basename(lvl_ckpt.model_checkpoint_path))
-        self.lvl_saver.restore(self.session, lvl_ckpt.model_checkpoint_path)
+              % ntpath.basename(model_checkpoint_path))
+        self.lvl_saver.restore(self.session, model_checkpoint_path)
 
     def _maybe_save_lvl_predictions(self, data, train_or_valid_str):
         '''Saves all model predictions in .pkl files (and optionally in .mat
