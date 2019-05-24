@@ -1035,8 +1035,8 @@ class RecurrentWhisperer(object):
         checkpoint.
 
         Args:
-            model_checkpoint_path (optional): string containing a path to 
-            a model checkpoint. Use this as an override if needed for 
+            model_checkpoint_path (optional): string containing a path to
+            a model checkpoint. Use this as an override if needed for
             loading models that were saved under a different directory
             structure (e.g., on another machine).
 
