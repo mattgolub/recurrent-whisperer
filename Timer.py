@@ -13,24 +13,24 @@ class Timer(object):
 	'''Class for profiling computation time.
 
 	Example usage:
-		t = Timer(3)		# Build a timer object to profile three tasks.
-		t.start()    		# Start the timer.
+		t = Timer(3)        # Build a timer object to profile three tasks.
+		t.start()           # Start the timer.
 
-		run_task_1() 		# Run task 1 of 3.
-		t.split('Task 1')	# Measure time taken for task 1.
+		run_task_1()        # Run task 1 of 3.
+		t.split('Task 1')   # Measure time taken for task 1.
 
-		run_task_2() 		# Run task 2 of 3.
-		t.split('Task 2')	# Measure time taken for task 2.
+		run_task_2()        # Run task 2 of 3.
+		t.split('Task 2')   # Measure time taken for task 2.
 
-		run_task_3() 		# Run task 3 of 3.
-		t.split('Task 3')	# Measure time taken for task 3.
+		run_task_3()        # Run task 3 of 3.
+		t.split('Task 3')   # Measure time taken for task 3.
 
-		t.disp()			# Print profile of timing.
+		t.disp()            # Print profile of timing.
 
 		--> Total time: 16.00s
-		--> 	Task 1: 2.00s (12.5%)
-		--> 	Task 2: 8.00s (50.0%)
-		--> 	Task 3: 6.00s (37.5%)
+		-->     Task 1: 2.00s (12.5%)
+		-->     Task 2: 8.00s (50.0%)
+		-->     Task 3: 6.00s (37.5%)
 	'''
 
 	def __init__(self, n_tasks=1, n_indent=0, name='Total'):
@@ -50,39 +50,50 @@ class Timer(object):
 			None.
 		'''
 
+		if n_tasks < 0:
+			raise ValueError('n_tasks must be >= 0, but was %d' % n_tasks)
+
+		if n_indent < 0:
+			raise ValueError('n_indent must be >= 0, but was %d' % n_indent)
+
 		self.n = n_tasks
-		self.t = np.zeros(n_tasks+1)
 
-		# Pre-allocate to avoid having to call append after starting the timer
-		# (which might incur non-uniform overhead, biasing timing splits)
-		self.task_names = []
-		for idx in range(n_tasks):
-			self.task_names.append(None)
+		'''Pre-allocate to avoid having to call append after starting the timer
+		(which might incur non-uniform overhead, biasing timing splits).
+		If more times are recorded than pre-allocated, lists will append.
 
-		''' Note that self.t has n+1 elements (to include a start value) while
-		self.task_names has n elements'''
+		Note that self.times has n+1 elements (to include a start value) while self.task_names has n elements
+		'''
+		self.times = [np.nan for idx in range(n_tasks + 1)]
+		self.task_names = [None for idx in range(n_tasks)]
 
 		self.print_prefix = '\t' * n_indent
 		self.name = name
 
-		self.idx = 0
-		self.is_running = False
+		self.idx = -1
 
 	def __call__(self):
 		'''Returns the time elapsed since the timer was started.
 		   If start() has not yet been called, returns NaN.
 		'''
-		if self.is_running:
-			return time.time() - self.t[0]
+		if self.is_running():
+			return time.time() - self.times[0]
 		else:
 			return 0.0
 
 	def start(self):
 		'''Starts the timer'''
 
-		self.is_running = True
-		self.idx = 1
-		self.t[0] = time.time()
+		if self.is_running():
+			self._print('Timer has already been started. '
+				'Ignoring call to Timer.start()')
+		else:
+			self.idx += 1
+			self.times[self.idx] = time.time()
+	def is_running(self):
+		'''Returns a bool indicating whether or not the timer has been started.
+		'''
+		return self.idx >= 0
 
 	def split(self, task_name=None):
 		'''Measures the time elapsed for the most recent task.
@@ -94,13 +105,19 @@ class Timer(object):
 			None.
 		'''
 
-		if self.is_running:
-			self.t[self.idx] = time.time()
-			self.task_names[self.idx - 1] = task_name
+		if self.is_running():
 			self.idx += 1
+			if self.idx <= self.n:
+				self.times[self.idx] = time.time()
+				self.task_names[self.idx - 1] = task_name
+			else:
+				self.times.append(time.time())
+				self.task_names.append(task_name)
+				self.n += 1
+				self._print('Appending Timer lists. '
+					'This may cause biased time profiling.')
 		else:
-			print('%sTimer cannot take a split until it has been started.' %
-			      self.print_prefix)
+			self._print('Timer cannot take a split until it has been started.')
 
 	def disp(self):
 		'''Prints the profile of the tasks that have been timed thus far.
@@ -111,17 +128,21 @@ class Timer(object):
 		Returns:
 			None.
 		'''
-		if self.idx > 1:
-			total_time = self.t[self.idx-1] - self.t[0]
-			split_times = np.diff(self.t)
+		if not self.is_running():
+			self._print('Timer has not been started.')
+		elif self.idx == 0:
+			self._print('Timer has not yet taken any splits to time.')
+		else:
+			total_time = self.times[self.idx] - self.times[0]
+			split_times = np.diff(self.times)
 
 			print('%s%s time: %.2fs'
 				% (self.print_prefix, self.name, total_time))
 
 			# allows printing before all tasks have been run
-			for idx in range(self.idx-1):
+			for idx in range(self.idx):
 				if self.task_names[idx] is None:
-					task_name = 'Task' + str(idx+1)
+					task_name = 'Task ' + str(idx+1)
 				else:
 					task_name = self.task_names[idx]
 				print('\t%s%s: %.2fs (%.1f%%)'
@@ -129,6 +150,15 @@ class Timer(object):
 					   task_name,
 					   split_times[idx],
 					   100*split_times[idx]/total_time))
-		else:
-			print('%sTimer has not yet taken any splits to time.' %
-			      self.print_prefix)
+
+	def _print(self, str):
+		'''Prints string after prefixing with the desired number of indentations.
+
+		Args:
+			str: The string to be printed.
+
+		Returns:
+			None.
+		'''
+
+		print('%s%s' % (self.print_prefix, str))
