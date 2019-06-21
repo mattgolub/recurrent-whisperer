@@ -555,15 +555,11 @@ class RecurrentWhisperer(object):
         hps = self.hps
 
         if do_reset_termination_criteria:
-            # self.session.run(
-            #    tf.assign(self.epoch_last_lvl_improvement, self._epoch()))
             self._update_epoch_last_lvl_improvement(self._epoch())
 
         if do_reset_loss_history:
-            # self.session.run(tf.assign(self.ltl, np.inf))
             self._update_ltl(np.inf)
 
-            # self.session.run(tf.assign(self.lvl, np.inf))
             self._update_lvl(np.inf)
 
         if do_reset_learning_rate:
@@ -886,7 +882,6 @@ class RecurrentWhisperer(object):
 
         # Update lowest training loss (if applicable)
         if epoch_loss < self._ltl():
-            # self.session.run(tf.assign(self.ltl, epoch_loss))
             self._update_ltl(epoch_loss)
 
         self.adaptive_learning_rate.update(epoch_loss)
@@ -1395,7 +1390,6 @@ class RecurrentWhisperer(object):
             None.
         '''
         time_val = self._get_train_time()
-        # self.session.run(tf.assign(self.train_time, time_val))
         self.session.run(
             self.train_time_update,
             feed_dict={self.train_time_placeholder: time_val})
