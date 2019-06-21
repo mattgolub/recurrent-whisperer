@@ -453,8 +453,13 @@ class RecurrentWhisperer(object):
             restoring of runs'''
 
             self.train_timer = Timer()
+
             self.train_time = tf.Variable(
                 0, name='train_time', trainable=False, dtype=tf.float32)
+            self.train_time_placeholder = tf.placeholder(
+                self.dtype, name='train_time')
+            self.train_time_update = tf.assign(
+                self.train_time, self.train_time_placeholder)
 
             self.global_step = tf.Variable(
                 0, name='global_step', trainable=False, dtype=tf.int32)
@@ -468,14 +473,27 @@ class RecurrentWhisperer(object):
             # lowest validation loss
             self.lvl = tf.Variable(
                 np.inf, name='lvl', trainable=False, dtype=self.dtype)
+            self.lvl_placeholder = tf.placeholder(
+                self.dtype, name='lowest_validation_loss')
+            self.lvl_update = tf.assign(self.lvl, self.lvl_placeholder)
 
+            # epoch of most recent improvement in lowest validation loss
             self.epoch_last_lvl_improvement = tf.Variable(
                 0, name='epoch_last_lvl_improvement',
                 trainable=False, dtype=self.dtype)
+            self.epoch_last_lvl_improvement_placeholder = tf.placeholder(
+                self.dtype, name='epoch_last_lvl_improvement')
+            self.epoch_last_lvl_improvement_update = \
+                tf.assign(
+                    self.epoch_last_lvl_improvement,
+                    self.epoch_last_lvl_improvement_placeholder)
 
             # lowest training loss
             self.ltl = tf.Variable(
                 np.inf, name='ltl', trainable=False, dtype=self.dtype)
+            self.ltl_placeholder = tf.placeholder(
+                self.dtype, name='lowest_training_loss')
+            self.ltl_update = tf.assign(self.ltl, self.ltl_placeholder)
 
             # Gradient clipping
             grads = tf.gradients(self.loss, vars_to_train)
@@ -537,12 +555,16 @@ class RecurrentWhisperer(object):
         hps = self.hps
 
         if do_reset_termination_criteria:
-            self.session.run(
-                tf.assign(self.epoch_last_lvl_improvement, self._epoch()))
+            # self.session.run(
+            #    tf.assign(self.epoch_last_lvl_improvement, self._epoch()))
+            self._update_epoch_last_lvl_improvement(self._epoch())
 
         if do_reset_loss_history:
-            self.session.run(tf.assign(self.ltl, np.inf))
-            self.session.run(tf.assign(self.lvl, np.inf))
+            # self.session.run(tf.assign(self.ltl, np.inf))
+            self._update_ltl(np.inf)
+
+            # self.session.run(tf.assign(self.lvl, np.inf))
+            self._update_lvl(np.inf)
 
         if do_reset_learning_rate:
             self.adaptive_learning_rate = AdaptiveLearningRate(**hps.alr_hps)
@@ -864,7 +886,8 @@ class RecurrentWhisperer(object):
 
         # Update lowest training loss (if applicable)
         if epoch_loss < self._ltl():
-            self.session.run(tf.assign(self.ltl, epoch_loss))
+            # self.session.run(tf.assign(self.ltl, epoch_loss))
+            self._update_ltl(epoch_loss)
 
         self.adaptive_learning_rate.update(epoch_loss)
 
@@ -1017,10 +1040,8 @@ class RecurrentWhisperer(object):
 
             print('Achieved lowest validation loss. Saving checkpoint...')
 
-            assign_ops = [tf.assign(self.lvl, valid_loss),
-                tf.assign(self.epoch_last_lvl_improvement, self._epoch())]
-
-            self.session.run(assign_ops)
+            self._update_lvl(valid_loss)
+            self._update_epoch_last_lvl_improvement(self._epoch())
 
             if self.hps.do_save_lvl_ckpt:
                 self._update_train_time()
@@ -1374,7 +1395,10 @@ class RecurrentWhisperer(object):
             None.
         '''
         time_val = self._get_train_time()
-        self.session.run(tf.assign(self.train_time, time_val))
+        # self.session.run(tf.assign(self.train_time, time_val))
+        self.session.run(
+            self.train_time_update,
+            feed_dict={self.train_time_placeholder: time_val})
 
     def _increment_epoch(self):
         '''Runs the TF op that increments the epoch number.
@@ -1386,6 +1410,48 @@ class RecurrentWhisperer(object):
             None.
         '''
         self.session.run(self.increment_epoch)
+
+    def _update_ltl(self, ltl):
+        '''Runs the TF op that updates the lowest training loss.
+
+        Args:
+            ltl: A numpy scalar value indicating the (new) lowest training loss.
+
+        Returns:
+            None.
+        '''
+
+        self.session.run(
+            self.ltl_update,
+            feed_dict={self.ltl_placeholder: ltl})
+
+    def _update_lvl(self, lvl):
+        '''Runs the TF op that updates the lowest validation loss.
+
+        Args:
+            lvl: A numpy scalar value indicating the (new) lowest validation
+            loss.
+
+        Returns:
+            None.
+        '''
+        self.session.run(
+            self.lvl_update,
+            feed_dict={self.lvl_placeholder: lvl})
+
+    def _update_epoch_last_lvl_improvement(self, epoch):
+        '''Runs the TF op that updates the counter that tracks the most recent
+        improvement in the lowest validation loss.
+
+        Args:
+            epoch: A numpy scalar value indicating the epoch of the most recent improvement in the lowest validation loss.
+
+        Returns:
+            None.
+        '''
+        self.session.run(
+            self.epoch_last_lvl_improvement_update,
+            feed_dict={self.epoch_last_lvl_improvement_placeholder: epoch})
 
     def _np_init_weight_matrix(self, input_size, output_size):
         '''Randomly initializes a weight matrix W and bias vector b.
