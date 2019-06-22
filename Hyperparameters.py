@@ -491,14 +491,16 @@ class Hyperparameters(object):
                 is no chance of overwriting an existing dict.
                 '''
                 if ':' in key:
-                    dict_name, rem_name = self.parse_colon_delimitted_hp_name(key)
+                    dict_name, rem_name = \
+                        Hyperparameters.parse_colon_delimitted_hp_name(key)
                     return {dict_name: assign_leaf(rem_name, val)}
                 else:
                     return {key: val}
 
             def add_helper(D, key, val):
                 if ':' in key:
-                    dict_name, rem_name = self.parse_colon_delimitted_hp_name(key)
+                    dict_name, rem_name = \
+                        Hyperparameters.parse_colon_delimitted_hp_name(key)
 
                     if dict_name == 'data_hps':
                         pdb.set_trace()
