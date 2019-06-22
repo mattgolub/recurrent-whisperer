@@ -90,6 +90,57 @@ class Hyperparameters(object):
         '''
         return self._all_hps_as_dict
 
+    def __getitem__(self, key):
+        '''Provides access to an individual hyperparameter value via a colon-
+        delimitted hyperparameter name.
+
+        Args:
+            key: A string indicating the name of the hyperparameter to be
+            retrieved. Colon delimitting specifies traversals into
+            (possibly nested) dicts within the master hyperparameters dict.
+
+        Returns:
+            The hyperparameter value corresponding to the name in key.
+        '''
+
+        def get_helper(D, key):
+            # Helper function to recursively traverse into dict D.
+            if ':' in key:
+                dict_name, rem_name = self.parse_colon_delimitted_hp_name(key)
+                return get_helper(D[dict_name], rem_name)
+            else:
+                return D[key]
+
+        return get_helper(self._all_hps_as_dict, key)
+
+    def __setitem__(self, key, value):
+        '''Assigns an individual hyperparameter value via colon-delimitted
+        a hyperparameter name.
+
+        Args:
+            key: A string indicating the name of the hyperparameter to be
+            assigned. Colon delimitting specifies traversals into
+            (possibly nested) dicts within the master hyperparameters dict.
+            Nested dicts are created if they do not already exist.
+
+            value: The value of the hyperparameter to be assigned.
+
+        Returns:
+            None.
+        '''
+
+        def set_helper(D, key, value):
+            # Helper function to recursively traverse into dict D.
+            if ':' in key:
+                dict_name, rem_name = self.parse_colon_delimitted_hp_name(key)
+                if not dict_name in D.keys():
+                    D[dict_name] = dict()
+                set_helper(D[dict_name], rem_name, value)
+            else:
+                D[key] = value
+
+        set_helper(self._all_hps_as_dict, key, value)
+
     def get_hash(self):
         '''Computes a hash of all non-default hash hyperparameters.
 
@@ -123,6 +174,17 @@ class Hyperparameters(object):
         '''Parses the input arguments to __init__, returning a dict of all hps
         and a dict of hps to be hashed.
 
+        Implementation note: Comparisons (between input and default hps) are
+        NOT made recursively. An hp that is itself a dict is considered in its
+        entirety when determining whether it matches its default value (rather)
+        than being considered element-wise. This means that all hps in a
+        sub-dict will be hashed if any of them deviates from its default value.
+        If desired, this could likely be changed without too much trouble using
+        the recursive __setitem__() and __getitem__(). First flatten each of
+        input_hps, default_hash_hps, default_non_hash_hps (using an inverse of
+        parse_helper-->reconstruct_helper), then do comparisons, then unflatten
+        using parse_helper-->reconstruct_helper.
+
         Args:
             input_hps: See comment for hps in __init__.
 
@@ -144,6 +206,10 @@ class Hyperparameters(object):
         '''
 
         # Check to make sure each hp is either hash or non-hash (NOT BOTH)
+        if default_hash_hps is None:
+            default_hash_hps = dict()
+        if default_non_hash_hps is None:
+            default_non_hash_hps = dict()
         default_hash_hp_keys = default_hash_hps.keys()
         for non_hash_key in default_non_hash_hps.keys():
             if non_hash_key in default_hash_hp_keys:
@@ -157,7 +223,6 @@ class Hyperparameters(object):
         # Initialize hps with default values
         hps = deepcopy(default_hps)
         hps_to_hash = dict()
-
 
         # Add non-default entries to dict for hashing
         for key, val in input_hps.iteritems():
@@ -304,6 +369,34 @@ class Hyperparameters(object):
         return cPickle.loads(restore_data)
 
     @staticmethod
+    def parse_colon_delimitted_hp_name(hp_name):
+        ''' Splits a string into the segments preceeding and following the
+        first colon. Used to indicate traversing into a sub-dict within a
+        dict.
+
+        Example: an hp_name with format "aa:bb:cc:..." is split into
+        "aa" and "bb:cc:...". This is used elsewhere to indicate setting or getting D["aa"]["bb"]["cc"]...
+
+        Args:
+            hp_name is string containing at least 1 colon.
+
+        Returns:
+            dict_name: hp_name up to (but not including) the first colon.
+            rem_name: hp_name from first char after colon to end.
+
+        Raises:
+            ValueError if hp_name does not contain any colons.
+        '''
+        if not ':' in hp_name:
+            raise ValueError('hp_name does not contain delimitting colon.')
+
+        first_colon_idx = hp_name.index(':')
+        dict_name = hp_name[:first_colon_idx]
+        rem_name = hp_name[(first_colon_idx + 1):]
+
+        return dict_name, rem_name
+
+    @staticmethod
     def parse_command_line(default_hps, description=None):
         '''Parses command-line arguments into a dict of hyperparameters.
 
@@ -391,25 +484,6 @@ class Hyperparameters(object):
                 colon delimitting in keys of D_flat.
             '''
 
-            def parse_key(key):
-                '''
-                Args:
-                    key is string containing at least 1 colon.
-
-                Returns:
-                    dict_name: key up to (but not including) the first colon.
-
-                    rem_key: key from first char after colon to end.
-                '''
-                if not ':' in key:
-                    raise ValueError('key does not contain delimitting colon.')
-
-                first_colon_idx = key.index(':')
-                dict_name = key[:first_colon_idx]
-                rem_key = key[(first_colon_idx + 1):]
-
-                return dict_name, rem_key
-
             def assign_leaf(key, val):
                 '''
                 Handles the case where we are writing the first entry of a
@@ -417,22 +491,22 @@ class Hyperparameters(object):
                 is no chance of overwriting an existing dict.
                 '''
                 if ':' in key:
-                    dict_name, rem_key = parse_key(key)
-                    return {dict_name: assign_leaf(rem_key, val)}
+                    dict_name, rem_name = self.parse_colon_delimitted_hp_name(key)
+                    return {dict_name: assign_leaf(rem_name, val)}
                 else:
                     return {key: val}
 
             def add_helper(D, key, val):
                 if ':' in key:
-                    dict_name, rem_key = parse_key(key)
+                    dict_name, rem_name = self.parse_colon_delimitted_hp_name(key)
 
                     if dict_name == 'data_hps':
                         pdb.set_trace()
 
                     if dict_name in D:
-                        D[dict_name] = add_helper(D[dict_name], rem_key, val)
+                        D[dict_name] = add_helper(D[dict_name], rem_name, val)
                     else:
-                        D[dict_name] = assign_leaf(rem_key, val)
+                        D[dict_name] = assign_leaf(rem_name, val)
                 else:
                     D[key] = val
 
