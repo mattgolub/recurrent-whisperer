@@ -214,7 +214,7 @@ class Hyperparameters(object):
         for non_hash_key in default_non_hash_hps.keys():
             if non_hash_key in default_hash_hp_keys:
                 raise ValueError('Hyperparameter [%s] cannot be both hash '
-                    'and non-hash.' % key)
+                    'and non-hash.' % non_hash_key)
 
         # Combine default hash and default non-hash hps
         default_hps = default_hash_hps
