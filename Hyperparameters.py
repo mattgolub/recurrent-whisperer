@@ -12,7 +12,7 @@ from __future__ import print_function
 
 import argparse
 import pdb
-from copy import deepcopy
+from copy import copy, deepcopy
 import hashlib
 import cPickle
 from numpy import sort
@@ -67,6 +67,7 @@ class Hyperparameters(object):
             ValueError if at least one default_hash_hps or
             default_non_hash_hps is not specified.
         '''
+
         if default_hash_hps is None and default_non_hash_hps is None:
             raise ValueError('At lease one of default_hash_hps and '
                 'default_non_hash_hps must be specified, but both were None.')
@@ -205,19 +206,22 @@ class Hyperparameters(object):
             of default_hash_hps or default_non_hash_hps.
         '''
 
-        # Check to make sure each hp is either hash or non-hash (NOT BOTH)
         if default_hash_hps is None:
             default_hash_hps = dict()
+        default_hash_hp_keys = default_hash_hps.keys()
+
         if default_non_hash_hps is None:
             default_non_hash_hps = dict()
-        default_hash_hp_keys = default_hash_hps.keys()
-        for non_hash_key in default_non_hash_hps.keys():
+        default_non_hash_hp_keys = default_non_hash_hps.keys()
+
+        # Check to make sure each hp is either hash or non-hash (NOT BOTH)
+        for non_hash_key in default_non_hash_hp_keys:
             if non_hash_key in default_hash_hp_keys:
                 raise ValueError('Hyperparameter [%s] cannot be both hash '
                     'and non-hash.' % non_hash_key)
 
         # Combine default hash and default non-hash hps
-        default_hps = default_hash_hps
+        default_hps = deepcopy(default_hash_hps)
         default_hps.update(default_non_hash_hps)
 
         # Initialize hps with default values
@@ -397,6 +401,91 @@ class Hyperparameters(object):
         return dict_name, rem_name
 
     @staticmethod
+    def _flatten(D):
+        ''' Flattens a dict: Values that are themselves dicts are recursively
+        'flattened' by concatenating keys using colon delimitting.
+
+        Example:
+            D = {'a': 1, 'b': {'c':2, 'd':3}}
+            _flatten(D)
+            {'a': 1, 'b:c': 2, 'b:d': 3}
+
+        Args:
+            D: Python dict.
+
+        Returns:
+            D_flat: The flattened dict.
+        '''
+
+        D_flat = dict()
+        for key, val in D.iteritems():
+            if isinstance(val, dict):
+                val_flat = Hyperparameters._flatten(val)
+                for key2, val2 in val_flat.iteritems():
+                    D_flat[key + ':' + key2] = val2
+            else:
+                D_flat[key] = val
+
+        return D_flat
+
+    @staticmethod
+    def _unflatten(D_flat):
+        ''' Unflattens a flattened dict. A flattened dict is a dict with no
+        values that are themselves dicts. Nested dicts can be represented in a
+        flattened dict using colon-delimitted string keys.
+
+        Example:
+            D_flat = {'a': 1, 'b:c': 2, 'b:d': 3}
+            _unflatten(D_flat)
+            {'a': 1, 'b': {'c': 2, 'd': 3}}
+
+        Args:
+            D_flat: dict with values of type bool, int, float, or str (no
+            dicts allowed).
+
+        Returns:
+            D_unflattened: dict, nested with other dicts as specified by
+            colon delimitting in keys of D_flat.
+        '''
+
+        def assign_leaf(key, val):
+            '''
+            Handles the case where we are writing the first entry of a
+            potentially nested dict. Because it's the first entry, there
+            is no chance of overwriting an existing dict.
+            '''
+            if ':' in key:
+                dict_name, rem_name = \
+                    Hyperparameters.parse_colon_delimitted_hp_name(key)
+                return {dict_name: assign_leaf(rem_name, val)}
+            else:
+                return {key: val}
+
+        def add_helper(D, key, val):
+            if ':' in key:
+                dict_name, rem_name = \
+                    Hyperparameters.parse_colon_delimitted_hp_name(key)
+
+                if dict_name == 'data_hps':
+                    pdb.set_trace()
+
+                if dict_name in D:
+                    D[dict_name] = add_helper(D[dict_name], rem_name, val)
+                else:
+                    D[dict_name] = assign_leaf(rem_name, val)
+            else:
+                D[key] = val
+
+            return D
+
+        D_unflattened = dict()
+        for key, val in D_flat.iteritems():
+            # Don't need to check type here (handled by parse_helper).
+            D_unflattened = add_helper(D_unflattened, key, val)
+
+        return D_unflattened
+
+    @staticmethod
     def parse_command_line(default_hps, description=None):
         '''Parses command-line arguments into a dict of hyperparameters.
 
@@ -471,56 +560,6 @@ class Hyperparameters(object):
                         'bool, int, float, str, dict, or None, but was %s. ' %
                         type(val))
 
-        def reconstruct_helper(D_flat):
-            '''
-            Args:
-                D_flat: dict containing default hyperparameters, with values
-                replaced by any corresponding values provided at the command
-                line. Values must be of type bool, int, float, or str (no
-                dicts allowed).
-
-            Returns:
-                D_unflattened: dict, nested with other dicts as specified by
-                colon delimitting in keys of D_flat.
-            '''
-
-            def assign_leaf(key, val):
-                '''
-                Handles the case where we are writing the first entry of a
-                potentially nested dict. Because it's the first entry, there
-                is no chance of overwriting an existing dict.
-                '''
-                if ':' in key:
-                    dict_name, rem_name = \
-                        Hyperparameters.parse_colon_delimitted_hp_name(key)
-                    return {dict_name: assign_leaf(rem_name, val)}
-                else:
-                    return {key: val}
-
-            def add_helper(D, key, val):
-                if ':' in key:
-                    dict_name, rem_name = \
-                        Hyperparameters.parse_colon_delimitted_hp_name(key)
-
-                    if dict_name == 'data_hps':
-                        pdb.set_trace()
-
-                    if dict_name in D:
-                        D[dict_name] = add_helper(D[dict_name], rem_name, val)
-                    else:
-                        D[dict_name] = assign_leaf(rem_name, val)
-                else:
-                    D[key] = val
-
-                return D
-
-            D_unflattened = dict()
-            for key, val in D_flat.iteritems():
-                # Don't need to check type here (handled by parse_helper).
-                D_unflattened = add_helper(D_unflattened, key, val)
-
-            return D_unflattened
-
         parser = argparse.ArgumentParser(description=description)
         parse_helper(default_hps)
 
@@ -530,6 +569,6 @@ class Hyperparameters(object):
         hps_flat = vars(args)
 
         # Recursively reconstruct any dicts (based on colon delimiters)
-        hps = reconstruct_helper(hps_flat)
+        hps = Hyperparameters._unflatten(hps_flat)
 
         return hps
