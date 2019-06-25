@@ -62,46 +62,6 @@ class RecurrentWhisperer(object):
     _update_visualization(...)
     '''
 
-    _DEFAULT_SUPER_HASH_HPS = {
-        'random_seed': 0,
-        'dtype': 'float32', # keep as string (rather than tf.float32)
-                            # for better argparse handling, yaml writing
-        'adam_hps': {'epsilon': 0.01},
-        'alr_hps': {},
-        'agnc_hps': {}}
-
-    _DEFAULT_SUPER_NON_HASH_HPS = {
-        'min_learning_rate': 1e-10,
-        'max_n_epochs': 1000,
-        'max_n_epochs_without_lvl_improvement': 200,
-        'min_loss': None,
-        'max_train_time': None,
-
-        'do_restart_run': False,
-        'do_generate_visualizations': True,
-        'do_save_tensorboard_events': True,
-        'do_save_ckpt': True,
-        'do_save_lvl_ckpt': True,
-        'do_save_lvl_train_predictions': True,
-        'do_save_lvl_valid_predictions': True,
-        'do_save_lvl_mat_files': False,
-
-        'max_ckpt_to_keep': 1,
-        'max_lvl_ckpt_to_keep': 1,
-
-        'n_epochs_per_ckpt': 100,
-        'n_epochs_per_validation_update': 100,
-        'n_epochs_per_visualization_update': 100,
-
-        'disable_gpus': False,
-        'allow_gpu_growth': True,
-        'per_process_gpu_memory_fraction': None,
-
-        'log_dir': '/tmp/rnn_logs/',
-        'dataset_name': None,
-        'n_folds': None,
-        'fold_idx': None,}
-
     def __init__(self, **kwargs):
         '''Creates a RecurrentWhisperer object.
 
@@ -246,11 +206,11 @@ class RecurrentWhisperer(object):
             None.
         '''
         default_hash_hps = self._integrate_hps(
-            self._DEFAULT_SUPER_HASH_HPS,
+            self._default_super_hash_hyperparameters(),
             self._default_hash_hyperparameters())
 
         default_non_hash_hps = self._integrate_hps(
-            self._DEFAULT_SUPER_NON_HASH_HPS,
+            self._default_super_non_hash_hyperparameters(),
             self._default_non_hash_hyperparameters())
 
         hps = Hyperparameters(kwargs, default_hash_hps, default_non_hash_hps)
@@ -280,6 +240,50 @@ class RecurrentWhisperer(object):
         self._initialize_or_restore()
 
     @staticmethod
+    def _default_super_hash_hyperparameters():
+        return {
+            'random_seed': 0,
+            'dtype': 'float32', # keep as string (rather than tf.float32)
+                                # for better argparse handling, yaml writing
+            'adam_hps': {'epsilon': 0.01},
+                'alr_hps': {},
+                'agnc_hps': {}}
+
+    @staticmethod
+    def _default_super_non_hash_hyperparameters():
+        return {
+            'min_learning_rate': 1e-10,
+            'max_n_epochs': 1000,
+            'max_n_epochs_without_lvl_improvement': 200,
+            'min_loss': None,
+            'max_train_time': None,
+
+            'do_restart_run': False,
+            'do_generate_visualizations': True,
+            'do_save_tensorboard_events': True,
+            'do_save_ckpt': True,
+            'do_save_lvl_ckpt': True,
+            'do_save_lvl_train_predictions': True,
+            'do_save_lvl_valid_predictions': True,
+            'do_save_lvl_mat_files': False,
+
+            'max_ckpt_to_keep': 1,
+            'max_lvl_ckpt_to_keep': 1,
+
+            'n_epochs_per_ckpt': 100,
+            'n_epochs_per_validation_update': 100,
+            'n_epochs_per_visualization_update': 100,
+
+            'disable_gpus': False,
+            'allow_gpu_growth': True,
+            'per_process_gpu_memory_fraction': 1.0,
+
+            'log_dir': '/tmp/rnn_logs/',
+            'dataset_name': None,
+            'n_folds': None,
+            'fold_idx': None,}
+
+    @staticmethod
     def _integrate_hps(superclass_default_hps, subclass_default_hps):
         '''Integrates default hyperparameters defined in this superclass with
         those defined in a subclass. Subclasses may override defaults
@@ -305,7 +309,8 @@ class RecurrentWhisperer(object):
     def get_run_dir(log_dir, run_hash,
         dataset_name=None, n_folds=None, fold_idx=None):
         '''
-
+            log_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
 
             run_hash: string containing the hyperparameters hash used to
             establish the run directory. Returned by
@@ -803,6 +808,14 @@ class RecurrentWhisperer(object):
         '''
         hps = self.hps
 
+        if loss is np.inf:
+            print('\Stopping optimization: loss is Inf!')
+            return True
+
+        if np.isnan(loss):
+            print('\Stopping optimization: loss is NaN!')
+            return True
+
         if hps.min_loss is not None and loss <= hps.min_loss:
             print ('\nStopping optimization: loss meets convergence criteria.')
             return True
@@ -1186,6 +1199,34 @@ class RecurrentWhisperer(object):
         return run_info
 
     @staticmethod
+    def _get_lvl_path(run_dir, train_or_valid_str, predictions_or_summary_str):
+        ''' Builds paths to the various files saved when the model achieves a
+        new lowest validation loss (lvl).
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+            train_or_valid_str: either 'train' or 'valid', indicating whether
+            to load predictions/summary from the training data or validation
+            data, respectively.
+
+            predictions_or_summary_str: either 'predictions' or 'summary',
+            indicating whether to load model predictions or summaries thereof,
+            respectively.
+
+        Returns:
+            string containing the path to the desired file.
+        '''
+
+        paths = RecurrentWhisperer.get_paths(run_dir)
+        filename = train_or_valid_str + '_' + \
+            predictions_or_summary_str + '.pkl'
+        path_to_file = os.path.join(paths['lvl_dir'], filename)
+
+        return path_to_file
+
+    @staticmethod
     def _load_lvl_helper(
         run_dir,
         train_or_valid_str,
@@ -1207,10 +1248,9 @@ class RecurrentWhisperer(object):
         Returns:
             dict containing saved data.
         '''
-        paths = RecurrentWhisperer.get_paths(run_dir)
-        filename = train_or_valid_str + '_' + \
-            predictions_or_summary_str + '.pkl'
-        path_to_file = os.path.join(paths['lvl_dir'], filename)
+
+        path_to_file = RecurrentWhisperer._get_lvl_path(
+            run_dir, train_or_valid_str, predictions_or_summary_str)
 
         if os.path.exists(path_to_file):
             file = open(path_to_file, 'rb')
@@ -1512,9 +1552,9 @@ class RecurrentWhisperer(object):
 
         Values provided here will override the defaults set in this superclass
         for any hyperparameter keys that are overlapping with those in
-        _DEFAULT_SUPER_HASH_HPS. Note, such overriding sets the default values
-        for the subclass, and these subclass defaults can then be again
-        overridden via keyword arguments input to __init__.
+        _default_super_hash_hyperparameters. Note, such overriding sets the
+        default values for the subclass, and these subclass defaults can then
+        be again overridden via keyword arguments input to __init__.
 
         Args:
             None.
@@ -1534,9 +1574,9 @@ class RecurrentWhisperer(object):
 
         Values provided here will override the defaults set in this superclass
         for any hyperparameter keys that are overlapping with those in
-        _DEFAULT_SUPER_HASH_HPS. Note, such overriding sets the default values
-        for the subclass, and these subclass defaults can then be again
-        overridden via keyword arguments input to __init__.
+        _default_super_non_hash_hyperparameters. Note, such overriding sets the
+        default values for the subclass, and these subclass defaults can then
+        be again overridden via keyword arguments input to __init__.
 
         Args:
             None.
