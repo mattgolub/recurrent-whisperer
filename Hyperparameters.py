@@ -401,13 +401,13 @@ class Hyperparameters(object):
         return dict_name, rem_name
 
     @staticmethod
-    def _flatten(D):
+    def flatten(D):
         ''' Flattens a dict: Values that are themselves dicts are recursively
         'flattened' by concatenating keys using colon delimitting.
 
         Example:
             D = {'a': 1, 'b': {'c':2, 'd':3}}
-            _flatten(D)
+            flatten(D)
             {'a': 1, 'b:c': 2, 'b:d': 3}
 
         Args:
@@ -420,7 +420,7 @@ class Hyperparameters(object):
         D_flat = dict()
         for key, val in D.iteritems():
             if isinstance(val, dict):
-                val_flat = Hyperparameters._flatten(val)
+                val_flat = Hyperparameters.flatten(val)
                 for key2, val2 in val_flat.iteritems():
                     D_flat[key + ':' + key2] = val2
             else:
@@ -429,14 +429,14 @@ class Hyperparameters(object):
         return D_flat
 
     @staticmethod
-    def _unflatten(D_flat):
+    def unflatten(D_flat):
         ''' Unflattens a flattened dict. A flattened dict is a dict with no
         values that are themselves dicts. Nested dicts can be represented in a
         flattened dict using colon-delimitted string keys.
 
         Example:
             D_flat = {'a': 1, 'b:c': 2, 'b:d': 3}
-            _unflatten(D_flat)
+            unflatten(D_flat)
             {'a': 1, 'b': {'c': 2, 'd': 3}}
 
         Args:
@@ -569,6 +569,6 @@ class Hyperparameters(object):
         hps_flat = vars(args)
 
         # Recursively reconstruct any dicts (based on colon delimiters)
-        hps = Hyperparameters._unflatten(hps_flat)
+        hps = Hyperparameters.unflatten(hps_flat)
 
         return hps
