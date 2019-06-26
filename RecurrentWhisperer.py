@@ -809,11 +809,11 @@ class RecurrentWhisperer(object):
         hps = self.hps
 
         if loss is np.inf:
-            print('\Stopping optimization: loss is Inf!')
+            print('\nStopping optimization: loss is Inf!')
             return True
 
         if np.isnan(loss):
-            print('\Stopping optimization: loss is NaN!')
+            print('\nStopping optimization: loss is NaN!')
             return True
 
         if hps.min_loss is not None and loss <= hps.min_loss:
