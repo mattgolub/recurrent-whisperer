@@ -48,18 +48,20 @@ class RecurrentWhisperer(object):
     can be readily resumed if their execution was interrupted or preempted.
 
     Subclasses inheriting from RecurrentWhisperer must implement the following
-    functions (see definitions in this file for call signatures):
+    functions (see definitions at the end of this file for call signatures):
 
     _default_hash_hyperparameters()
     _default_non_hash_hyperparameters()
     _setup_model(...)
     _setup_training(...)
+    _setup_visualization(...)
     _get_data_batches(...)
     _get_batch_size(...)
     _train_batch(...)
     predict(...)
-    _setup_visualization(...)
     _update_visualization(...)
+    _save_training_visualizations(...)
+    _save_lvl_visualizations(...)
     '''
 
     def __init__(self, **kwargs):
@@ -135,11 +137,6 @@ class RecurrentWhisperer(object):
                 hyperparameters has saved checkpoints--the previous run will
                 be deleted and restarted rather than resumed). Default: False.
 
-                do_generate_visualizations: bool indicating whether or not to
-                generate visualizations periodically throughout training.
-                Frequency is controlled by n_epoochs_per_visualization_update.
-                Default: True.
-
                 do_save_tensorboard_events: bool indicating whether or not to
                 save summaries for Tensorboard monitoring. Default: True.
 
@@ -150,6 +147,22 @@ class RecurrentWhisperer(object):
                 do_save_lvl_ckpt: bool indicating whether or not to save model
                 checkpoints specifically when a new lowest validation loss is
                 achieved. Default: True.
+
+                do_generate_training_visualizations: bool indicating whether or
+                not to generate visualizations periodically throughout training.
+                Frequency is controlled by n_epoochs_per_visualization_update.
+                Default: True.
+
+                do_save_training_visualizations: bool indicating whether or not
+                to save the training visualizations to Tensorboard. Default:
+                True.
+
+                do_generate_lvl_visualizations: bool indicating whether or not
+                to, after training is complete, load the LVL model and generate
+                visualization from it. Default: True.
+
+                do_save_lvl_visualizations: bool indicating whether or not to
+                save the LVL visualizations to tensroboard. Default: True.
 
                 do_save_lvl_train_predictions: bool indicating whether to
                 maintain a .pkl file containing predictions over the training
@@ -259,10 +272,17 @@ class RecurrentWhisperer(object):
             'max_train_time': None,
 
             'do_restart_run': False,
-            'do_generate_visualizations': True,
+
             'do_save_tensorboard_events': True,
+
             'do_save_ckpt': True,
             'do_save_lvl_ckpt': True,
+
+            'do_generate_training_visualizations': True,
+            'do_save_training_visualizations': True,
+            'do_generate_lvl_visualizations': True,
+            'do_save_lvl_visualizations': True,
+
             'do_save_lvl_train_predictions': True,
             'do_save_lvl_valid_predictions': True,
             'do_save_lvl_mat_files': False,
@@ -591,7 +611,8 @@ class RecurrentWhisperer(object):
 
     def _maybe_setup_visualizations(self):
 
-        if self.hps.do_generate_visualizations:
+        if self.hps.do_generate_training_visualizations or \
+            self.hps.do_generate_lvl_visualizations:
 
             self._setup_visualizations()
 
@@ -764,7 +785,7 @@ class RecurrentWhisperer(object):
 
             # *****************************************************************
 
-            self._maybe_update_visualizations(train_data, valid_data)
+            self._maybe_update_training_visualizations(train_data, valid_data)
 
             epoch_timer.split('visualize')
 
@@ -782,71 +803,7 @@ class RecurrentWhisperer(object):
             epoch_timer.split('other')
             epoch_timer.disp()
 
-        # Save checkpoint upon completing training
-        if self.hps.do_save_ckpt:
-            self._save_checkpoint()
-
-    def _is_training_complete(self, loss, do_check_lvl=False):
-        '''Determines whether the training optimization procedure should
-        terminate. Termination criteria, goverened by hyperparameters, are
-        thresholds on the following:
-
-            1) the training loss
-            2) the learning rate
-            3) the number of training epochs performed
-            4) the number of training epochs performed since the lowest
-               validation loss improved (only if validation data are provided
-               to train(...).
-
-        Args:
-            loss: float indicating the most recent loss evaluation across the
-            training data.
-
-        Returns:
-            bool indicating whether any of the termination criteria have been
-            met.
-        '''
-        hps = self.hps
-
-        if loss is np.inf:
-            print('\nStopping optimization: loss is Inf!')
-            return True
-
-        if np.isnan(loss):
-            print('\nStopping optimization: loss is NaN!')
-            return True
-
-        if hps.min_loss is not None and loss <= hps.min_loss:
-            print ('\nStopping optimization: loss meets convergence criteria.')
-            return True
-
-        if self._epoch() > self.adaptive_learning_rate.n_warmup_steps and \
-            self.adaptive_learning_rate() <= hps.min_learning_rate:
-            print ('\nStopping optimization: minimum learning rate reached.')
-            return True
-
-        if self._epoch() >= hps.max_n_epochs:
-            print('\nStopping optimization:'
-                  ' reached maximum number of training epochs.')
-            return True
-
-        if hps.max_train_time is not None and \
-            self._get_train_time() > hps.max_train_time:
-
-            print ('\nStopping optimization: training time exceeds '
-                'maximum allowed.')
-            return True
-
-        if do_check_lvl and \
-            self._epoch() - self._epoch_last_lvl_improvement() >= \
-                hps.max_n_epochs_without_lvl_improvement:
-
-            print('\nStopping optimization:'
-                  ' reached maximum number of training epochs'
-                  ' without improvement to the lowest validation loss.')
-            return True
-
-        return False
+        self._close_training()
 
     def _train_epoch(self, data_batches):
         '''Performs training steps across an epoch of training data batches.
@@ -951,7 +908,7 @@ class RecurrentWhisperer(object):
         self._maybe_save_lvl_checkpoint(
             summary['loss'], train_data, valid_data)
 
-    def _maybe_update_visualizations(self, train_data, valid_data):
+    def _maybe_update_training_visualizations(self, train_data, valid_data):
         '''Updates visualizations if the current epoch number indicates that
         an update is due.
 
@@ -965,10 +922,14 @@ class RecurrentWhisperer(object):
         '''
 
         hps = self.hps
-        if hps.do_generate_visualizations and \
+        if hps.do_generate_training_visualizations and \
             np.mod(self._epoch(), hps.n_epochs_per_visualization_update) == 0:
 
             self._update_visualizations(train_data, valid_data)
+
+            if hps.do_save_training_visualizations:
+
+                self._save_training_visualizations()
 
     def _maybe_save_checkpoint(self):
         '''Saves a model checkpoint if the current epoch number indicates that
@@ -1163,189 +1124,99 @@ class RecurrentWhisperer(object):
                 print('\tSaving lvl predictions (%s).' % train_or_valid_str)
                 save_helper(predictions, 'predictions')
 
-    @staticmethod
-    def get_run_info(run_dir):
-        '''Advanced functionality for models invoking K-fold cross-validation.
+    def _is_training_complete(self, loss, do_check_lvl=False):
+        '''Determines whether the training optimization procedure should
+        terminate. Termination criteria, goverened by hyperparameters, are
+        thresholds on the following:
+
+            1) the training loss
+            2) the learning rate
+            3) the number of training epochs performed
+            4) the number of training epochs performed since the lowest
+               validation loss improved (only if validation data are provided
+               to train(...).
 
         Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
+            loss: float indicating the most recent loss evaluation across the
+            training data.
 
         Returns:
-            dict with each key being a dataset name and each value is the corresponding set of cross-validation runs performed on that dataset. Jointly, these key, val pairs can reconstruct all of the "leaves" of the cross validation runs by using get_run_dir(...).
-
+            bool indicating whether any of the termination criteria have been
+            met.
         '''
+        hps = self.hps
 
-        def list_dirs(path_str):
-            return [name for name in os.listdir(path_str) \
-                if os.path.isdir(os.path.join(path_str, name)) ]
+        if loss is np.inf:
+            print('\nStopping optimization: loss is Inf!')
+            return True
 
-        run_info = {}
-        if RecurrentWhisperer.is_run_dir(run_dir):
-            pass
-        else:
-            dataset_names = list_dirs(run_dir)
+        if np.isnan(loss):
+            print('\nStopping optimization: loss is NaN!')
+            return True
 
-            for dataset_name in dataset_names:
-                cv_dir = os.path.join(run_dir, dataset_name)
-                fold_names = list_dirs(cv_dir)
+        if hps.min_loss is not None and loss <= hps.min_loss:
+            print ('\nStopping optimization: loss meets convergence criteria.')
+            return True
 
-                run_info[dataset_name] = []
-                for fold_name in fold_names:
-                    run_dir = os.path.join(cv_dir, fold_name)
-                    if RecurrentWhisperer.is_run_dir(run_dir):
-                        run_info[dataset_name].append(fold_name)
+        if self._epoch() > self.adaptive_learning_rate.n_warmup_steps and \
+            self.adaptive_learning_rate() <= hps.min_learning_rate:
+            print ('\nStopping optimization: minimum learning rate reached.')
+            return True
 
-        return run_info
+        if self._epoch() >= hps.max_n_epochs:
+            print('\nStopping optimization:'
+                  ' reached maximum number of training epochs.')
+            return True
 
-    @staticmethod
-    def _get_lvl_path(run_dir, train_or_valid_str, predictions_or_summary_str):
-        ''' Builds paths to the various files saved when the model achieves a
-        new lowest validation loss (lvl).
+        if hps.max_train_time is not None and \
+            self._get_train_time() > hps.max_train_time:
+
+            print ('\nStopping optimization: training time exceeds '
+                'maximum allowed.')
+            return True
+
+        if do_check_lvl and \
+            self._epoch() - self._epoch_last_lvl_improvement() >= \
+                hps.max_n_epochs_without_lvl_improvement:
+
+            print('\nStopping optimization:'
+                  ' reached maximum number of training epochs'
+                  ' without improvement to the lowest validation loss.')
+            return True
+
+        return False
+
+    def _close_training(self):
+        ''' Optionally saves a final checkpoint, then loads the LVL model and
+        generates LVL visualizations.
 
         Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-            train_or_valid_str: either 'train' or 'valid', indicating whether
-            to load predictions/summary from the training data or validation
-            data, respectively.
-
-            predictions_or_summary_str: either 'predictions' or 'summary',
-            indicating whether to load model predictions or summaries thereof,
-            respectively.
+            None.
 
         Returns:
-            string containing the path to the desired file.
+            None.
+
+        Raises:
+            Warning if attempting to generate LVL visualizations when no LVL
+            checkpoint was saved.
         '''
 
-        paths = RecurrentWhisperer.get_paths(run_dir)
-        filename = train_or_valid_str + '_' + \
-            predictions_or_summary_str + '.pkl'
-        path_to_file = os.path.join(paths['lvl_dir'], filename)
+        # Save checkpoint upon completing training
+        if self.hps.do_save_ckpt:
+            self._save_checkpoint()
 
-        return path_to_file
+        if self.hps.do_generate_lvl_visualizations:
+            if self.hps.do_save_lvl_ckpt:
+                # Generate LVL visualizations
+                print('\tGenerating visualizations from restored LVL model...')
+                self.restore_from_lvl_checkpoint()
+                self._update_visualizations(train_data, valid_data)
 
-    @staticmethod
-    def _load_lvl_helper(
-        run_dir,
-        train_or_valid_str,
-        predictions_or_summary_str):
-        '''Loads previously saved model predictions or summaries thereof.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-            train_or_valid_str: either 'train' or 'valid', indicating whether
-            to load predictions/summary from the training data or validation
-            data, respectively.
-
-            predictions_or_summary_str: either 'predictions' or 'summary',
-            indicating whether to load model predictions or summaries thereof,
-            respectively.
-
-        Returns:
-            dict containing saved data.
-        '''
-
-        path_to_file = RecurrentWhisperer._get_lvl_path(
-            run_dir, train_or_valid_str, predictions_or_summary_str)
-
-        if os.path.exists(path_to_file):
-            file = open(path_to_file, 'rb')
-            load_path = file.read()
-            data = cPickle.loads(load_path)
-            file.close()
-        else:
-            raise IOError('%s not found.' % path_to_file)
-
-        return data
-
-    @staticmethod
-    def load_lvl_train_predictions(run_dir):
-        '''Loads all model predictions made over the training data by the lvl
-        model.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-        Returns:
-            dict containing saved predictions.
-        '''
-        return RecurrentWhisperer._load_lvl_helper(
-            run_dir, 'train', 'predictions')
-
-    @staticmethod
-    def load_lvl_train_summary(run_dir):
-        '''Loads summary of the model predictions made over the training data
-        by the lvl model.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-        Returns:
-            dict containing saved summaries.
-        '''
-        return RecurrentWhisperer._load_lvl_helper(
-            run_dir, 'train', 'summary')
-
-    @staticmethod
-    def load_lvl_valid_predictions(run_dir):
-        '''Loads all model predictions from train_predictions.pkl.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-        Returns:
-            train_predictions:
-                dict containing saved predictions on the training data by the
-                lvl model.
-        '''
-
-        return RecurrentWhisperer._load_lvl_helper(
-            run_dir, 'valid', 'predictions')
-
-    @staticmethod
-    def load_lvl_valid_summary(run_dir):
-        '''Loads summary of the model predictions made over the validation
-         data by the lvl model.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-        Returns:
-            dict containing saved summaries.
-        '''
-        return RecurrentWhisperer._load_lvl_helper(
-            run_dir, 'valid', 'summary')
-
-    @staticmethod
-    def load_hyperparameters(run_dir):
-        '''Load previously saved Hyperparameters.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-        Returns:
-            dict containing the loaded hyperparameters.
-        '''
-
-        paths = RecurrentWhisperer.get_paths(run_dir)
-
-        hps_path = paths['hps_path']
-
-        if os.path.exists(hps_path):
-            hps_dict = Hyperparameters.restore(hps_path)
-        else:
-            raise IOError('%s not found.' % hps_path)
-
-        return hps_dict
+                if self.hps.do_save_lvl_visualizations:
+                    self._save_lvl_visualizations()
+            else:
+                raise Warning('Attempted to generate LVL visualizations, '
+                    'but cannot because no LVL model checkpoint was saved.')
 
     def _step(self):
         '''Returns the number of training steps taken thus far. A step is
@@ -1535,6 +1406,189 @@ class RecurrentWhisperer(object):
 
         return n_params
 
+    @staticmethod
+    def get_run_info(run_dir):
+        '''Advanced functionality for models invoking K-fold cross-validation.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            dict with each key being a dataset name and each value is the corresponding set of cross-validation runs performed on that dataset. Jointly, these key, val pairs can reconstruct all of the "leaves" of the cross validation runs by using get_run_dir(...).
+
+        '''
+
+        def list_dirs(path_str):
+            return [name for name in os.listdir(path_str) \
+                if os.path.isdir(os.path.join(path_str, name)) ]
+
+        run_info = {}
+        if RecurrentWhisperer.is_run_dir(run_dir):
+            pass
+        else:
+            dataset_names = list_dirs(run_dir)
+
+            for dataset_name in dataset_names:
+                cv_dir = os.path.join(run_dir, dataset_name)
+                fold_names = list_dirs(cv_dir)
+
+                run_info[dataset_name] = []
+                for fold_name in fold_names:
+                    run_dir = os.path.join(cv_dir, fold_name)
+                    if RecurrentWhisperer.is_run_dir(run_dir):
+                        run_info[dataset_name].append(fold_name)
+
+        return run_info
+
+    @staticmethod
+    def _get_lvl_path(run_dir, train_or_valid_str, predictions_or_summary_str):
+        ''' Builds paths to the various files saved when the model achieves a
+        new lowest validation loss (lvl).
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+            train_or_valid_str: either 'train' or 'valid', indicating whether
+            to load predictions/summary from the training data or validation
+            data, respectively.
+
+            predictions_or_summary_str: either 'predictions' or 'summary',
+            indicating whether to load model predictions or summaries thereof,
+            respectively.
+
+        Returns:
+            string containing the path to the desired file.
+        '''
+
+        paths = RecurrentWhisperer.get_paths(run_dir)
+        filename = train_or_valid_str + '_' + \
+            predictions_or_summary_str + '.pkl'
+        path_to_file = os.path.join(paths['lvl_dir'], filename)
+
+        return path_to_file
+
+    @staticmethod
+    def _load_lvl_helper(
+        run_dir,
+        train_or_valid_str,
+        predictions_or_summary_str):
+        '''Loads previously saved model predictions or summaries thereof.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+            train_or_valid_str: either 'train' or 'valid', indicating whether
+            to load predictions/summary from the training data or validation
+            data, respectively.
+
+            predictions_or_summary_str: either 'predictions' or 'summary',
+            indicating whether to load model predictions or summaries thereof,
+            respectively.
+
+        Returns:
+            dict containing saved data.
+        '''
+
+        path_to_file = RecurrentWhisperer._get_lvl_path(
+            run_dir, train_or_valid_str, predictions_or_summary_str)
+
+        if os.path.exists(path_to_file):
+            file = open(path_to_file, 'rb')
+            load_path = file.read()
+            data = cPickle.loads(load_path)
+            file.close()
+        else:
+            raise IOError('%s not found.' % path_to_file)
+
+        return data
+
+    @staticmethod
+    def load_lvl_train_predictions(run_dir):
+        '''Loads all model predictions made over the training data by the lvl
+        model.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            dict containing saved predictions.
+        '''
+        return RecurrentWhisperer._load_lvl_helper(
+            run_dir, 'train', 'predictions')
+
+    @staticmethod
+    def load_lvl_train_summary(run_dir):
+        '''Loads summary of the model predictions made over the training data
+        by the lvl model.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            dict containing saved summaries.
+        '''
+        return RecurrentWhisperer._load_lvl_helper(
+            run_dir, 'train', 'summary')
+
+    @staticmethod
+    def load_lvl_valid_predictions(run_dir):
+        '''Loads all model predictions from train_predictions.pkl.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            train_predictions:
+                dict containing saved predictions on the training data by the
+                lvl model.
+        '''
+
+        return RecurrentWhisperer._load_lvl_helper(
+            run_dir, 'valid', 'predictions')
+
+    @staticmethod
+    def load_lvl_valid_summary(run_dir):
+        '''Loads summary of the model predictions made over the validation
+         data by the lvl model.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            dict containing saved summaries.
+        '''
+        return RecurrentWhisperer._load_lvl_helper(
+            run_dir, 'valid', 'summary')
+
+    @staticmethod
+    def load_hyperparameters(run_dir):
+        '''Load previously saved Hyperparameters.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            dict containing the loaded hyperparameters.
+        '''
+
+        paths = RecurrentWhisperer.get_paths(run_dir)
+
+        hps_path = paths['hps_path']
+
+        if os.path.exists(hps_path):
+            hps_dict = Hyperparameters.restore(hps_path)
+        else:
+            raise IOError('%s not found.' % hps_path)
+
+        return hps_dict
 
     # *************************************************************************
     # The following class methods MUST be implemented by any subclass that
@@ -1716,7 +1770,9 @@ class RecurrentWhisperer(object):
              % sys._getframe().f_code.co_name)
 
     def _setup_visualizations(self):
-        '''Sets up visualizations. Only called if do_generate_visualizations.
+        '''Sets up visualizations. Only called if
+            do_generate_training_visualizations or
+            do_generate_lvl_visualizations.
 
         Args:
             None.
@@ -1729,12 +1785,46 @@ class RecurrentWhisperer(object):
              % sys._getframe().f_code.co_name)
 
     def _update_visualizations(self, train_data, valid_data):
-        '''Updates visualizations. Only called if do_generate_visualizations.
+        '''Updates visualizations. Only called if
+            do_generate_training_visualizations OR
+            do_generate_lvl_visualizations.
 
         Args:
             train_data: dict containing the training data.
 
             valid_data: dict containing the validation data.
+
+        Returns:
+            None.
+        '''
+        raise StandardError(
+            '%s must be implemented by RecurrentWhisperer subclass'
+             % sys._getframe().f_code.co_name)
+
+    def _save_training_visualizations(self):
+        ''' Saves training visualizations. Only called if
+            do_generate_training_visualizations AND
+            do_save_training_visualizations.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+        raise StandardError(
+            '%s must be implemented by RecurrentWhisperer subclass'
+             % sys._getframe().f_code.co_name)
+
+    def _save_lvl_visualizations(self):
+        ''' Saves lowest-validation-loss visualizations. Only called ALL of the
+        following hyperparameters are True:
+            do_save_lvl_ckpt
+            do_generate_lvl_visualizations
+            do_save_lvl_visualizations.
+
+        Args:
+            None.
 
         Returns:
             None.
