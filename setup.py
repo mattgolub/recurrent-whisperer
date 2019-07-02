@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name = 'recurrent-whisperer',
-    version = '1.1.0',
+    version = '1.1.1',
     url = 'https://github.com/mattgolub/recurrent-whisperer',
     author = 'Matt Golub',
     author_email = 'mgolub@stanford.edu',
