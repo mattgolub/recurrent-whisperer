@@ -803,7 +803,7 @@ class RecurrentWhisperer(object):
             epoch_timer.split('other')
             epoch_timer.disp()
 
-        self._close_training()
+        self._close_training(train_data, valid_data)
 
     def _train_epoch(self, data_batches):
         '''Performs training steps across an epoch of training data batches.
@@ -1186,12 +1186,14 @@ class RecurrentWhisperer(object):
 
         return False
 
-    def _close_training(self):
+    def _close_training(self, train_data=None, valid_data=None):
         ''' Optionally saves a final checkpoint, then loads the LVL model and
         generates LVL visualizations.
 
         Args:
-            None.
+            train_data: dict containing the training data.
+
+            valid_data: dict containing the validation data.
 
         Returns:
             None.
