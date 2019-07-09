@@ -1017,8 +1017,13 @@ class RecurrentWhisperer(object):
                 self.lvl_saver.save(self.session,
                     self.lvl_ckpt_path, global_step=self._step())
 
-            self._maybe_save_lvl_predictions(train_data, 'train')
-            self._maybe_save_lvl_predictions(valid_data, 'valid')
+            train_pred, train_summary = self.predict(train_data)
+            self._maybe_save_lvl_predictions(train_pred, 'train')
+            self._maybe_save_lvl_summaries(train_summary, 'train')
+
+            valid_pred, valid_summary = self.predict(valid_data)
+            self._maybe_save_lvl_predictions(valid_pred, 'valid')
+            self._maybe_save_lvl_summaries(valid_summary, 'valid')
 
     def restore_from_lvl_checkpoint(self, model_checkpoint_path=None):
         '''Restores a model from a previously saved lowest-validation-loss
@@ -1049,12 +1054,12 @@ class RecurrentWhisperer(object):
               % ntpath.basename(model_checkpoint_path))
         self.lvl_saver.restore(self.session, model_checkpoint_path)
 
-    def _maybe_save_lvl_predictions(self, data, train_or_valid_str):
+    def _maybe_save_lvl_predictions(self, predictions, train_or_valid_str):
         '''Saves all model predictions in .pkl files (and optionally in .mat
         files as well).
 
         Args:
-            data: dict containing either training or validation data.
+            predictions: dict containing model predictions.
 
             train_or_valid_str: either 'train' or 'valid', indicating whether
             data contains training data or validation data, respectively.
@@ -1063,25 +1068,44 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        def save_helper(data_to_save, suffix_str):
+        if predictions is not None:
+            if (self.hps.do_save_lvl_train_predictions and
+                train_or_valid_str == 'train') or \
+                (self.hps.do_save_lvl_valid_predictions and
+                train_or_valid_str == 'valid'):
+
+                print('\tSaving lvl predictions (%s).' % train_or_valid_str)
+                filename_no_extension = train_or_valid_str + '_predictions'
+                self._save_helper(predictions, filename_no_extension)
+
+    def _maybe_save_lvl_summaries(self,
+        summary, train_or_valid_str):
+
+        if summary is not None:
+            print('\tSaving lvl summary (%s).' % train_or_valid_str)
             # E.g., train_predictions or valid_summary
-            filename_no_extension = train_or_valid_str + '_' + suffix_str
+            filename_no_extension = train_or_valid_str + '_summary'
+            self._save_helper(summary, filename_no_extension)
 
-            pkl_path = os.path.join(self.lvl_dir, filename_no_extension)
-            save_pkl(data_to_save, pkl_path)
+    def _save_helper(self, data_to_save, filename_no_extension):
+        '''Pickle and save data as .pkl file. Optionally also save the data as
+        a .mat file.
 
-            if self.hps.do_save_lvl_mat_files:
-                mat_path = os.path.join(self.lvl_dir, filename_no_extension)
-                save_mat(data_to_save, pkl_path)
+            Args:
+                data_to_save: any pickle-able object to be pickled and saved.
+
+            Returns:
+                None.
+        '''
 
         def save_pkl(data_to_save, save_path_no_extension):
             '''Pickle and save data as .pkl file.
 
             Args:
+                data_to_save: any pickle-able object to be pickled and saved.
+
                 save_path_no_extension: path at which to save the data,
                 including an extensionless filename.
-
-                data_to_save: any pickle-able object to be pickled and saved.
 
             Returns:
                 None.
@@ -1108,21 +1132,12 @@ class RecurrentWhisperer(object):
             save_path = save_path_no_extension + '.mat'
             spio.savemat(save_path, data_to_save)
 
-        predictions, summary = self.predict(data)
+        pkl_path = os.path.join(self.lvl_dir, filename_no_extension)
+        save_pkl(data_to_save, pkl_path)
 
-        if summary is not None:
-            print('\tSaving lvl summary (%s).' % train_or_valid_str)
-            save_helper(summary, 'summary')
-
-
-        if predictions is not None:
-            if (self.hps.do_save_lvl_train_predictions and
-                train_or_valid_str == 'train') or \
-                (self.hps.do_save_lvl_valid_predictions and
-                train_or_valid_str == 'valid'):
-
-                print('\tSaving lvl predictions (%s).' % train_or_valid_str)
-                save_helper(predictions, 'predictions')
+        if self.hps.do_save_lvl_mat_files:
+            mat_path = os.path.join(self.lvl_dir, filename_no_extension)
+            save_mat(data_to_save, pkl_path)
 
     def _is_training_complete(self, loss, do_check_lvl=False):
         '''Determines whether the training optimization procedure should
@@ -1601,7 +1616,7 @@ class RecurrentWhisperer(object):
     def _default_hash_hyperparameters():
         '''Defines subclass-specific default hyperparameters for the set of
         hyperparameters that are hashed to define a directory structure for
-        easily managing multiple runs of the RNN training (i.e., using
+        easily managing multiple runs of the model training (i.e., using
         different hyperparameter settings). These hyperparameters may affect
         the model architecture or the trajectory of fitting, and as such are
         typically  swept during hyperparameter optimization.
@@ -1730,7 +1745,10 @@ class RecurrentWhisperer(object):
              % sys._getframe().f_code.co_name)
 
     def predict(self, data):
-        '''Runs the RNN given its inputs.
+        '''Runs the model given its inputs.
+
+        If validation data are provided to train(), predictions are optionally
+        saved each time a new lowest validation loss is achieved.
 
         Args:
             data: dict containing requisite data for generating predictions.
@@ -1745,7 +1763,6 @@ class RecurrentWhisperer(object):
 
             summary: dict containing high-level summaries of the predictions.
             Key/value pairs will be specific to the subclass implementation.
-
             If validation data are provided to train(), predictions and
             summary will be maintained in separate saved files that are
             updated each time a new lowest validation loss is achieved. By
