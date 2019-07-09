@@ -142,6 +142,27 @@ class Hyperparameters(object):
 
         set_helper(self._all_hps_as_dict, key, value)
 
+    def __str__(self):
+
+        def print_helper(D, n_indent=0):
+            str = ''
+            indent = n_indent * '\t'
+            for key in sort(D.keys()):
+                value = D[key]
+
+                str += '%s%s: ' % (indent, key)
+                if isinstance(value, dict):
+                    str += print_helper(value, n_indent+1)
+                else:
+                    str += '%s\n' % value.__str__()
+
+            return str
+
+        pdb.set_trace()
+        str = print_helper(self._all_hps_as_dict)
+
+        return str
+
     def get_hash(self):
         '''Computes a hash of all non-default hash hyperparameters.
 
