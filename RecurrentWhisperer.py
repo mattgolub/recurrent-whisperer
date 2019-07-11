@@ -300,6 +300,7 @@ class RecurrentWhisperer(object):
 
             'log_dir': '/tmp/rnn_logs/',
             'dataset_name': None,
+            'model_name': 'RecurrentWhisperer',
             'n_folds': None,
             'fold_idx': None,}
 
@@ -365,19 +366,26 @@ class RecurrentWhisperer(object):
         hps_dir = os.path.join(run_dir, 'hps')
         ckpt_dir = os.path.join(run_dir, 'ckpt')
         lvl_dir = os.path.join(run_dir, 'lvl')
+        events_dir = os.path.join(run_dir, 'events')
 
         return {
             'run_dir': run_dir,
+
             'hps_dir': hps_dir,
             'hps_path': os.path.join(hps_dir, 'hyperparameters.pkl'),
             'hps_yaml_path': os.path.join(hps_dir, 'hyperparameters.yml'),
-            'alr_path': os.path.join(hps_dir, 'learn_rate.pkl'),
-            'agnc_path': os.path.join(hps_dir, 'norm_clip.pkl'),
+
+            'events_dir': events_dir,
+
             'ckpt_dir': ckpt_dir,
             'ckpt_path': os.path.join(ckpt_dir, 'checkpoint.ckpt'),
+            'done_path': os.path.join(ckpt_dir, 'training.done'),
+
             'lvl_dir': lvl_dir,
             'lvl_ckpt_path': os.path.join(lvl_dir, 'lvl.ckpt'),
-            'events_dir': os.path.join(run_dir, 'events')
+
+            'alr_path': os.path.join(hps_dir, 'learn_rate.pkl'),
+            'agnc_path': os.path.join(hps_dir, 'norm_clip.pkl'),
             }
 
     @staticmethod
@@ -436,6 +444,7 @@ class RecurrentWhisperer(object):
 
         self.lvl_dir = paths['lvl_dir']
         self.lvl_ckpt_path = paths['lvl_ckpt_path']
+        self.done_path = paths['done_path']
 
         # For managing Tensorboard events
         self.events_dir = paths['events_dir']
@@ -1087,6 +1096,23 @@ class RecurrentWhisperer(object):
             filename_no_extension = train_or_valid_str + '_summary'
             self._save_helper(summary, filename_no_extension)
 
+    def _save_done_file(self):
+        '''Save an empty .done file (indicating that the training procedure
+        ran to completion.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+        print('\tSaving .done file...')
+
+        save_path = self.done_path
+        file = open(save_path, 'wb')
+        file.write('')
+        file.close()
+
     def _save_helper(self, data_to_save, filename_no_extension):
         '''Pickle and save data as .pkl file. Optionally also save the data as
         a .mat file.
@@ -1234,6 +1260,8 @@ class RecurrentWhisperer(object):
             else:
                 raise Warning('Attempted to generate LVL visualizations, '
                     'but cannot because no LVL model checkpoint was saved.')
+
+            self._save_done_file()
 
     def _step(self):
         '''Returns the number of training steps taken thus far. A step is
