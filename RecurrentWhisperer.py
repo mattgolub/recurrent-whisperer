@@ -199,12 +199,8 @@ class RecurrentWhisperer(object):
                 n_epochs_per_visualization_update: int specifying the number
                 of epochs between updates of any visualizations. Default: 100.
 
-                disable_gpus: bool indicating whether to disable access to any
-                GPUs. Default: False.
-
-                allow_gpu_growth: bool indicating whether to dynamically
-                allocate GPU memory (True) or to monopolize the entire memory
-                capacity of a GPU (False). Default: True.
+                decive: String specifying the hardware on which to place this
+                model. E.g., "gpu:0" or "gpu:0". Default: "gpu:0".
 
                 per_process_gpu_memory_fraction: float specifying the maximum
                 fraction of GPU memory to allocate. Set to None to allow
@@ -212,6 +208,13 @@ class RecurrentWhisperer(object):
                 for interactions between device_count (accessed here via
                 disable_gpus), enable_gpu_growth, and
                 per_process_gpu_memory_fraction. Default: None.
+
+                allow_gpu_growth: bool indicating whether to dynamically
+                allocate GPU memory (True) or to monopolize the entire memory
+                capacity of a GPU (False). Default: True.
+
+                disable_gpus: bool indicating whether to disable access to any
+                GPUs. Default: False.
 
                 log_dir: string specifying the top-level directory for saving
                 various training runs (where each training run is specified by
@@ -243,18 +246,21 @@ class RecurrentWhisperer(object):
         self.adaptive_learning_rate = AdaptiveLearningRate(**hps.alr_hps)
         self.adaptive_grad_norm_clip = AdaptiveGradNormClip(**hps.agnc_hps)
 
-        ckpt = self._setup_run_dir()
-        self._setup_model()
-        self._setup_optimizer()
-        self._maybe_setup_visualizations()
+        self._setup_run_dir()
 
-        # Each of these will create run_dir if it doesn't exist
-        # (do not move above the os.path.isdir check that is in _setup_run_dir)
-        self._maybe_setup_tensorboard()
-        self._setup_savers()
+        with tf.device(hps.device):
+            self._setup_model()
+            self._setup_optimizer()
+            self._maybe_setup_visualizations()
 
-        self._setup_session()
-        self._initialize_or_restore()
+            # Each of these will create run_dir if it doesn't exist
+            # (do not move above the os.path.isdir check that is in
+            # _setup_run_dir)
+            self._maybe_setup_tensorboard()
+            self._setup_savers()
+
+            self._setup_session()
+            self._initialize_or_restore()
 
     @staticmethod
     def _default_super_hash_hyperparameters():
@@ -299,9 +305,10 @@ class RecurrentWhisperer(object):
             'n_epochs_per_validation_update': 100,
             'n_epochs_per_visualization_update': 100,
 
-            'disable_gpus': False,
-            'allow_gpu_growth': True,
+            'device': 'gpu:0',
             'per_process_gpu_memory_fraction': 1.0,
+            'allow_gpu_growth': True,
+            'disable_gpus': False,
 
             'log_dir': '/tmp/rnn_logs/',
             'dataset_name': None,
@@ -381,8 +388,8 @@ class RecurrentWhisperer(object):
             'hps_yaml_path': os.path.join(hps_dir, 'hyperparameters.yml'),
 
             'events_dir': events_dir,
-            'model_log_path': os.path.join(events_dir, 'log.txt'),
-            'loggers_log_path': os.path.join(events_dir, 'log.txt'),
+            'model_log_path': os.path.join(events_dir, 'model.log'),
+            'loggers_log_path': os.path.join(events_dir, 'dependencies.log'),
             'done_path': os.path.join(events_dir, 'training.done'),
 
             'ckpt_dir': ckpt_dir,
@@ -749,6 +756,7 @@ class RecurrentWhisperer(object):
             config = tf.ConfigProto()
 
         config.gpu_options.allow_growth = hps.allow_gpu_growth
+        config.allow_soft_placement = True
         if hps.per_process_gpu_memory_fraction is not None:
             config.gpu_options.per_process_gpu_memory_fraction = \
                 hps.per_process_gpu_memory_fraction
