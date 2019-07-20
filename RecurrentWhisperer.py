@@ -261,6 +261,7 @@ class RecurrentWhisperer(object):
 
             self._setup_session()
             self._initialize_or_restore()
+            self.print_trainable_variables()
 
     @staticmethod
     def _default_super_hash_hyperparameters():
@@ -1694,6 +1695,20 @@ class RecurrentWhisperer(object):
             raise IOError('%s not found.' % hps_path)
 
         return hps_dict
+
+    def print_trainable_variables(self):
+        '''Prints the current set of trainable variables.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+    	print('\nTrainable variables:')
+    	for v in tf.trainable_variables():
+    		print('\t' + v.name + ': ' + str(v.shape))
+    	print('')
 
     # *************************************************************************
     # The following class methods MUST be implemented by any subclass that
