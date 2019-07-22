@@ -1036,6 +1036,10 @@ class RecurrentWhisperer(object):
         '''Restores a model from the most advanced previously saved model
         checkpoint.
 
+        Note that the hyperparameters files are not updated from their original
+        form. This can become relevant if restoring a model and resuming
+        training using updated values of non-hash hyperparameters.
+
         Args:
             None.
 
