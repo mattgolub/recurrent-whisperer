@@ -1326,7 +1326,9 @@ class RecurrentWhisperer(object):
                     'but cannot because no LVL model checkpoint was saved.')
 
         self._save_done_file()
-        self._log_file.close()
+
+        if self.hps.do_log_output:
+            self._log_file.close()
 
     def _step(self):
         '''Returns the number of training steps taken thus far. A step is
