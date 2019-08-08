@@ -340,27 +340,98 @@ class RecurrentWhisperer(object):
         return default_hps
 
     @staticmethod
-    def get_run_dir(log_dir, run_hash,
-        dataset_name=None, n_folds=None, fold_idx=None):
-        '''
+    def get_hash_dir(log_dir, run_hash):
+        '''Returns a path to the run_hash in the log_dir.
+
+        Args:
             log_dir: string containing the path to the directory where the
             model run was saved. See definition in __init__()
 
             run_hash: string containing the hyperparameters hash used to
             establish the run directory. Returned by
             Hyperparameters.get_hash().
+
+        Returns:
+            Path to the hash directory.
+        '''
+        return os.path.join(log_dir, run_hash)
+
+    @staticmethod
+    def get_run_dir(log_dir, run_hash,
+        dataset_name=None, n_folds=None, fold_idx=None):
+        ''' Returns a path to the direcory containing all files related to a
+        given run.
+
+        Args:
+            log_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+            run_hash: string containing the hyperparameters hash used to
+            establish the run directory. Returned by
+            Hyperparameters.get_hash().
+
+            dataset_name: (optional) Filesystem-safe string describing the
+            dataset. If provided with all other optional arguments, this is
+            systematically incorporated into the generated path.
+
+            n_folds: (optional) Non-negative integer specifying the number of
+            cross-validation folds in the run.
+
+            fold_idx: (optional) Index specifying the cross-validation fold for
+            this run.
+
+        Returns:
+            Path to the run directory.
         '''
 
-        run_dir = os.path.join(log_dir, run_hash)
+        hash_dir = RecurrentWhisperer.get_hash_dir(log_dir, run_hash)
 
         if (dataset_name is not None) and \
             (n_folds is not None) and \
             (fold_idx is not None):
 
             fold_str = str('fold-%d-of-%d' % (fold_idx+1, n_folds))
-            run_dir = os.path.join(run_dir, dataset_name, fold_str)
+            run_dir = os.path.join(hash_dir, dataset_name, fold_str)
 
-        return run_dir
+            return run_dir
+
+        else:
+            return hash_dir
+
+    @staticmethod
+    def get_run_info(run_dir):
+        '''Advanced functionality for models invoking K-fold cross-validation.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            dict with each key being a dataset name and each value is the corresponding set of cross-validation runs performed on that dataset. Jointly, these key, val pairs can reconstruct all of the "leaves" of the cross validation runs by using get_run_dir(...).
+
+        '''
+
+        def list_dirs(path_str):
+            return [name for name in os.listdir(path_str) \
+                if os.path.isdir(os.path.join(path_str, name)) ]
+
+        run_info = {}
+        if RecurrentWhisperer.is_run_dir(run_dir):
+            pass
+        else:
+            dataset_names = list_dirs(run_dir)
+
+            for dataset_name in dataset_names:
+                cv_dir = os.path.join(run_dir, dataset_name)
+                fold_names = list_dirs(cv_dir)
+
+                run_info[dataset_name] = []
+                for fold_name in fold_names:
+                    run_dir = os.path.join(cv_dir, fold_name)
+                    if RecurrentWhisperer.is_run_dir(run_dir):
+                        run_info[dataset_name].append(fold_name)
+
+        return run_info
 
     @staticmethod
     def get_paths(run_dir):
@@ -418,12 +489,29 @@ class RecurrentWhisperer(object):
         paths = RecurrentWhisperer.get_paths(run_dir)
 
         # Check for existence of all directories that would have been created
-        # if a run was executed.
+        # if a run was executed. This won't look for various files, which may
+        # or may not be saved depending on hyperparameter choices.
         for key in paths:
             if 'dir' in key and not os.path.exists(paths[key]):
                 return False
 
         return True
+
+    @staticmethod
+    def is_done(run_dir):
+        '''Determines whether a run exists in the filesystem and has run to
+        completion.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__().
+
+        Returns:
+            bool indicating whether the run is "done".
+        '''
+
+        paths = RecurrentWhisperer.get_paths(run_dir)
+        return os.path.exists(paths['done_path'])
 
     def _setup_run_dir(self):
         '''Sets up a directory for this training run. The directory name is
@@ -1330,6 +1418,10 @@ class RecurrentWhisperer(object):
         if self.hps.do_log_output:
             self._log_file.close()
 
+            # Redirect all printing, errors, and warnings back to defaults
+            sys.stdout = self._default_stdout
+            sys.stderr = self._default_stderr
+
     def _step(self):
         '''Returns the number of training steps taken thus far. A step is
         typically taken with each batch of training data (although this may
@@ -1517,41 +1609,6 @@ class RecurrentWhisperer(object):
             for v in tf.trainable_variables(scope)])
 
         return n_params
-
-    @staticmethod
-    def get_run_info(run_dir):
-        '''Advanced functionality for models invoking K-fold cross-validation.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-        Returns:
-            dict with each key being a dataset name and each value is the corresponding set of cross-validation runs performed on that dataset. Jointly, these key, val pairs can reconstruct all of the "leaves" of the cross validation runs by using get_run_dir(...).
-
-        '''
-
-        def list_dirs(path_str):
-            return [name for name in os.listdir(path_str) \
-                if os.path.isdir(os.path.join(path_str, name)) ]
-
-        run_info = {}
-        if RecurrentWhisperer.is_run_dir(run_dir):
-            pass
-        else:
-            dataset_names = list_dirs(run_dir)
-
-            for dataset_name in dataset_names:
-                cv_dir = os.path.join(run_dir, dataset_name)
-                fold_names = list_dirs(cv_dir)
-
-                run_info[dataset_name] = []
-                for fold_name in fold_names:
-                    run_dir = os.path.join(cv_dir, fold_name)
-                    if RecurrentWhisperer.is_run_dir(run_dir):
-                        run_info[dataset_name].append(fold_name)
-
-        return run_info
 
     @staticmethod
     def _get_lvl_path(run_dir, train_or_valid_str, predictions_or_summary_str):
