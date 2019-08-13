@@ -1168,13 +1168,14 @@ class RecurrentWhisperer(object):
         '''
         if (self._epoch()==0 or valid_loss < self._lvl()):
 
-            print('Achieved lowest validation loss. Saving checkpoint...')
+            print('Achieved lowest validation loss.')
 
             self._update_lvl(valid_loss)
             self._update_epoch_last_lvl_improvement(self._epoch())
 
             if self.hps.do_save_lvl_ckpt:
                 self._update_train_time()
+                print('\tSaving checkpoint.')
                 self.lvl_saver.save(self.session,
                     self.lvl_ckpt_path, global_step=self._step())
 
