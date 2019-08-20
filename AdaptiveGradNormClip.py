@@ -43,36 +43,38 @@ class AdaptiveGradNormClip(object):
 	```
 
 	"""
-
-	# Default hyperparameter settings (see comments in __init__)
-	_SLIDING_WINDOW_LEN = 128
-	_PERCENTILE = 95
-	_INIT_CLIP_VAL = 1e12
-	'''Approximately, don't clip on first iteration.
-	This has the unfortunate side effect of throwing the vertical axis scale
-	on the corresponding Tensorboard plot. The alternatives are
-	computationally inefficient: either clip at an arbitrary level (or at 0)
-	for the first epoch or compute a gradient at step 0 and initialize
-	to the norm of the global gradient.'''
-	_VERBOSE = False
-
 	def __init__(self,
-		sliding_window_len=_SLIDING_WINDOW_LEN,
-		percentile=_PERCENTILE,
-		init_clip_val=_INIT_CLIP_VAL,
-		verbose=_VERBOSE):
+		sliding_window_len=128,
+		percentile=95,
+		init_clip_val=1e12,
+		verbose=False):
 		'''Builds an AdaptiveGradNormClip object
 
 		Args:
-			A set of optional keyword arguments for overriding the default values of the following hyperparameters:
+			A set of optional keyword arguments for overriding the default
+			values of the following hyperparameters:
 
-			sliding_window_len: An int specifying the number of recent steps to record. Default: 100.
+			sliding_window_len: An int specifying the number of recent steps to
+			record. Default: 100.
 
-			percentile: A float between 0.0 and 100.0 specifying the percentile of the recorded gradient norms at which to set the clip value. Default: 95.
+			percentile: A float between 0.0 and 100.0 specifying the percentile
+			of the recorded gradient norms at which to set the clip value.
+			Default: 95.
 
-			init_clip_val: A float specifying the initial clip value (i.e., for step 1, before any empirical gradient norms have been recorded). Default: 1e12.
+			init_clip_val: A float specifying the initial clip value (i.e., for
+			step 1, before any empirical gradient norms have been recorded).
+			Default: 1e12.
 
-			verbose: A bool indicating whether or not to print status updates. Default: False.
+				This default effectively prevents any clipping on iteration one.
+				This has the unfortunate side effect of throwing the vertical
+				axis scale on the corresponding Tensorboard plot. The
+				alternatives are computationally inefficient: either clip at an
+				arbitrary level (or at 0) for the first epoch or compute a
+				gradient at step 0 and initialize to the norm of the global
+				gradient.
+
+			verbose: A bool indicating whether or not to print status updates.
+			Default: False.
 		'''
 		self.step = 0
 		self.sliding_window_len = sliding_window_len
@@ -93,10 +95,12 @@ class AdaptiveGradNormClip(object):
 		return self.clip_val
 
 	def update(self, grad_norm):
-		'''Update the log of recent gradient norms and the corresponding recommended clip value.
+		'''Update the log of recent gradient norms and the corresponding
+		recommended clip value.
 
 		Args:
-			grad_norm: A float specifying the gradient norm from the most recent gradient step.
+			grad_norm: A float specifying the gradient norm from the most
+			recent gradient step.
 
 		Returns:
 			None.
