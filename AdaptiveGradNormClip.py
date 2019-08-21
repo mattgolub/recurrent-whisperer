@@ -44,15 +44,19 @@ class AdaptiveGradNormClip(object):
 
 	"""
 	def __init__(self,
+		do_adaptive_clipping=True,
 		sliding_window_len=128,
-		percentile=95,
+		percentile=95.0,
 		init_clip_val=1e12,
+		max_clip_val=1e12,
 		verbose=False):
 		'''Builds an AdaptiveGradNormClip object
 
 		Args:
 			A set of optional keyword arguments for overriding the default
 			values of the following hyperparameters:
+
+			do_adaptive_clipping: A bool indicating whether to implement adaptive gradient norm clipping (i.e., the purpose of this class). Setting to False leads to clipping at a fixed gradient norm specified by fixed_clip_val. Default: True
 
 			sliding_window_len: An int specifying the number of recent steps to
 			record. Default: 100.
@@ -73,15 +77,23 @@ class AdaptiveGradNormClip(object):
 				gradient at step 0 and initialize to the norm of the global
 				gradient.
 
+			max_clip_val: A positive float indicating the largest allowable  clipping value. This effectively overrides the adaptive nature of the gradient clipping once the adaptive clip value exceeds this threshold. When do_adaptive_clipping is set to False, this clipping value is always applied at each step. Default: 1e12.
+
 			verbose: A bool indicating whether or not to print status updates.
 			Default: False.
 		'''
 		self.step = 0
+		self.do_adaptive_clipping = do_adaptive_clipping
 		self.sliding_window_len = sliding_window_len
 		self.percentile = percentile
-		self.clip_val = init_clip_val
+		self.max_clip_val = max_clip_val
 		self.grad_norm_log = []
 		self.verbose = verbose
+
+		if self.do_adaptive_clipping:
+			self.clip_val = init_clip_val
+		else:
+			self.clip_val = self.max_clip_val
 
 	def __call__(self):
 		'''Returns the current clip value.
@@ -105,15 +117,19 @@ class AdaptiveGradNormClip(object):
 		Returns:
 			None.
 		'''
-		if self.step < self.sliding_window_len:
-			# First fill up an entire "window" of values
-			self.grad_norm_log.append(grad_norm)
-		else:
-			# Once the window is full, overwrite the oldest value
-			idx = np.mod(self.step, self.sliding_window_len)
-			self.grad_norm_log[idx] = grad_norm
+		if self.do_adaptive_clipping:
+			if self.step < self.sliding_window_len:
+				# First fill up an entire "window" of values
+				self.grad_norm_log.append(grad_norm)
+			else:
+				# Once the window is full, overwrite the oldest value
+				idx = np.mod(self.step, self.sliding_window_len)
+				self.grad_norm_log[idx] = grad_norm
 
-		self.clip_val = np.percentile(self.grad_norm_log, self.percentile)
+			proposed_clip_val = \
+				np.percentile(self.grad_norm_log, self.percentile)
+
+			self.clip_val = min(proposed_clip_val, self.max_clip_val)
 
 		self.step += 1
 
