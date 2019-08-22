@@ -486,6 +486,9 @@ class RecurrentWhisperer(object):
             bool indicating whether a run exists.
         '''
 
+        if run_dir is None:
+            return False
+
         paths = RecurrentWhisperer.get_paths(run_dir)
 
         # Check for existence of all directories that would have been created
