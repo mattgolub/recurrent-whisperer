@@ -240,7 +240,9 @@ class RecurrentWhisperer(object):
         '''Make parameter initializations and data batching reproducible
         across runs. Because this gets updated as data are drawn from the
         random number generator, currently this state will not transfer across
-        saves and restores.'''
+        saves and restores. The fix would be to draw all the batching random
+        numbers needed to run as many epochs as have been previously run, then
+        resume from there.'''
         self.rng = npr.RandomState(hps.random_seed)
 
         self.adaptive_learning_rate = AdaptiveLearningRate(**hps.alr_hps)
@@ -469,9 +471,6 @@ class RecurrentWhisperer(object):
 
             'lvl_dir': lvl_dir,
             'lvl_ckpt_path': os.path.join(lvl_dir, 'lvl.ckpt'),
-
-            'alr_path': os.path.join(hps_dir, 'learn_rate.pkl'),
-            'agnc_path': os.path.join(hps_dir, 'norm_clip.pkl'),
             }
 
     @staticmethod
@@ -542,8 +541,6 @@ class RecurrentWhisperer(object):
         self.hps_dir = paths['hps_dir']
         self.hps_path = paths['hps_path']
         self.hps_yaml_path = paths['hps_yaml_path']
-        self.alr_path = paths['alr_path']
-        self.agnc_path = paths['agnc_path']
 
         self.ckpt_dir = paths['ckpt_dir']
         self.ckpt_path = paths['ckpt_path']
@@ -560,7 +557,8 @@ class RecurrentWhisperer(object):
         if os.path.isdir(self.run_dir):
             print('\nRun directory found: %s.' % self.run_dir)
             ckpt = tf.train.get_checkpoint_state(self.ckpt_dir)
-            if ckpt is None:
+            lvl_ckpt = tf.train.get_checkpoint_state(self.lvl_dir)
+            if ckpt is None and lvl_ckpt is None:
                 print('No checkpoints found.')
             if self.hps.do_restart_run:
                 print('\tDeleting run directory.')
@@ -869,8 +867,13 @@ class RecurrentWhisperer(object):
             None.
         '''
         ckpt = tf.train.get_checkpoint_state(self.ckpt_dir)
+        lvl_ckpt = tf.train.get_checkpoint_state(self.lvl_dir)
 
-        if ckpt is None:
+        if ckpt is not None:
+            self._restore_from_checkpoint(self.seso_saver, self.ckpt_dir)
+        elif lvl_ckpt is not None:
+            self._restore_from_checkpoint(self.lvl_saver, self.lvl_dir)
+        else:
             # Initialize new session
             print('Initializing new run (%s).' % self.hps.get_hash())
             self.session.run(tf.global_variables_initializer())
@@ -881,11 +884,6 @@ class RecurrentWhisperer(object):
 
             # Start training timer from scratch
             self.train_time_offset = 0.0
-        else:
-            self._restore_from_checkpoint(ckpt)
-
-            # Resume training timer from value at last save.
-            self.train_time_offset = self.session.run(self.train_time)
 
     def train(self, train_data=None, valid_data=None):
         '''Trains the model with respect to a set of training data. Manages
@@ -1104,12 +1102,11 @@ class RecurrentWhisperer(object):
         if self.hps.do_save_ckpt and \
             np.mod(self._epoch(), self.hps.n_epochs_per_ckpt) == 0:
 
-            self._update_train_time()
-            self._save_checkpoint()
+            self._save_checkpoint(self.seso_saver, self.ckpt_path)
 
-    def _save_checkpoint(self):
+    def _save_checkpoint(self, saver, ckpt_path):
         '''Saves a model checkpoint.
-
+        COMMENTS NEED UPDATING
         Args:
             None.
 
@@ -1117,13 +1114,14 @@ class RecurrentWhisperer(object):
             None.
         '''
         print('\tSaving checkpoint...')
-        self.seso_saver.save(self.session,
-                             self.ckpt_path,
-                             global_step=self._step())
-        self.adaptive_learning_rate.save(self.alr_path)
-        self.adaptive_grad_norm_clip.save(self.agnc_path)
+        self._update_train_time()
+        saver.save(self.session, ckpt_path, global_step=self._step())
 
-    def _restore_from_checkpoint(self, ckpt):
+        ckpt_dir, ckpt_fname = os.path.split(ckpt_path)
+        self.adaptive_learning_rate.save(ckpt_dir)
+        self.adaptive_grad_norm_clip.save(ckpt_dir)
+
+    def _restore_from_checkpoint(self, saver, ckpt_dir):
         '''Restores a model from the most advanced previously saved model
         checkpoint.
 
@@ -1131,12 +1129,17 @@ class RecurrentWhisperer(object):
         form. This can become relevant if restoring a model and resuming
         training using updated values of non-hash hyperparameters.
 
+        COMMENTS NEED UPDATING
+
         Args:
-            None.
+            saver
+
+            ckpt_dir
 
         Returns:
             None.
         '''
+        ckpt = tf.train.get_checkpoint_state(ckpt_dir)
         if not(tf.train.checkpoint_exists(ckpt.model_checkpoint_path)):
             raise FileNotFoundError('Checkpoint does not exist: %s'
                                     % ckpt.model_checkpoint_path)
@@ -1145,9 +1148,8 @@ class RecurrentWhisperer(object):
         print('Previous checkpoints found.')
         print('Loading latest checkpoint: %s.'
               % ntpath.basename(ckpt.model_checkpoint_path))
-        self.seso_saver.restore(self.session, ckpt.model_checkpoint_path)
-        self.adaptive_learning_rate.restore(self.alr_path)
-        self.adaptive_grad_norm_clip.restore(self.agnc_path)
+        self._restore(
+            saver, ckpt_dir, ckpt.model_checkpoint_path)
 
     def _maybe_save_lvl_checkpoint(self, valid_loss, train_data, valid_data):
         '''Saves a model checkpoint if the current validation loss values is
@@ -1177,10 +1179,7 @@ class RecurrentWhisperer(object):
             self._update_epoch_last_lvl_improvement(self._epoch())
 
             if self.hps.do_save_lvl_ckpt:
-                self._update_train_time()
-                print('\tSaving checkpoint.')
-                self.lvl_saver.save(self.session,
-                    self.lvl_ckpt_path, global_step=self._step())
+                self._save_checkpoint(self.lvl_saver, self.lvl_ckpt_path)
 
             train_pred, train_summary = self.predict(train_data)
             self._maybe_save_lvl_predictions(train_pred, 'train')
@@ -1189,6 +1188,17 @@ class RecurrentWhisperer(object):
             valid_pred, valid_summary = self.predict(valid_data)
             self._maybe_save_lvl_predictions(valid_pred, 'valid')
             self._maybe_save_lvl_summaries(valid_summary, 'valid')
+
+    def _restore(self, saver, ckpt_dir, model_checkpoint_path):
+        '''
+        COMMENTS NEED UPDATING
+        '''
+        saver.restore(self.session, model_checkpoint_path)
+        self.adaptive_learning_rate.restore(ckpt_dir)
+        self.adaptive_grad_norm_clip.restore(ckpt_dir)
+
+        # Resume training timer from value at last save.
+        self.train_time_offset = self.session.run(self.train_time)
 
     def restore_from_lvl_checkpoint(self, model_checkpoint_path=None):
         '''Restores a model from a previously saved lowest-validation-loss
@@ -1217,7 +1227,7 @@ class RecurrentWhisperer(object):
         # Restore previous session
         print('\tLoading lvl checkpoint: %s.'
               % ntpath.basename(model_checkpoint_path))
-        self.lvl_saver.restore(self.session, model_checkpoint_path)
+        self._restore(self.lvl_saver, self.lvl_dir, model_checkpoint_path)
 
     def _maybe_save_lvl_predictions(self, predictions, train_or_valid_str):
         '''Saves all model predictions in .pkl files (and optionally in .mat
@@ -1343,6 +1353,10 @@ class RecurrentWhisperer(object):
         '''
         hps = self.hps
 
+        if self.is_done(self.run_dir):
+            print('Stopping optimization: found .done file.')
+            return True
+
         if loss is np.inf:
             print('\nStopping optimization: loss is Inf!')
             return True
@@ -1402,7 +1416,7 @@ class RecurrentWhisperer(object):
 
         # Save checkpoint upon completing training
         if self.hps.do_save_ckpt:
-            self._save_checkpoint()
+            self._save_checkpoint(self.seso_saver, self.ckpt_path)
 
         if self.hps.do_generate_lvl_visualizations:
             if self.hps.do_save_lvl_ckpt:

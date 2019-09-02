@@ -5,7 +5,7 @@ Written using Python 2.7.12
 @ Matt Golub, August 2018.
 Please direct correspondence to mgolub@stanford.edu.
 '''
-
+import os
 import numpy as np
 import numpy.random as npr
 import matplotlib.pyplot as plt
@@ -164,6 +164,8 @@ class AdaptiveLearningRate(object):
 		self.min_steps_per_increase = min_steps_per_increase
 		self.n_warmup_steps = n_warmup_steps
 		self.warmup_scale = warmup_scale
+
+		self.save_filename = 'learn_rate.pkl'
 
 		self._validate_hyperparameters()
 
@@ -344,36 +346,36 @@ class AdaptiveLearningRate(object):
 
 		return did_decrease_rate
 
-	def save(self, save_path):
+	def save(self, save_dir):
 		'''Saves the current state of the AdaptiveLearningRate object.
 
 		Args:
-			save_path: A string containing the path at which to save
-			(including directory, filename, and arbitrary extension).
+			save_dir: A string containing the directory in which to save.
 
 		Returns:
 			None.
 		'''
 		if self.verbose:
 			print('Saving AdaptiveLearningRate.')
+		save_path = os.path.join(save_dir, self.save_filename)
 		file = open(save_path,'w')
 		file.write(cPickle.dumps(self.__dict__))
 		file.close
 
-	def restore(self, restore_path):
+	def restore(self, restore_dir):
 		'''Restores the state of a previously saved AdaptiveLearningRate
 		object.
 
 		Args:
-			restore_path: A string containing the path at which to find a
-			previously saved AdaptiveLearningRate object (including directory,
-			filename, and arbitrary extension).
+			restore_dir: A string containing the directory in which to find a
+			previously saved AdaptiveLearningRate object.
 
 		Returns:
 			None.
 		'''
 		if self.verbose:
 			print('Restoring AdaptiveLearningRate.')
+		restore_path = os.path.join(restore_dir, self.save_filename)
 		file = open(restore_path,'r')
 		restore_data = file.read()
 		file.close()

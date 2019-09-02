@@ -5,7 +5,7 @@ Written using Python 2.7.12
 @ Matt Golub, August 2018.
 Please direct correspondence to mgolub@stanford.edu.
 '''
-
+import os
 import numpy as np
 import cPickle
 
@@ -89,6 +89,7 @@ class AdaptiveGradNormClip(object):
 		self.max_clip_val = max_clip_val
 		self.grad_norm_log = []
 		self.verbose = verbose
+		self.save_filename = 'norm_clip.pkl'
 
 		if self.do_adaptive_clipping:
 			self.clip_val = init_clip_val
@@ -133,11 +134,12 @@ class AdaptiveGradNormClip(object):
 
 		self.step += 1
 
-	def save(self, save_path):
+	def save(self, save_dir):
 		'''Saves the current AdaptiveGradNormClip state, enabling seamless restoration of gradient descent training procedure.
 
 		Args:
-			save_path: A string containing the path for saving the current object state.
+			save_dir: A string containing the directory in which to save the
+			current object state.
 
 		Returns:
 			None.
@@ -145,21 +147,24 @@ class AdaptiveGradNormClip(object):
 
 		if self.verbose:
 			print('Saving AdaptiveGradNormClip.')
+		save_path = os.path.join(save_dir, self.save_filename)
 		file = open(save_path,'w')
 		file.write(cPickle.dumps(self.__dict__))
 		file.close
 
-	def restore(self, restore_path):
+	def restore(self, restore_dir):
 		'''Loads a previously saved AdaptiveGradNormClip state, enabling seamless restoration of gradient descent training procedure.
 
 		Args:
-			restore_path: A string containing the path from which to load the object state.
+			restore_dir: A string containing the directory from which to load
+			a previously saved object state.
 
 		Returns:
 			None.
 		'''
 		if self.verbose:
 			print('Restoring AdaptiveGradNormClip.')
+		restore_path = os.path.join(restore_dir, self.save_filename)
 		file = open(restore_path,'r')
 		restore_data = file.read()
 		file.close()
