@@ -630,6 +630,9 @@ class RecurrentWhisperer(object):
 
         vars_to_train = tf.trainable_variables()
 
+        # See other comment with tf.variable_scope
+        # with tf.variable_scope('optimizer', reuse=tf.AUTO_REUSE):
+
         with tf.name_scope('optimizer'):
             '''Maintain state using TF framework for seamless saving and
             restoring of runs'''
@@ -789,6 +792,13 @@ class RecurrentWhisperer(object):
             self.writer = tf.summary.FileWriter(self.events_dir)
             self.writer.add_graph(tf.get_default_graph())
 
+
+
+            # with tf.variable_scope('tb-optimizer', reuse=tf.AUTO_REUSE):
+            '''Probably should have used the above, which might allow loading
+            multiple models sequentially, as is helpful with CV analyses.
+            Changing makes old models unrestorable.'''
+
             # Tensorboard summaries (updated during training via _train_epoch)
             with tf.name_scope('tb-optimizer'):
                 summaries = []
@@ -906,7 +916,7 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        N_EPOCH_SPLITS = 6
+        N_EPOCH_SPLITS = 6 # Number of segments to time for profiling
 
         self._setup_training(train_data, valid_data)
 
@@ -1042,9 +1052,9 @@ class RecurrentWhisperer(object):
         else:
             n = self.hps.n_epochs_per_validation_update
             if np.mod(self._epoch(), n) == 0:
-                self._update_validation(train_data, valid_data)
+                self.update_validation(train_data, valid_data)
 
-    def _update_validation(self, train_data, valid_data):
+    def update_validation(self, train_data, valid_data):
         '''Evaluates the validation data, updates the corresponding
         Tensorboard summaries are updated, and if the validation loss
         indicates a new minimum, a model checkpoint is saved.
@@ -1181,13 +1191,7 @@ class RecurrentWhisperer(object):
             if self.hps.do_save_lvl_ckpt:
                 self._save_checkpoint(self.lvl_saver, self.lvl_ckpt_path)
 
-            train_pred, train_summary = self.predict(train_data)
-            self._maybe_save_lvl_predictions(train_pred, 'train')
-            self._maybe_save_lvl_summaries(train_summary, 'train')
-
-            valid_pred, valid_summary = self.predict(valid_data)
-            self._maybe_save_lvl_predictions(valid_pred, 'valid')
-            self._maybe_save_lvl_summaries(valid_summary, 'valid')
+            self.refresh_lvl_files(train_data, valid_data)
 
     def _restore(self, saver, ckpt_dir, model_checkpoint_path):
         '''
@@ -1199,6 +1203,29 @@ class RecurrentWhisperer(object):
 
         # Resume training timer from value at last save.
         self.train_time_offset = self.session.run(self.train_time)
+
+    def refresh_lvl_files(self, train_data, valid_data):
+        '''Saves model predictions over the traiing and validation data.
+
+        If prediction summaries are generated, those summaries are saved in
+        separate .pkl files (and optional .mat files). See docstring for
+        predict() for additional detail.
+
+        Args:
+            train_data: dict containing the training data.
+
+            valid_data: dict containing the validation data.
+
+        Returns:
+            None.
+        '''
+        train_pred, train_summary = self.predict(train_data)
+        self._maybe_save_lvl_predictions(train_pred, 'train')
+        self._maybe_save_lvl_summaries(train_summary, 'train')
+
+        valid_pred, valid_summary = self.predict(valid_data)
+        self._maybe_save_lvl_predictions(valid_pred, 'valid')
+        self._maybe_save_lvl_summaries(valid_summary, 'valid')
 
     def restore_from_lvl_checkpoint(self, model_checkpoint_path=None):
         '''Restores a model from a previously saved lowest-validation-loss
