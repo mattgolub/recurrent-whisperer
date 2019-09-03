@@ -142,6 +142,13 @@ class Hyperparameters(object):
 
         set_helper(self._all_hps_as_dict, key, value)
 
+        if ':' in key:
+            raise NotImplementedNotImplementedErrorError(
+                'Have not yet implemented recursive __setitem__ for '
+                'Hyperparameter class variable copies of dict items')
+        else:
+            setattr(self, key, value)
+
     def __str__(self):
 
         def print_helper(D, n_indent=0):
@@ -179,6 +186,10 @@ class Hyperparameters(object):
             string containing the hyperparameters hash.
         '''
         return self._generate_hash(self._hash_hps_as_dict)[0:self._hash_len]
+
+    @property
+    def run_hash(self):
+        return self.get_hash()
 
     def get_hash_all_hps(self):
         '''Computes a hash of all hyperparameters, including default and
