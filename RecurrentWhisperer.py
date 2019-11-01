@@ -262,8 +262,10 @@ class RecurrentWhisperer(object):
             self._setup_savers()
 
             self._setup_session()
-            self._initialize_or_restore()
-            self.print_trainable_variables()
+
+            if not hps.do_custom_restore:
+                self._initialize_or_restore()
+                self.print_trainable_variables()
 
     @staticmethod
     def _default_super_hash_hyperparameters():
@@ -286,6 +288,7 @@ class RecurrentWhisperer(object):
 
             'do_log_output': False,
             'do_restart_run': False,
+            'do_custom_restore': False,
 
             'do_save_tensorboard_events': True,
 
@@ -777,6 +780,11 @@ class RecurrentWhisperer(object):
             self._setup_visualizations()
 
     def _maybe_setup_tensorboard(self):
+        
+    	if self.hps.do_save_tensorboard_events:
+            self._setup_tensorboard()
+
+    def _setup_tensorboard(self):
         '''Sets up the Tensorboard FileWriter and Tensorboard summaries for
         monitoring the optimization.
 
@@ -787,40 +795,30 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        if self.hps.do_save_tensorboard_events:
+        self.writer = tf.summary.FileWriter(self.events_dir)
+        self.writer.add_graph(tf.get_default_graph())
 
-            self.writer = tf.summary.FileWriter(self.events_dir)
-            self.writer.add_graph(tf.get_default_graph())
+        with tf.variable_scope('tb-optimizer', reuse=tf.AUTO_REUSE):
+            summaries = []
+            summaries.append(tf.summary.scalar('loss', self.loss))
+            summaries.append(tf.summary.scalar('lvl', self.lvl))
+            summaries.append(tf.summary.scalar(
+                'learning rate',
+                self.learning_rate))
+            summaries.append(tf.summary.scalar(
+                'grad global norm',
+                self.grad_global_norm))
+            summaries.append(tf.summary.scalar(
+                'grad norm clip val',
+                self.grad_norm_clip_val))
+            summaries.append(tf.summary.scalar(
+                'clipped grad global norm',
+                self.clipped_grad_global_norm))
+            summaries.append(tf.summary.scalar(
+                'grad clip diff',
+                self.clipped_grad_norm_diff))
 
-
-
-            # with tf.variable_scope('tb-optimizer', reuse=tf.AUTO_REUSE):
-            '''Probably should have used the above, which might allow loading
-            multiple models sequentially, as is helpful with CV analyses.
-            Changing makes old models unrestorable.'''
-
-            # Tensorboard summaries (updated during training via _train_epoch)
-            with tf.name_scope('tb-optimizer'):
-                summaries = []
-                summaries.append(tf.summary.scalar('loss', self.loss))
-                summaries.append(tf.summary.scalar('lvl', self.lvl))
-                summaries.append(tf.summary.scalar(
-                    'learning rate',
-                    self.learning_rate))
-                summaries.append(tf.summary.scalar(
-                    'grad global norm',
-                    self.grad_global_norm))
-                summaries.append(tf.summary.scalar(
-                    'grad norm clip val',
-                    self.grad_norm_clip_val))
-                summaries.append(tf.summary.scalar(
-                    'clipped grad global norm',
-                    self.clipped_grad_global_norm))
-                summaries.append(tf.summary.scalar(
-                    'grad clip diff',
-                    self.clipped_grad_norm_diff))
-
-                self.merged_opt_summary = tf.summary.merge(summaries)
+            self.merged_opt_summary = tf.summary.merge(summaries)
 
     def _setup_savers(self):
         '''Sets up Tensorflow checkpoint saving.
