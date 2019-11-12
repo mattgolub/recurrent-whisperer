@@ -6,6 +6,10 @@ Written using Python 2.7.12
 Please direct correspondence to mgolub@stanford.edu.
 '''
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
 import time
 
@@ -119,7 +123,7 @@ class Timer(object):
 		else:
 			self._print('Timer cannot take a split until it has been started.')
 
-	def disp(self):
+	def disp(self, print_on_single_line=False):
 		'''Prints the profile of the tasks that have been timed thus far.
 
 		Args:
@@ -128,6 +132,7 @@ class Timer(object):
 		Returns:
 			None.
 		'''
+
 		if not self.is_running():
 			self._print('Timer has not been started.')
 		elif self.idx == 0:
@@ -136,8 +141,11 @@ class Timer(object):
 			total_time = self.times[self.idx] - self.times[0]
 			split_times = np.diff(self.times)
 
-			print('%s%s time: %.2fs'
-				% (self.print_prefix, self.name, total_time))
+			print_data = (self.print_prefix, self.name, total_time)
+			if print_on_single_line:
+				print('%s%s time: %.2fs: ' % print_data, end='')
+			else:
+				print('%s%s time: %.2fs' % print_data)
 
 			# allows printing before all tasks have been run
 			for idx in range(self.idx):
@@ -145,11 +153,22 @@ class Timer(object):
 					task_name = 'Task ' + str(idx+1)
 				else:
 					task_name = self.task_names[idx]
-				print('\t%s%s: %.2fs (%.1f%%)'
-					% (self.print_prefix,
-					   task_name,
-					   split_times[idx],
-					   100*split_times[idx]/total_time))
+
+				if print_on_single_line:
+					print(' %s: %.2fs (%.1f%%); ' %
+						(task_name,
+						split_times[idx],
+						100*split_times[idx]/total_time),
+						end='')
+				else:
+					print('\t%s%s: %.2fs (%.1f%%)' %
+						(self.print_prefix,
+					   	task_name,
+					   	split_times[idx],
+					   	100*split_times[idx]/total_time))
+
+			if print_on_single_line:
+				print('')
 
 	def _print(self, str):
 		'''Prints string after prefixing with the desired number of indentations.
