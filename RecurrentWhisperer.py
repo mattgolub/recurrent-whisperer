@@ -245,6 +245,7 @@ class RecurrentWhisperer(object):
         resume from there.'''
         self.rng = npr.RandomState(hps.random_seed)
 
+        self.prev_loss = None
         self.adaptive_learning_rate = AdaptiveLearningRate(**hps.alr_hps)
         self.adaptive_grad_norm_clip = AdaptiveGradNormClip(**hps.agnc_hps)
 
@@ -362,8 +363,7 @@ class RecurrentWhisperer(object):
         return os.path.join(log_dir, run_hash)
 
     @staticmethod
-    def get_run_dir(log_dir, run_hash,
-        dataset_name=None, n_folds=None, fold_idx=None):
+    def get_run_dir(log_dir, run_hash, n_folds=None, fold_idx=None):
         ''' Returns a path to the direcory containing all files related to a
         given run.
 
@@ -374,10 +374,6 @@ class RecurrentWhisperer(object):
             run_hash: string containing the hyperparameters hash used to
             establish the run directory. Returned by
             Hyperparameters.get_hash().
-
-            dataset_name: (optional) Filesystem-safe string describing the
-            dataset. If provided with all other optional arguments, this is
-            systematically incorporated into the generated path.
 
             n_folds: (optional) Non-negative integer specifying the number of
             cross-validation folds in the run.
@@ -391,12 +387,10 @@ class RecurrentWhisperer(object):
 
         hash_dir = RecurrentWhisperer.get_hash_dir(log_dir, run_hash)
 
-        if (dataset_name is not None) and \
-            (n_folds is not None) and \
-            (fold_idx is not None):
+        if (n_folds is not None) and (fold_idx is not None):
 
             fold_str = str('fold-%d-of-%d' % (fold_idx+1, n_folds))
-            run_dir = os.path.join(hash_dir, dataset_name, fold_str)
+            run_dir = os.path.join(hash_dir, fold_str)
 
             return run_dir
 
@@ -424,17 +418,13 @@ class RecurrentWhisperer(object):
         if RecurrentWhisperer.is_run_dir(run_dir):
             pass
         else:
-            dataset_names = list_dirs(run_dir)
+            fold_names = list_dirs(run_dir)
 
-            for dataset_name in dataset_names:
-                cv_dir = os.path.join(run_dir, dataset_name)
-                fold_names = list_dirs(cv_dir)
-
-                run_info[dataset_name] = []
-                for fold_name in fold_names:
-                    run_dir = os.path.join(cv_dir, fold_name)
-                    if RecurrentWhisperer.is_run_dir(run_dir):
-                        run_info[dataset_name].append(fold_name)
+            run_info = []
+            for fold_name in fold_names:
+                fold_dir = os.path.join(run_dir, fold_name)
+                if RecurrentWhisperer.is_run_dir(fold_dir):
+                    run_info.append(fold_name)
 
         return run_info
 
@@ -456,6 +446,7 @@ class RecurrentWhisperer(object):
         ckpt_dir = os.path.join(run_dir, 'ckpt')
         lvl_dir = os.path.join(run_dir, 'lvl')
         events_dir = os.path.join(run_dir, 'events')
+        fig_dir = os.path.join(run_dir, 'figs')
 
         return {
             'run_dir': run_dir,
@@ -474,6 +465,8 @@ class RecurrentWhisperer(object):
 
             'lvl_dir': lvl_dir,
             'lvl_ckpt_path': os.path.join(lvl_dir, 'lvl.ckpt'),
+
+            'fig_dir': fig_dir,
             }
 
     @staticmethod
@@ -532,19 +525,17 @@ class RecurrentWhisperer(object):
         '''
         hps = self.hps
         log_dir = hps.log_dir
-        dataset_name = hps.dataset_name
         n_folds = hps.n_folds
         fold_idx = hps.fold_idx
         run_hash = hps.get_hash()
-        run_dir = self.get_run_dir(log_dir, run_hash,
-            dataset_name, n_folds, fold_idx)
+        run_dir = self.get_run_dir(log_dir, run_hash, n_folds, fold_idx)
         paths = self.get_paths(run_dir)
 
         self.run_dir = paths['run_dir']
         self.hps_dir = paths['hps_dir']
         self.hps_path = paths['hps_path']
         self.hps_yaml_path = paths['hps_yaml_path']
-
+        self.fig_dir = paths['fig_dir']
         self.ckpt_dir = paths['ckpt_dir']
         self.ckpt_path = paths['ckpt_path']
 
@@ -578,6 +569,7 @@ class RecurrentWhisperer(object):
             os.makedirs(self.ckpt_dir)
             os.makedirs(self.lvl_dir)
             os.makedirs(self.events_dir)
+            os.makedirs(self.fig_dir)
 
         if hps.do_log_output:
             self._setup_logger()
@@ -780,7 +772,7 @@ class RecurrentWhisperer(object):
             self._setup_visualizations()
 
     def _maybe_setup_tensorboard(self):
-        
+
     	if self.hps.do_save_tensorboard_events:
             self._setup_tensorboard()
 
@@ -803,19 +795,19 @@ class RecurrentWhisperer(object):
             summaries.append(tf.summary.scalar('loss', self.loss))
             summaries.append(tf.summary.scalar('lvl', self.lvl))
             summaries.append(tf.summary.scalar(
-                'learning rate',
+                'learning_rate',
                 self.learning_rate))
             summaries.append(tf.summary.scalar(
-                'grad global norm',
+                'grad_global_norm',
                 self.grad_global_norm))
             summaries.append(tf.summary.scalar(
-                'grad norm clip val',
+                'grad_norm_clip_val',
                 self.grad_norm_clip_val))
             summaries.append(tf.summary.scalar(
-                'clipped grad global norm',
+                'clipped_grad_global_norm',
                 self.clipped_grad_global_norm))
             summaries.append(tf.summary.scalar(
-                'grad clip diff',
+                'grad_clip_diff',
                 self.clipped_grad_norm_diff))
 
             self.merged_opt_summary = tf.summary.merge(summaries)
@@ -1016,6 +1008,12 @@ class RecurrentWhisperer(object):
 
         epoch_loss = compute_epoch_average(batch_losses, batch_sizes)
 
+        if self.prev_loss is None:
+            loss_improvement = np.nan
+        else:
+            loss_improvement = self.prev_loss - epoch_loss
+        self.prev_loss = epoch_loss
+
         # Update lowest training loss (if applicable)
         if epoch_loss < self._ltl():
             self._update_ltl(epoch_loss)
@@ -1027,8 +1025,10 @@ class RecurrentWhisperer(object):
 
         self._increment_epoch()
 
-        print('Epoch %d; loss: %.2e; learning rate: %.2e.'
-            % (self._epoch(), epoch_loss, self.adaptive_learning_rate()))
+        print('Epoch %d:' % self._epoch())
+        print('\tTraining loss: %.2e;' % epoch_loss)
+        print('\tImprovement in training loss: %.2e;' % loss_improvement)
+        print('\tLearning rate: %.2e;' %  self.adaptive_learning_rate())
 
         return epoch_loss
 
@@ -2045,8 +2045,7 @@ class RecurrentWhisperer(object):
              % sys._getframe().f_code.co_name)
 
     def _save_lvl_visualizations(self):
-        ''' Saves lowest-validation-loss visualizations. Only called ALL of the
-        following hyperparameters are True:
+        ''' Saves lowest-validation-loss visualizations. Only called if ALL of the following hyperparameters are True:
             do_save_lvl_ckpt
             do_generate_lvl_visualizations
             do_save_lvl_visualizations.
