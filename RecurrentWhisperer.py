@@ -1,6 +1,5 @@
 '''
 RecurrentWhisperer.py
-Version 1.0
 Written using Python 2.7.12 and TensorFlow 1.10
 @ Matt Golub, August 2018.
 Please direct correspondence to mgolub@stanford.edu.
@@ -29,7 +28,6 @@ from AdaptiveGradNormClip import AdaptiveGradNormClip
 from Hyperparameters import Hyperparameters
 from Timer import Timer
 
-
 class RecurrentWhisperer(object):
     '''A general class template for training recurrent neural networks using
     TensorFlow. This class provides functionality for:
@@ -55,14 +53,12 @@ class RecurrentWhisperer(object):
     _default_non_hash_hyperparameters()
     _setup_model(...)
     _setup_training(...)
-    _setup_visualization(...)
     _get_data_batches(...)
     _get_batch_size(...)
     _train_batch(...)
     predict(...)
+    _update_valid_tensorboard_summaries
     _update_visualization(...)
-    _save_training_visualizations(...)
-    _save_lvl_visualizations(...)
     '''
 
     def __init__(self, **kwargs):
@@ -134,15 +130,23 @@ class RecurrentWhisperer(object):
                 termination criteria is not applied. Default: None.
 
                 do_log_output: bool indicating whether to direct to a log file
-                all stdout and stderr output (i.e., everything that would otherwise print to the terminal). Default: False.
+                all stdout and stderr output (i.e., everything that would
+                otherwise print to the terminal). Default: False.
 
                 do_restart_run: bool indicating whether to force a restart of
                 a training run (e.g., if a previous run with the same
                 hyperparameters has saved checkpoints--the previous run will
                 be deleted and restarted rather than resumed). Default: False.
 
-                do_save_tensorboard_events: bool indicating whether or not to
-                save summaries for Tensorboard monitoring. Default: True.
+                do_save_tensorboard_summaries: bool indicating whether or not to
+                save summaries to Tensorboard. Default: True.
+
+                do_save_tensorboard_histograms: bool indicating whether or not
+                to save histograms of each trained variable to Tensorboard
+                throughout training. Default: True.
+
+                do_save_tensorboard_images: bool indicating wehther or not to
+                save visualizations to Tensorboard Images. Default: True.
 
                 do_save_ckpt: bool indicating whether or not to save model
                 checkpoints. Needed because setting max_ckpt_to_keep=0 results
@@ -199,7 +203,7 @@ class RecurrentWhisperer(object):
                 n_epochs_per_visualization_update: int specifying the number
                 of epochs between updates of any visualizations. Default: 100.
 
-                decive: String specifying the hardware on which to place this
+                device: String specifying the hardware on which to place this
                 model. E.g., "gpu:0" or "gpu:0". Default: "gpu:0".
 
                 per_process_gpu_memory_fraction: float specifying the maximum
@@ -259,7 +263,7 @@ class RecurrentWhisperer(object):
             # Each of these will create run_dir if it doesn't exist
             # (do not move above the os.path.isdir check that is in
             # _setup_run_dir)
-            self._maybe_setup_tensorboard()
+            self._maybe_setup_tensorboard_summaries()
             self._setup_savers()
 
             self._setup_session()
@@ -291,7 +295,9 @@ class RecurrentWhisperer(object):
             'do_restart_run': False,
             'do_custom_restore': False,
 
-            'do_save_tensorboard_events': True,
+            'do_save_tensorboard_summaries': True,
+			'do_save_tensorboard_histograms': True,
+            'do_save_tensorboard_images': True,
 
             'do_save_ckpt': True,
             'do_save_lvl_ckpt': True,
@@ -511,6 +517,10 @@ class RecurrentWhisperer(object):
         paths = RecurrentWhisperer.get_paths(run_dir)
         return os.path.exists(paths['done_path'])
 
+    # *************************************************************************
+    # Setup *******************************************************************
+    # *************************************************************************
+
     def _setup_run_dir(self):
         '''Sets up a directory for this training run. The directory name is
         derived from a hash of the hyperparameter settings. Subdirectories are
@@ -700,70 +710,6 @@ class RecurrentWhisperer(object):
             self.train_op = self.optimizer.apply_gradients(
                 zipped_grads, global_step=self.global_step)
 
-    def update_variables_optimized(self, vars_to_train,
-        do_reset_termination_criteria=True,
-        do_reset_loss_history=True,
-        do_reset_learning_rate=True,
-        do_reset_gradient_clipping=True):
-        '''
-        Updates the list of variables optimized during training. Note: this
-        does not update tf.trainable_variables(), but simply updates the set
-        of gradients that are computed and applied.
-
-        Args:
-            vars_to_train (optional): list of TF variables to be optimized.
-            Each variable must be in tf.trainable_variables().
-
-            do_reset_termination_criteria (optional): bool indicating whether
-            to reset training termination criteria. Default: True.
-
-            do_reset_loss_history (optional): bool indicating whether to reset
-            records of the lowest training and validation losses (so that
-            rescaling terms in the loss function does not upset saving model
-            checkpoints.
-
-            do_reset_learning_rate (optional): bool indicating whether to
-            reset the adaptive learning rate. Default: True.
-
-            do_reset_gradient_clipping (optional): bool indicating whether
-            to reset the adaptive gradient clipping. Default: True.
-
-        Returns:
-            None.
-        '''
-
-        hps = self.hps
-
-        if do_reset_termination_criteria:
-            self._update_epoch_last_lvl_improvement(self._epoch())
-
-        if do_reset_loss_history:
-            self._update_ltl(np.inf)
-
-            self._update_lvl(np.inf)
-
-        if do_reset_learning_rate:
-            self.adaptive_learning_rate = AdaptiveLearningRate(**hps.alr_hps)
-
-        if do_reset_gradient_clipping:
-            self.adaptive_grad_norm_clip = AdaptiveGradNormClip(**hps.agnc_hps)
-
-        # Gradient clipping
-        grads = tf.gradients(self.loss, vars_to_train)
-
-        clipped_grads, self.grad_global_norm = tf.clip_by_global_norm(
-            grads, self.grad_norm_clip_val)
-
-        self.clipped_grad_global_norm = tf.global_norm(clipped_grads)
-
-        self.clipped_grad_norm_diff = \
-            self.grad_global_norm - self.clipped_grad_global_norm
-
-        zipped_grads = zip(clipped_grads, vars_to_train)
-
-        self.train_op = self.optimizer.apply_gradients(
-            zipped_grads, global_step=self.global_step)
-
     def _maybe_setup_visualizations(self):
 
         if self.hps.do_generate_training_visualizations or \
@@ -771,46 +717,20 @@ class RecurrentWhisperer(object):
 
             self._setup_visualizations()
 
-    def _maybe_setup_tensorboard(self):
-
-    	if self.hps.do_save_tensorboard_events:
-            self._setup_tensorboard()
-
-    def _setup_tensorboard(self):
-        '''Sets up the Tensorboard FileWriter and Tensorboard summaries for
-        monitoring the optimization.
+    def _setup_visualizations(self):
+        '''Sets up visualizations. Only called if
+            do_generate_training_visualizations or
+            do_generate_lvl_visualizations.
 
         Args:
             None.
 
         Returns:
-            None.
+            figs: dict with string figure names as keys and matplotlib.pyplot.figure objects as values. Typical usage will
+            populate this dict upon the first call to _update_visualizations().
         '''
 
-        self.writer = tf.summary.FileWriter(self.events_dir)
-        self.writer.add_graph(tf.get_default_graph())
-
-        with tf.variable_scope('tb-optimizer', reuse=tf.AUTO_REUSE):
-            summaries = []
-            summaries.append(tf.summary.scalar('loss', self.loss))
-            summaries.append(tf.summary.scalar('lvl', self.lvl))
-            summaries.append(tf.summary.scalar(
-                'learning_rate',
-                self.learning_rate))
-            summaries.append(tf.summary.scalar(
-                'grad_global_norm',
-                self.grad_global_norm))
-            summaries.append(tf.summary.scalar(
-                'grad_norm_clip_val',
-                self.grad_norm_clip_val))
-            summaries.append(tf.summary.scalar(
-                'clipped_grad_global_norm',
-                self.clipped_grad_global_norm))
-            summaries.append(tf.summary.scalar(
-                'grad_clip_diff',
-                self.clipped_grad_norm_diff))
-
-            self.merged_opt_summary = tf.summary.merge(summaries)
+        self.figs = dict()
 
     def _setup_savers(self):
         '''Sets up Tensorflow checkpoint saving.
@@ -821,13 +741,16 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
+
+        self.savers = dict()
+
         # save every so often
-        self.seso_saver = tf.train.Saver(tf.global_variables(),
-                                         max_to_keep=self.hps.max_ckpt_to_keep)
+        self.savers['seso'] = tf.train.Saver(
+            tf.global_variables(), max_to_keep=self.hps.max_ckpt_to_keep)
+
         # lowest validation loss
-        self.lvl_saver = \
-            tf.train.Saver(tf.global_variables(),
-                           max_to_keep=self.hps.max_lvl_ckpt_to_keep)
+        self.savers['lvl'] = tf.train.Saver(
+            tf.global_variables(), max_to_keep=self.hps.max_lvl_ckpt_to_keep)
 
     def _setup_session(self):
         '''Sets up a Tensorflow session with the desired GPU configuration.
@@ -854,6 +777,41 @@ class RecurrentWhisperer(object):
         self.session = tf.Session(config=config)
         print('\n')
 
+    # *************************************************************************
+    # Initializations *********************************************************
+    # *************************************************************************
+
+    def _np_init_weight_matrix(self, input_size, output_size):
+        '''Randomly initializes a weight matrix W and bias vector b.
+
+        For use with input data matrix X [n x input_size] and output data
+        matrix Y [n x output_size], such that Y = X*W + b (with broadcast
+        addition). This is the typical required usage for TF dynamic_rnn.
+
+        Weights drawn from a standard normal distribution and are then
+        rescaled to preserve input-output variance.
+
+        Args:
+            input_size: non-negative int specifying the number of input
+            dimensions of the linear mapping.
+
+            output_size: non-negative int specifying the number of output
+            dimensions of the linear mapping.
+
+        Returns:
+            W: numpy array of shape [input_size x output_size] containing
+            randomly initialized weights.
+
+            b: numpy array of shape [output_size,] containing all zeros.
+        '''
+        if input_size == 0:
+            scale = 1.0 # This avoids divide by zero error
+        else:
+            scale = 1.0 / np.sqrt(input_size)
+        W = np.multiply(scale,self.rng.randn(input_size, output_size))
+        b = np.zeros(output_size)
+        return W, b
+
     def _initialize_or_restore(self):
         '''Initializes all Tensorflow objects, either from existing model
         checkpoint if detected or otherwise as specified in _setup_model. If
@@ -870,9 +828,9 @@ class RecurrentWhisperer(object):
         lvl_ckpt = tf.train.get_checkpoint_state(self.lvl_dir)
 
         if ckpt is not None:
-            self._restore_from_checkpoint(self.seso_saver, self.ckpt_dir)
+            self._restore_from_checkpoint(self.savers['seso'], self.ckpt_dir)
         elif lvl_ckpt is not None:
-            self._restore_from_checkpoint(self.lvl_saver, self.lvl_dir)
+            self._restore_from_checkpoint(self.savers['lvl'], self.lvl_dir)
         else:
             # Initialize new session
             print('Initializing new run (%s).' % self.hps.get_hash())
@@ -884,6 +842,171 @@ class RecurrentWhisperer(object):
 
             # Start training timer from scratch
             self.train_time_offset = 0.0
+
+    # *************************************************************************
+    # Tensorboard *************************************************************
+    # *************************************************************************
+
+    def _maybe_setup_tensorboard_summaries(self):
+        '''Sets up the Tensorboard FileWriter and graph. Optionally sets up
+        Tensorboard Summaries. Tensorboard Images are not setup here (see
+        _update_tensorboard_images()).
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+
+        self.tensorboard = {}
+
+        self.tensorboard['writer'] = tf.summary.FileWriter(self.events_dir)
+        self.tensorboard['writer'].add_graph(tf.get_default_graph())
+
+    	if self.hps.do_save_tensorboard_summaries:
+            self._setup_tensorboard_summaries()
+
+    def _setup_tensorboard_summaries(self):
+        '''Sets up Tensorboard summaries for monitoring the optimization.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+
+        if self.hps.do_save_tensorboard_histograms:
+        	hist_summaries = []
+        	for v in tf.trainable_variables():
+        		hist_summaries.append(tf.summary.histogram(v.name, v))
+        	self.tensorboard['merged_hist_summary'] = \
+                tf.summary.merge(hist_summaries)
+
+        with tf.variable_scope('tb-optimizer', reuse=tf.AUTO_REUSE):
+            summaries = []
+            summaries.append(tf.summary.scalar('loss', self.loss))
+            summaries.append(tf.summary.scalar('lvl', self.lvl))
+            summaries.append(tf.summary.scalar(
+                'learning_rate',
+                self.learning_rate))
+            summaries.append(tf.summary.scalar(
+                'grad_global_norm',
+                self.grad_global_norm))
+            summaries.append(tf.summary.scalar(
+                'grad_norm_clip_val',
+                self.grad_norm_clip_val))
+            summaries.append(tf.summary.scalar(
+                'clipped_grad_global_norm',
+                self.clipped_grad_global_norm))
+            summaries.append(tf.summary.scalar(
+                'grad_clip_diff',
+                self.clipped_grad_norm_diff))
+
+            self.tensorboard['merged_opt_summary'] = tf.summary.merge(summaries)
+
+    def _setup_tensorboard_images(self):
+        '''Sets up Tensorboard Images. Called within first call to
+        _update_tensorboard_images(). Requires the following have already been called:
+            _maybe_setup_tensorboard(...)
+            _maybe_setup_visualizations(...)
+
+        Args:
+            figs: dict with string figure names as keys and
+            matplotlib.pyplot.figure objects as values.
+
+        Returns:
+            None.
+        '''
+
+        images = {
+            'placeholders': dict(), # dict of tf placeholders
+            'summaries': [], # list of tf.summary.images
+            }
+
+        figs = self.figs
+
+        for fig_name, fig in figs.iteritems():
+
+            (fig_width, fig_height) = fig.canvas.get_width_height()
+
+            images['placeholders'][fig_name] = \
+                tf.placeholder(tf.uint8, (1, fig_height, fig_width, 3))
+
+            images['summaries'].append(
+                tf.summary.image(
+                    fig_name,
+                    images['placeholders'][fig_name],
+                    max_outputs=1))
+
+        images['merged_summaries'] = tf.summary.merge(images['summaries'])
+
+        self.tensorboard['images'] = images
+
+    def _update_tensorboard_images(self):
+        ''' Imports figures into Tensorboard Images. Only called if:
+                do_save_tensorboard_images and
+                    (do_generate_training_visualizations or
+                        do_generate_lvl_visualizations)
+
+        Args:
+            figs: dict with string figure names as keys and matplotlib.pyplot.figure objects as values.
+
+        Returns:
+            None.
+        '''
+
+        # This done only on the first call to _update_tensorboard_images
+        if 'images' not in self.tensorboard:
+            self._setup_tensorboard_images()
+
+        figs = self.figs
+        images = self.tensorboard['images']
+
+        # Convert figures into RGB arrays in a feed_dict for Tensorflow
+        images_feed_dict = {}
+        for fig_name in figs:
+            key = images['placeholders'][fig_name]
+            images_feed_dict[key] = self._fig2array(figs[fig_name])
+
+        ev_merged_image_summaries = self.session.run(
+            images['merged_summaries'], feed_dict=images_feed_dict)
+
+        self.tensorboard['writer'].add_summary(
+            ev_merged_image_summaries, self._step())
+
+    @staticmethod
+    def _fig2array(fig):
+        ''' Convert from matplotlib figure to a numpy array suitable for a
+        tensorboard image summary.
+
+        Returns a numpy array of shape [1,width,height,3] (last for RGB)
+        (Modified from plot_lfads.py).
+        '''
+
+        # This call is responsible for >95% of fig2array time
+        fig.canvas.draw()
+
+        # This call is responsible for 1%-5% of fig2array time
+        data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+
+        # The following is responsible for basically 0% of fig2array time,
+        # regardless of VERSION 1 vs VERSION 2.
+
+        # VERSION 1
+        # data_wxhx3 = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        # data_1xwxhx3 = np.expand_dims(data_wxhx3,axis=0)
+
+        # VERSION 2
+        data_1xwxhx3 = data.reshape(
+            (1,) + fig.canvas.get_width_height()[::-1] + (3,))
+
+        return data_1xwxhx3
+
+    # *************************************************************************
+    # Training ****************************************************************
+    # *************************************************************************
 
     def train(self, train_data=None, valid_data=None):
         '''Trains the model with respect to a set of training data. Manages
@@ -1068,15 +1191,18 @@ class RecurrentWhisperer(object):
         predictions, summary = self.predict(valid_data)
         print('\tValidation loss: %.2e' % summary['loss'])
 
-        if self.hps.do_save_tensorboard_events:
-            self._update_valid_tensorboard(summary)
+        if self.hps.do_save_tensorboard_summaries:
+            self._update_valid_tensorboard_summaries(summary)
 
         self._maybe_save_lvl_checkpoint(
             summary['loss'], train_data, valid_data)
 
     def _maybe_update_training_visualizations(self, train_data, valid_data):
         '''Updates visualizations if the current epoch number indicates that
-        an update is due.
+        an update is due. Saves those visualization to Tensorboard or to
+        inidividual figure file, depending on hyperparameters
+        (do_save_tensorboard_images and do_save_training_visualizations,
+        respecitively.)
 
         Args:
             train_data: dict containing the training data.
@@ -1093,9 +1219,38 @@ class RecurrentWhisperer(object):
 
             self._update_visualizations(train_data, valid_data)
 
-            if hps.do_save_training_visualizations:
+            if hps.do_save_tensorboard_images:
+                self._update_tensorboard_images()
 
-                self._save_training_visualizations()
+            if hps.do_save_training_visualizations:
+                self.save_visualizations()
+
+    def save_visualizations(self, format='eps', dpi=600):
+        '''Saves individual figures to this run's figure directory. This is
+        independent of Tensorboard Images.
+
+        Args:
+            format: (optional) string indicating the saved figure type (i.e.,
+            file extension). See matplotlib.pyplot.figure.savefig(). Default:
+            'eps'.
+
+            dpi: (optional) dots per inch for saved figures. Default: 600.
+        '''
+
+        fig_dir = self.fig_dir
+        for fig_name, fig in self.figs.iteritems():
+
+            figs_dir_i, file_name_no_ext = os.path.split(
+                os.path.join(fig_dir, fig_name))
+            file_name = file_name_no_ext + '.' + format
+            file_path = os.path.join(figs_dir_i, file_name)
+
+            # This fig's dir may have additional directory structure beyond
+            # the already existing .../figs/ directory. Make it.
+            if not os.path.isdir(figs_dir_i):
+                os.makedirs(figs_dir_i)
+
+            fig.savefig(file_path, bbox_inches='tight', format=format, dpi=dpi)
 
     def _maybe_save_checkpoint(self):
         '''Saves a model checkpoint if the current epoch number indicates that
@@ -1110,7 +1265,7 @@ class RecurrentWhisperer(object):
         if self.hps.do_save_ckpt and \
             np.mod(self._epoch(), self.hps.n_epochs_per_ckpt) == 0:
 
-            self._save_checkpoint(self.seso_saver, self.ckpt_path)
+            self._save_checkpoint(self.savers['seso'], self.ckpt_path)
 
     def _save_checkpoint(self, saver, ckpt_path):
         '''Saves a model checkpoint.
@@ -1187,7 +1342,7 @@ class RecurrentWhisperer(object):
             self._update_epoch_last_lvl_improvement(self._epoch())
 
             if self.hps.do_save_lvl_ckpt:
-                self._save_checkpoint(self.lvl_saver, self.lvl_ckpt_path)
+                self._save_checkpoint(self.savers['lvl'], self.lvl_ckpt_path)
 
             self.refresh_lvl_files(train_data, valid_data)
 
@@ -1201,29 +1356,6 @@ class RecurrentWhisperer(object):
 
         # Resume training timer from value at last save.
         self.train_time_offset = self.session.run(self.train_time)
-
-    def refresh_lvl_files(self, train_data, valid_data):
-        '''Saves model predictions over the traiing and validation data.
-
-        If prediction summaries are generated, those summaries are saved in
-        separate .pkl files (and optional .mat files). See docstring for
-        predict() for additional detail.
-
-        Args:
-            train_data: dict containing the training data.
-
-            valid_data: dict containing the validation data.
-
-        Returns:
-            None.
-        '''
-        train_pred, train_summary = self.predict(train_data)
-        self._maybe_save_lvl_predictions(train_pred, 'train')
-        self._maybe_save_lvl_summaries(train_summary, 'train')
-
-        valid_pred, valid_summary = self.predict(valid_data)
-        self._maybe_save_lvl_predictions(valid_pred, 'valid')
-        self._maybe_save_lvl_summaries(valid_summary, 'valid')
 
     def restore_from_lvl_checkpoint(self, model_checkpoint_path=None):
         '''Restores a model from a previously saved lowest-validation-loss
@@ -1252,7 +1384,7 @@ class RecurrentWhisperer(object):
         # Restore previous session
         print('\tLoading lvl checkpoint: %s.'
               % ntpath.basename(model_checkpoint_path))
-        self._restore(self.lvl_saver, self.lvl_dir, model_checkpoint_path)
+        self._restore(self.savers['lvl'], self.lvl_dir, model_checkpoint_path)
 
     def _maybe_save_lvl_predictions(self, predictions, train_or_valid_str):
         '''Saves all model predictions in .pkl files (and optionally in .mat
@@ -1286,6 +1418,29 @@ class RecurrentWhisperer(object):
             # E.g., train_predictions or valid_summary
             filename_no_extension = train_or_valid_str + '_summary'
             self._save_helper(summary, filename_no_extension)
+
+    def refresh_lvl_files(self, train_data, valid_data):
+        '''Saves model predictions over the training and validation data.
+
+        If prediction summaries are generated, those summaries are saved in
+        separate .pkl files (and optional .mat files). See docstring for
+        predict() for additional detail.
+
+        Args:
+            train_data: dict containing the training data.
+
+            valid_data: dict containing the validation data.
+
+        Returns:
+            None.
+        '''
+        train_pred, train_summary = self.predict(train_data)
+        self._maybe_save_lvl_predictions(train_pred, 'train')
+        self._maybe_save_lvl_summaries(train_summary, 'train')
+
+        valid_pred, valid_summary = self.predict(valid_data)
+        self._maybe_save_lvl_predictions(valid_pred, 'valid')
+        self._maybe_save_lvl_summaries(valid_summary, 'valid')
 
     def _save_done_file(self):
         '''Save an empty .done file (indicating that the training procedure
@@ -1441,7 +1596,7 @@ class RecurrentWhisperer(object):
 
         # Save checkpoint upon completing training
         if self.hps.do_save_ckpt:
-            self._save_checkpoint(self.seso_saver, self.ckpt_path)
+            self._save_checkpoint(self.savers['seso'], self.ckpt_path)
 
         if self.hps.do_generate_lvl_visualizations:
             if self.hps.do_save_lvl_ckpt:
@@ -1450,8 +1605,11 @@ class RecurrentWhisperer(object):
                 self.restore_from_lvl_checkpoint()
                 self._update_visualizations(train_data, valid_data)
 
+                if self.hps.do_save_tensorboard_images:
+                    self._update_tensorboard_images()
+
                 if self.hps.do_save_lvl_visualizations:
-                    self._save_lvl_visualizations()
+                    self.save_visualizations()
             else:
                 raise Warning('Attempted to generate LVL visualizations, '
                     'but cannot because no LVL model checkpoint was saved.')
@@ -1604,37 +1762,6 @@ class RecurrentWhisperer(object):
         self.session.run(
             self.epoch_last_lvl_improvement_update,
             feed_dict={self.epoch_last_lvl_improvement_placeholder: epoch})
-
-    def _np_init_weight_matrix(self, input_size, output_size):
-        '''Randomly initializes a weight matrix W and bias vector b.
-
-        For use with input data matrix X [n x input_size] and output data
-        matrix Y [n x output_size], such that Y = X*W + b (with broadcast
-        addition). This is the typical required usage for TF dynamic_rnn.
-
-        Weights drawn from a standard normal distribution and are then
-        rescaled to preserve input-output variance.
-
-        Args:
-            input_size: non-negative int specifying the number of input
-            dimensions of the linear mapping.
-
-            output_size: non-negative int specifying the number of output
-            dimensions of the linear mapping.
-
-        Returns:
-            W: numpy array of shape [input_size x output_size] containing
-            randomly initialized weights.
-
-            b: numpy array of shape [output_size,] containing all zeros.
-        '''
-        if input_size == 0:
-            scale = 1.0 # This avoids divide by zero error
-        else:
-            scale = 1.0 / np.sqrt(input_size)
-        W = np.multiply(scale,self.rng.randn(input_size, output_size))
-        b = np.zeros(output_size)
-        return W, b
 
     def get_n_params(self, scope=None):
         ''' Counts the number of trainable parameters in a Tensorflow model
@@ -1802,6 +1929,70 @@ class RecurrentWhisperer(object):
 
         return hps_dict
 
+    def update_variables_optimized(self, vars_to_train,
+        do_reset_termination_criteria=True,
+        do_reset_loss_history=True,
+        do_reset_learning_rate=True,
+        do_reset_gradient_clipping=True):
+        '''
+        Updates the list of variables optimized during training. Note: this
+        does not update tf.trainable_variables(), but simply updates the set
+        of gradients that are computed and applied.
+
+        Args:
+            vars_to_train (optional): list of TF variables to be optimized.
+            Each variable must be in tf.trainable_variables().
+
+            do_reset_termination_criteria (optional): bool indicating whether
+            to reset training termination criteria. Default: True.
+
+            do_reset_loss_history (optional): bool indicating whether to reset
+            records of the lowest training and validation losses (so that
+            rescaling terms in the loss function does not upset saving model
+            checkpoints.
+
+            do_reset_learning_rate (optional): bool indicating whether to
+            reset the adaptive learning rate. Default: True.
+
+            do_reset_gradient_clipping (optional): bool indicating whether
+            to reset the adaptive gradient clipping. Default: True.
+
+        Returns:
+            None.
+        '''
+
+        hps = self.hps
+
+        if do_reset_termination_criteria:
+            self._update_epoch_last_lvl_improvement(self._epoch())
+
+        if do_reset_loss_history:
+            self._update_ltl(np.inf)
+
+            self._update_lvl(np.inf)
+
+        if do_reset_learning_rate:
+            self.adaptive_learning_rate = AdaptiveLearningRate(**hps.alr_hps)
+
+        if do_reset_gradient_clipping:
+            self.adaptive_grad_norm_clip = AdaptiveGradNormClip(**hps.agnc_hps)
+
+        # Gradient clipping
+        grads = tf.gradients(self.loss, vars_to_train)
+
+        clipped_grads, self.grad_global_norm = tf.clip_by_global_norm(
+            grads, self.grad_norm_clip_val)
+
+        self.clipped_grad_global_norm = tf.global_norm(clipped_grads)
+
+        self.clipped_grad_norm_diff = \
+            self.grad_global_norm - self.clipped_grad_global_norm
+
+        zipped_grads = zip(clipped_grads, vars_to_train)
+
+        self.train_op = self.optimizer.apply_gradients(
+            zipped_grads, global_step=self.global_step)
+
     def print_trainable_variables(self):
         '''Prints the current set of trainable variables.
 
@@ -1885,7 +2076,7 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def _setup_training(self, train_data, valid_data):
+    def _setup_training(self, train_data, valid_data=None):
         '''Performs any tasks that must be completed before entering the
         training loop in self.train.
 
@@ -1983,9 +2174,9 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def _update_valid_tensorboard(self, valid_summary):
+    def _update_valid_tensorboard_summaries(self, valid_summary):
         '''Updates the Tensorboard summaries corresponding to the validation
-        data. Only called if do_save_tensorboard_events.
+        data. Only called if do_save_tensorboard_summaries.
 
         Args:
             valid_summary: dict returned by predict().
@@ -1997,23 +2188,8 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def _setup_visualizations(self):
-        '''Sets up visualizations. Only called if
-            do_generate_training_visualizations or
-            do_generate_lvl_visualizations.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        '''
-        raise StandardError(
-            '%s must be implemented by RecurrentWhisperer subclass'
-             % sys._getframe().f_code.co_name)
-
-    def _update_visualizations(self, train_data, valid_data):
-        '''Updates visualizations. Only called if
+    def _update_visualizations(self, train_data, valid_data=None):
+        '''Updates visualizations in self.figs. Only called if
             do_generate_training_visualizations OR
             do_generate_lvl_visualizations.
 
@@ -2021,37 +2197,6 @@ class RecurrentWhisperer(object):
             train_data: dict containing the training data.
 
             valid_data: dict containing the validation data.
-
-        Returns:
-            None.
-        '''
-        raise StandardError(
-            '%s must be implemented by RecurrentWhisperer subclass'
-             % sys._getframe().f_code.co_name)
-
-    def _save_training_visualizations(self):
-        ''' Saves training visualizations. Only called if
-            do_generate_training_visualizations AND
-            do_save_training_visualizations.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        '''
-        raise StandardError(
-            '%s must be implemented by RecurrentWhisperer subclass'
-             % sys._getframe().f_code.co_name)
-
-    def _save_lvl_visualizations(self):
-        ''' Saves lowest-validation-loss visualizations. Only called if ALL of the following hyperparameters are True:
-            do_save_lvl_ckpt
-            do_generate_lvl_visualizations
-            do_save_lvl_visualizations.
-
-        Args:
-            None.
 
         Returns:
             None.
