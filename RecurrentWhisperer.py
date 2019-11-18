@@ -304,6 +304,10 @@ class RecurrentWhisperer(object):
 
             'do_generate_training_visualizations': True,
             'do_save_training_visualizations': True,
+
+            'do_generate_final_visualizations': True,
+            'do_save_final_visualizations': True,
+
             'do_generate_lvl_visualizations': True,
             'do_save_lvl_visualizations': True,
 
@@ -713,7 +717,8 @@ class RecurrentWhisperer(object):
     def _maybe_setup_visualizations(self):
 
         if self.hps.do_generate_training_visualizations or \
-            self.hps.do_generate_lvl_visualizations:
+            self.hps.do_generate_lvl_visualizations or \
+            self.hps.do_generate_final_visualizations:
 
             self._setup_visualizations()
 
@@ -729,7 +734,6 @@ class RecurrentWhisperer(object):
             figs: dict with string figure names as keys and matplotlib.pyplot.figure objects as values. Typical usage will
             populate this dict upon the first call to _update_visualizations().
         '''
-
         self.figs = dict()
 
     def _setup_savers(self):
@@ -1597,6 +1601,16 @@ class RecurrentWhisperer(object):
         # Save checkpoint upon completing training
         if self.hps.do_save_ckpt:
             self._save_checkpoint(self.savers['seso'], self.ckpt_path)
+
+        if self.hps.do_generate_final_visualizations:
+
+            self._update_visualizations(train_data, valid_data)
+
+            if self.hps.do_save_tensorboard_images:
+                self._update_tensorboard_images()
+
+            if self.hps.do_save_final_visualizations:
+                self.save_visualizations()
 
         if self.hps.do_generate_lvl_visualizations:
             if self.hps.do_save_lvl_ckpt:
