@@ -1799,6 +1799,28 @@ class RecurrentWhisperer(object):
 
         return n_params
 
+
+	def _get_vars_by_name_components(self, *name_components):
+        ''' Returns TF variables whose names meet input search criteria.
+
+        _get_vars_by_name_components(search_str1, search_str2, ...)
+
+        Args:
+            search_str1, search_str2, ... : strings to search for across all TF
+            trainable variables. Variables will be returned only if they
+            contain all of these strings.
+
+        Returns:
+            a list of TF variables whose name match the search criteria.
+        '''
+		matching_vars = []
+		for v in tf.trainable_variables():
+			hits = [name_component in v.name
+				for name_component in name_components]
+			if all(hits):
+				matching_vars.append(v)
+		return matching_vars
+
     @staticmethod
     def _get_lvl_path(run_dir, train_or_valid_str, predictions_or_summary_str):
         ''' Builds paths to the various files saved when the model achieves a
