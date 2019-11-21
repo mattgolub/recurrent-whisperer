@@ -886,33 +886,50 @@ class RecurrentWhisperer(object):
         '''
 
         if self.hps.do_save_tensorboard_histograms:
-        	hist_summaries = []
-        	for v in tf.trainable_variables():
-        		hist_summaries.append(tf.summary.histogram(v.name, v))
-        	self.tensorboard['merged_hist_summary'] = \
-                tf.summary.merge(hist_summaries)
+            hist_ops = {}
+            for v in tf.trainable_variables():
+                hist_ops[v.name] = v
+            self.tensorboard['merged_hist_summary'] = \
+                self._build_merged_tensorboard_summaries(
+                    scope='model',
+                    ops_dict=hist_ops,
+                    summary_fcn=tf.summary.histogram)
 
-        with tf.variable_scope('tb-optimizer', reuse=tf.AUTO_REUSE):
-            summaries = []
-            summaries.append(tf.summary.scalar('loss', self.loss))
-            summaries.append(tf.summary.scalar('lvl', self.lvl))
-            summaries.append(tf.summary.scalar(
-                'learning_rate',
-                self.learning_rate))
-            summaries.append(tf.summary.scalar(
-                'grad_global_norm',
-                self.grad_global_norm))
-            summaries.append(tf.summary.scalar(
-                'grad_norm_clip_val',
-                self.grad_norm_clip_val))
-            summaries.append(tf.summary.scalar(
-                'clipped_grad_global_norm',
-                self.clipped_grad_global_norm))
-            summaries.append(tf.summary.scalar(
-                'grad_clip_diff',
-                self.clipped_grad_norm_diff))
+        self.tensorboard['merged_opt_summary'] = \
+            self._build_merged_tensorboard_summaries(
+                scope='tb-optimizer',
+                ops_dict={
+                    'loss': self.loss,
+                    'lvl': self.lvl,
+                    'learning_rate': self.learning_rate,
+                    'grad_global_norm': self.grad_global_norm,
+                    'grad_norm_clip_val': self.grad_norm_clip_val,
+                    'clipped_grad_global_norm': self.clipped_grad_global_norm,
+                    'grad_clip_diff': self.clipped_grad_norm_diff})
 
-            self.tensorboard['merged_opt_summary'] = tf.summary.merge(summaries)
+    def _build_merged_tensorboard_summaries(self, scope, ops_dict,
+        summary_fcn=tf.summary.scalar):
+        ''' Builds and merges Tensorboard summaries.
+
+        Args:
+            scope: string for defining the scope the Tensorboard summaries to
+            be created. This defines organizational structure within
+            Tensorbaord.
+
+            ops_dict: dictionary with string names as keys and TF objects as values. Names will be used as panel labels in Tensorboard.
+
+            summary_fcn (optional): The Tensorflow summary function to be applied to TF objects in ops dict. Default: tf.summary_scalar
+
+        Returns:
+            A merged TF summary that, once executed via session.run(...), can be sent to Tensorboard via add_summary(...).
+        '''
+
+        summaries = []
+        with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
+            for name, op in ops_dict.iteritems():
+                summaries.append(summary_fcn(name, op))
+
+        return tf.summary.merge(summaries)
 
     def _setup_tensorboard_images(self):
         '''Sets up Tensorboard Images. Called within first call to
@@ -1820,6 +1837,30 @@ class RecurrentWhisperer(object):
         	if all(hits):
         		matching_vars.append(v)
         return matching_vars
+
+    @staticmethod
+    def _apply_weight_regularization(vars, weight_regularizer=tf.nn.l2_loss):
+        ''' Returns regularization loss applied to TF variables.
+
+        Args:
+            vars: A list of TF variables whose values will contribute to this
+            regularization loss.
+
+            weight_regularizer (optional): A TF loss function to be applied to
+            the variables in vars. Default: tf.nn.l2_loss.
+
+        Returns:
+            A TF scalar--the sum of the regularizer across all input variables.
+        '''
+
+    	# Print the parameters that are regularized via L2
+    	if len(vars) == 0:
+    		return tf.constant(0.0)
+    	else:
+    		print('Applying L2 regularization to the following parameters:')
+    		for v in vars:
+    			print('\t' +  v.name + ' ' + str(v.shape))
+    		return tf.reduce_sum([weight_regularizer(v) for v in vars])
 
     @staticmethod
     def _get_lvl_path(run_dir, train_or_valid_str, predictions_or_summary_str):
