@@ -207,7 +207,7 @@ class RecurrentWhisperer(object):
                 model. E.g., "gpu:0" or "gpu:0". Default: "gpu:0".
 
                 per_process_gpu_memory_fraction: float specifying the maximum
-                fraction of GPU memory to allocate. Set to None to allow
+                fraction of GPU mpredictemory to allocate. Set to None to allow
                 Tensorflow to manage GPU memory. See Tensorflow documentation
                 for interactions between device_count (accessed here via
                 disable_gpus), enable_gpu_growth, and
@@ -457,6 +457,7 @@ class RecurrentWhisperer(object):
         lvl_dir = os.path.join(run_dir, 'lvl')
         events_dir = os.path.join(run_dir, 'events')
         fig_dir = os.path.join(run_dir, 'figs')
+        fp_dir = os.path.join(run_dir, 'fps')
 
         return {
             'run_dir': run_dir,
@@ -477,6 +478,7 @@ class RecurrentWhisperer(object):
             'lvl_ckpt_path': os.path.join(lvl_dir, 'lvl.ckpt'),
 
             'fig_dir': fig_dir,
+            'fp_dir': fp_dir,
             }
 
     @staticmethod
@@ -550,6 +552,7 @@ class RecurrentWhisperer(object):
         self.hps_path = paths['hps_path']
         self.hps_yaml_path = paths['hps_yaml_path']
         self.fig_dir = paths['fig_dir']
+        self.fp_dir = paths['fp_dir']
         self.ckpt_dir = paths['ckpt_dir']
         self.ckpt_path = paths['ckpt_path']
 
@@ -584,6 +587,7 @@ class RecurrentWhisperer(object):
             os.makedirs(self.lvl_dir)
             os.makedirs(self.events_dir)
             os.makedirs(self.fig_dir)
+            os.makedirs(self.fp_dir)
 
         if hps.do_log_output:
             self._setup_logger()
@@ -1047,6 +1051,7 @@ class RecurrentWhisperer(object):
         # Training loop
         print('Entering training loop.')
         while True:
+
             epoch_timer = Timer(N_EPOCH_SPLITS, n_indent=1, name='Epoch')
             epoch_timer.start()
 
