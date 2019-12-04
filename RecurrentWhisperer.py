@@ -945,14 +945,25 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        images = {
-            'placeholders': dict(), # dict of tf placeholders
-            'summaries': [], # list of tf.summary.images
-            }
+        if 'images' not in self.tensorboard:
+            # The first time this function is called
+            images = {
+                'placeholders': dict(), # dict of tf placeholders
+                'summaries': [], # list of tf.summary.images
+                }
+        else:
+            # In the event that this function is called multiple times,
+            # don't recreate existing image placeholders, but do create new ones
+            # if needed due to new figs having been created since last time.
+            images = self.tensorboard['images']
 
         figs = self.figs
 
         for fig_name, fig in figs.iteritems():
+
+            if fig_name in images['placeholders']:
+                # Don't recreate existing image placeholders
+                continue
 
             (fig_width, fig_height) = fig.canvas.get_width_height()
 
@@ -965,6 +976,8 @@ class RecurrentWhisperer(object):
                     images['placeholders'][fig_name],
                     max_outputs=1))
 
+        # If this is a repeat call to the function, this will orphan an existing
+        # TF op :-(.
         images['merged_summaries'] = tf.summary.merge(images['summaries'])
 
         self.tensorboard['images'] = images
@@ -988,6 +1001,15 @@ class RecurrentWhisperer(object):
 
         figs = self.figs
         images = self.tensorboard['images']
+
+        # Check to see whether any new figures have been added since the
+        # tensorboard images were last setup. If so, efficiently redo that
+        # setup. This orphans a TF op :-(. See _setup_tensorboard_images(...)
+        for fig_name in figs:
+            if fig_name not in images:
+                self._setup_tensorboard_images()
+                images = self.tensorboard['images']
+                break
 
         # Convert figures into RGB arrays in a feed_dict for Tensorflow
         images_feed_dict = {}
