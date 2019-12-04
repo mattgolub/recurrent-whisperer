@@ -1243,7 +1243,7 @@ class RecurrentWhisperer(object):
         if hps.do_generate_training_visualizations and \
             np.mod(self._epoch(), hps.n_epochs_per_visualization_update) == 0:
 
-            self._update_visualizations(train_data, valid_data)
+            self._update_visualizations(train_data, valid_data, is_final=False)
 
             if hps.do_save_tensorboard_images:
                 self._update_tensorboard_images()
@@ -1626,7 +1626,7 @@ class RecurrentWhisperer(object):
 
         if self.hps.do_generate_final_visualizations:
 
-            self._update_visualizations(train_data, valid_data)
+            self._update_visualizations(train_data, valid_data, is_final=True)
 
             if self.hps.do_save_tensorboard_images:
                 self._update_tensorboard_images()
@@ -1639,7 +1639,8 @@ class RecurrentWhisperer(object):
                 # Generate LVL visualizations
                 print('\tGenerating visualizations from restored LVL model...')
                 self.restore_from_lvl_checkpoint()
-                self._update_visualizations(train_data, valid_data)
+                self._update_visualizations(train_data, valid_data,
+                    is_final=True)
 
                 if self.hps.do_save_tensorboard_images:
                     self._update_tensorboard_images()
@@ -1815,7 +1816,6 @@ class RecurrentWhisperer(object):
             for v in tf.trainable_variables(scope)])
 
         return n_params
-
 
     def _get_vars_by_name_components(self, *name_components):
         ''' Returns TF variables whose names meet input search criteria.
@@ -2270,7 +2270,8 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def _update_visualizations(self, train_data, valid_data=None):
+    def _update_visualizations(self, train_data, valid_data=None,
+        is_final=False):
         '''Updates visualizations in self.figs. Only called if
             do_generate_training_visualizations OR
             do_generate_lvl_visualizations.
@@ -2279,6 +2280,10 @@ class RecurrentWhisperer(object):
             train_data: dict containing the training data.
 
             valid_data: dict containing the validation data.
+
+            is_final: bool indicating whether this is the final time
+            _update_visualizations will be called (e.g., upon termination of
+            training).
 
         Returns:
             None.
