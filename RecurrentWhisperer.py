@@ -83,6 +83,8 @@ class RecurrentWhisperer(object):
             Hyperparameters included in the run directory hash (defined in
             _default_hash_hyperparameters):
 
+                name: string describing this instance of RecurrentWhisperer. Used for scoping and uniquifying of TF variables. Default: 'rw'.
+
                 random_seed: int specifying the random seed for the numpy
                 random generator used for randomly batching data and
                 initializing model parameters. Default: 0
@@ -275,6 +277,7 @@ class RecurrentWhisperer(object):
     @staticmethod
     def _default_super_hash_hyperparameters():
         return {
+            'name': 'rw',
             'random_seed': 0,
             'dtype': 'float32', # keep as string (rather than tf.float32)
                                 # for better argparse handling, yaml writing
@@ -631,6 +634,17 @@ class RecurrentWhisperer(object):
         sys.stdout = self._log_file
         sys.stderr = self._log_file
 
+    def _trainable_variables(self):
+        ''' Returns a list of TF Variables that are updated during each call to
+        _train_batch(...).
+
+        Args: None
+
+        Returns:
+            A list of TF Variables.
+        '''
+        return tf.trainable_variables()
+
     def _setup_optimizer(self):
         '''Sets up an AdamOptimizer with gradient norm clipping.
 
@@ -641,12 +655,10 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        vars_to_train = tf.trainable_variables()
+        name = self.hps.name
+        vars_to_train = self._trainable_variables()
 
-        # See other comment with tf.variable_scope
-        # with tf.variable_scope('optimizer', reuse=tf.AUTO_REUSE):
-
-        with tf.name_scope('optimizer'):
+        with tf.variable_scope(name + '/optimizer', reuse=False):
             '''Maintain state using TF framework for seamless saving and
             restoring of runs'''
 
@@ -887,7 +899,7 @@ class RecurrentWhisperer(object):
 
         if self.hps.do_save_tensorboard_histograms:
             hist_ops = {}
-            for v in tf.trainable_variables():
+            for v in self._trainable_variables():
                 hist_ops[v.name] = v
             self.tensorboard['merged_hist_summary'] = \
                 self._build_merged_tensorboard_summaries(
@@ -924,8 +936,9 @@ class RecurrentWhisperer(object):
             A merged TF summary that, once executed via session.run(...), can be sent to Tensorboard via add_summary(...).
         '''
 
+        name = self.hps.name
         summaries = []
-        with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
+        with tf.variable_scope(name + '/' + scope, reuse=False):
             for name, op in ops_dict.iteritems():
                 summaries.append(summary_fcn(name, op))
 
@@ -1822,20 +1835,19 @@ class RecurrentWhisperer(object):
             self.epoch_last_lvl_improvement_update,
             feed_dict={self.epoch_last_lvl_improvement_placeholder: epoch})
 
-    def get_n_params(self, scope=None):
+    def get_n_params(self):
         ''' Counts the number of trainable parameters in a Tensorflow model
         (or scope within a model).
 
         Args:
-            scope (optional): string specifying optional scope in which to
-            count parameters. See docstring for tf.trainable_variables.
+            None
 
         Returns:
             integer specifying the number of trainable parameters.
         '''
 
         n_params = sum([np.prod(v.shape).value \
-            for v in tf.trainable_variables(scope)])
+            for v in self._trainable_variables()])
 
         return n_params
 
@@ -1853,7 +1865,7 @@ class RecurrentWhisperer(object):
             a list of TF variables whose name match the search criteria.
         '''
         matching_vars = []
-        for v in tf.trainable_variables():
+        for v in self._trainable_variables():
         	hits = [name_component in v.name
         		for name_component in name_components]
         	if all(hits):
@@ -2107,7 +2119,7 @@ class RecurrentWhisperer(object):
             None.
         '''
     	print('\nTrainable variables:')
-    	for v in tf.trainable_variables():
+    	for v in self._trainable_variables():
     		print('\t' + v.name + ': ' + str(v.shape))
     	print('')
 
