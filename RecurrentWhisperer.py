@@ -1659,6 +1659,12 @@ class RecurrentWhisperer(object):
         if self.hps.do_save_ckpt:
             self._save_checkpoint(self.savers['seso'], self.ckpt_path)
 
+        # Save .done file. Critically placed after saving final checkpoint,
+        # but before doing a bunch of other stuff that might fail. This way,
+        # if anything below does fail, the .done file will be present,
+        # indicating safe to interpret checkpoint model as final.
+        self._save_done_file()
+
         if self.hps.do_generate_final_visualizations:
 
             self._update_visualizations(train_data, valid_data, is_final=True)
@@ -1685,8 +1691,6 @@ class RecurrentWhisperer(object):
             else:
                 raise Warning('Attempted to generate LVL visualizations, '
                     'but cannot because no LVL model checkpoint was saved.')
-
-        self._save_done_file()
 
         if self.hps.do_log_output:
             self._log_file.close()
