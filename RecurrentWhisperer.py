@@ -2242,7 +2242,9 @@ class RecurrentWhisperer(object):
 
     def _train_batch(self, batch_data):
         '''Runs one training step. This function must evaluate the Tensorboard
-        summary: self.merged_opt_summary.
+        summaries:
+            self.merged_opt_summary
+            self.merged_hist_summary
 
         Args:
             batch_data: dict containing one batch of training data. Key/value
