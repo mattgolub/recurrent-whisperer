@@ -288,7 +288,6 @@ class RecurrentWhisperer(object):
     @staticmethod
     def _default_super_non_hash_hyperparameters():
         return {
-            'min_learning_rate': 1e-10,
             'max_n_epochs': 1000,
             'max_n_epochs_without_lvl_improvement': 200,
             'min_loss': None,
@@ -1610,12 +1609,11 @@ class RecurrentWhisperer(object):
             print ('\nStopping optimization: loss meets convergence criteria.')
             return True
 
-        if self._epoch() > self.adaptive_learning_rate.n_warmup_steps and \
-            self.adaptive_learning_rate() <= hps.min_learning_rate:
+        if self.adaptive_learning_rate.is_finished(do_check_step=False):
             print ('\nStopping optimization: minimum learning rate reached.')
             return True
 
-        if self._epoch() >= hps.max_n_epochs:
+        if self.adaptive_learning_rate.is_finished(do_check_rate=False):
             print('\nStopping optimization:'
                   ' reached maximum number of training epochs.')
             return True
