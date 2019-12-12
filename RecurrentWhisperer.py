@@ -83,8 +83,6 @@ class RecurrentWhisperer(object):
             Hyperparameters included in the run directory hash (defined in
             _default_hash_hyperparameters):
 
-                name: string describing this instance of RecurrentWhisperer. Used for scoping and uniquifying of TF variables. Default: 'rw'.
-
                 random_seed: int specifying the random seed for the numpy
                 random generator used for randomly batching data and
                 initializing model parameters. Default: 0
@@ -106,13 +104,7 @@ class RecurrentWhisperer(object):
             Hyperparameters not included in the run directory hash (defined in
             _default_non_hash_hyperparameters):
 
-                min_learning_rate: float specifying optimization termination
-                criteria on the learning rate. Optimization terminates if the
-                learning rate falls below this value. Default: 1e-10.
-
-                max_n_epochs: int specifying optimization termination criteria
-                on the number of training epochs performed (one epoch = one
-                full pass through the entire training dataset). Default: 1000.
+                name: string describing this instance of RecurrentWhisperer. Used for scoping and uniquifying of TF variables. Default: 'rw'.
 
                 max_n_epochs_without_lvl_improvement: int specifying
                 optimization termination criteria on the number of training
@@ -279,7 +271,6 @@ class RecurrentWhisperer(object):
     @staticmethod
     def _default_super_hash_hyperparameters():
         return {
-            'name': 'rw',
             'random_seed': 0,
             'dtype': 'float32', # keep as string (rather than tf.float32)
                                 # for better argparse handling, yaml writing
@@ -290,7 +281,7 @@ class RecurrentWhisperer(object):
     @staticmethod
     def _default_super_non_hash_hyperparameters():
         return {
-            'max_n_epochs': 1000,
+            'name': 'rw',
             'max_n_epochs_without_lvl_improvement': 200,
             'min_loss': None,
             'max_train_time': None,
@@ -378,7 +369,7 @@ class RecurrentWhisperer(object):
 
     @staticmethod
     def get_run_dir(log_dir, run_hash, n_folds=None, fold_idx=None):
-        ''' Returns a path to the direcory containing all files related to a
+        ''' Returns a path to the directory containing all files related to a
         given run.
 
         Args:
@@ -659,7 +650,7 @@ class RecurrentWhisperer(object):
         name = self.hps.name
         vars_to_train = self._trainable_variables()
 
-        with tf.variable_scope(name + '/optimizer', reuse=False):
+        with tf.variable_scope(name + '/records', reuse=False):
             '''Maintain state using TF framework for seamless saving and
             restoring of runs'''
 
@@ -705,6 +696,9 @@ class RecurrentWhisperer(object):
             self.ltl_placeholder = tf.placeholder(
                 self.dtype, name='lowest_training_loss')
             self.ltl_update = tf.assign(self.ltl, self.ltl_placeholder)
+
+
+        with tf.variable_scope(name + '/optimizer', reuse=False):
 
             # Gradient clipping
             grads = tf.gradients(self.loss, vars_to_train)
@@ -1575,7 +1569,7 @@ class RecurrentWhisperer(object):
 
     def _is_training_complete(self, loss, do_check_lvl=False):
         '''Determines whether the training optimization procedure should
-        terminate. Termination criteria, goverened by hyperparameters, are
+        terminate. Termination criteria, governed by hyperparameters, are
         thresholds on the following:
 
             1) the training loss
