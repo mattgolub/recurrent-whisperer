@@ -147,7 +147,7 @@ class RecurrentWhisperer(object):
                 to save histograms of each trained variable to Tensorboard
                 throughout training. Default: True.
 
-                do_save_tensorboard_images: bool indicating wehther or not to
+                do_save_tensorboard_images: bool indicating whether or not to
                 save visualizations to Tensorboard Images. Default: True.
 
                 do_save_ckpt: bool indicating whether or not to save model
@@ -172,7 +172,7 @@ class RecurrentWhisperer(object):
                 visualization from it. Default: True.
 
                 do_save_lvl_visualizations: bool indicating whether or not to
-                save the LVL visualizations to tensroboard. Default: True.
+                save the LVL visualizations to Tensorboard. Default: True.
 
                 do_save_lvl_train_predictions: bool indicating whether to
                 maintain a .pkl file containing predictions over the training
@@ -209,7 +209,7 @@ class RecurrentWhisperer(object):
                 model. E.g., "gpu:0" or "gpu:0". Default: "gpu:0".
 
                 per_process_gpu_memory_fraction: float specifying the maximum
-                fraction of GPU mpredictemory to allocate. Set to None to allow
+                fraction of GPU memory to allocate. Set to None to allow
                 Tensorflow to manage GPU memory. See Tensorflow documentation
                 for interactions between device_count (accessed here via
                 disable_gpus), enable_gpu_growth, and
@@ -244,12 +244,14 @@ class RecurrentWhisperer(object):
         self.dtype = getattr(tf, hps.dtype)
 
         '''Make parameter initializations and data batching reproducible
-        across runs. Because this gets updated as data are drawn from the
-        random number generator, currently this state will not transfer across
-        saves and restores. The fix would be to draw all the batching random
-        numbers needed to run as many epochs as have been previously run, then
-        resume from there.'''
+        across runs.'''
         self.rng = npr.RandomState(hps.random_seed)
+        tf.set_random_seed(hps.random_seed)
+        ''' Note: Currently this state will not transfer across saves and
+        restores. Thus behavior will only be reproducible for uninterrupted
+        runs (i.e., that do not require restoring from a checkpoint). The fix
+        would be to draw all random numbers needed for a run upon starting or
+        restoring a run.'''
 
         self.prev_loss = None
         self.adaptive_learning_rate = AdaptiveLearningRate(**hps.alr_hps)
