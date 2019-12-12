@@ -11,11 +11,11 @@ import numpy as np
 import numpy.random as npr
 
 if os.environ.get('DISPLAY','') == '':
-    # Ensures smooth running across environments, including servers without
-    # graphical backends.
-    print('No display found. Using non-interactive Agg backend.')
-    import matplotlib
-    matplotlib.use('Agg')
+	# Ensures smooth running across environments, including servers without
+	# graphical backends.
+	print('No display found. Using non-interactive Agg backend.')
+	import matplotlib
+	matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 class AdaptiveLearningRate(object):
@@ -50,6 +50,7 @@ class AdaptiveLearningRate(object):
 	alr_hps['max_n_steps'] = 1e4
 	alr_hps['n_warmup_steps'] = 0
 	alr_hps['warmup_scale'] = 0.001
+	alr_hps['warmup_shape'] = 'gaussian'
 	alr_hps['do_decrease_rate'] = True
 	alr_hps['min_steps_per_decrease'] = 5
 	alr_hps['decrease_factor'] = 0.95
@@ -86,6 +87,7 @@ class AdaptiveLearningRate(object):
 		max_n_steps = 1e4,
 		n_warmup_steps = 0,
 		warmup_scale = 1e-3,
+		warmup_shape = 'gaussian',
 		do_decrease_rate = True,
 		min_steps_per_decrease = 5,
 		decrease_factor = 0.95,
@@ -116,13 +118,21 @@ class AdaptiveLearningRate(object):
 
 			n_warmup_steps: Non-negative int specifying the number of warm-up
 			steps to take. During these warm-up steps, the learning rate will
-			logarithmically increase up to initial_rate. Default: 0 (i.e., no
+			monotonically increase up to initial_rate (according to
+			warmup_scale and warmup_shape). Default: 0 (i.e., no
 			warm-up).
 
 			warmup_scale: Float between 0 and 1 specifying the learning rate
 			on the first warm-up step, relative to initial_rate. The first
 			warm-up learning rate is warmup_scale * initial_rate. Default:
 			0.001.
+
+			warmup_shape: String indicating the shape of the increasing
+			learning rate during the warm-up period. Options are 'exp'
+			(exponentially increasing learning rates; slope increases
+			throughout) or 'gaussian' (slope increases, then decreases; rate
+			ramps up faster and levels off smoother than with 'exp').
+			Default: 'gaussian'.
 
 			do_decrease_rate: Bool indicating whether or not to decrease the
 			learning rate during training (after any warm-up). Default: True.
@@ -175,8 +185,10 @@ class AdaptiveLearningRate(object):
 		self.do_increase_rate = do_increase_rate
 		self.increase_factor = increase_factor
 		self.min_steps_per_increase = min_steps_per_increase
+
 		self.n_warmup_steps = n_warmup_steps
 		self.warmup_scale = warmup_scale
+		self.warmup_shape = warmup_shape
 
 		self.save_filename = 'learning_rate.pkl'
 
@@ -365,8 +377,8 @@ class AdaptiveLearningRate(object):
 							 % self.increase_factor)
 
 	def _get_warmup_rates(self):
-		'''Determines the warm-up schedule of logarithmically increasing
-		learning rates, culminating at the desired initial rate.
+		'''Determines the warm-up schedule of learning rates, culminating at
+		the desired initial rate.
 
 		Args:
 			None.
@@ -379,10 +391,20 @@ class AdaptiveLearningRate(object):
 		scale = self.warmup_scale
 		warmup_start = scale*self.initial_rate
 		warmup_stop = self.initial_rate
-		n = self.n_warmup_steps + 1
-		warmup_rates = np.logspace(np.log10(warmup_start),
-								   np.log10(warmup_stop),
-								   n)
+
+		if self.warmup_shape == 'exp':
+			n = self.n_warmup_steps + 1
+			warmup_rates = np.logspace(
+				np.log10(warmup_start), np.log10(warmup_stop), n)
+		elif self.warmup_shape == 'gaussian':
+			mu = np.float32(self.n_warmup_steps)
+			x = np.arange(mu)
+
+			# solve for sigma s.t. warmup_rates[0] = warmup_start
+			sigma = np.sqrt(-mu**2.0 / (2.0*np.log(warmup_start/warmup_stop)))
+
+			warmup_rates = warmup_stop*np.exp((-(x-mu)**2.0)/(2.0*sigma**2.0))
+
 		return warmup_rates
 
 	def _conditional_increase_rate(self):
@@ -469,7 +491,7 @@ class AdaptiveLearningRate(object):
 		while not self.is_finished():
 			if self.step == save_step:
 				print('Step %d: saving so that we can test restore()' %
-				 	self.step)
+					self.step)
 				self.save(save_dir)
 
 			loss = loss + bias + npr.randn()
@@ -496,7 +518,7 @@ class AdaptiveLearningRate(object):
 			np.array(restored_rate_history[save_step:])
 		mean_abs_restore_error = np.mean(np.abs(diff))
 		print('Avg abs diff between original and restored: %.3e' %
-		 	mean_abs_restore_error)
+			mean_abs_restore_error)
 
 		if fig is None:
 			fig = plt.figure()
