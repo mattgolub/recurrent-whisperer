@@ -252,21 +252,24 @@ class RecurrentWhisperer(object):
         self._setup_run_dir()
 
         with tf.device(hps.device):
-            self._setup_model()
-            self._setup_optimizer()
-            self._maybe_setup_visualizations()
 
-            # Each of these will create run_dir if it doesn't exist
-            # (do not move above the os.path.isdir check that is in
-            # _setup_run_dir)
-            self._maybe_setup_tensorboard_summaries()
-            self._setup_savers()
+            with tf.variable_scope(hps.name, reuse=tf.AUTO_REUSE):
+                self._setup_model()
+                self._setup_optimizer()
 
-            self._setup_session()
+                self._maybe_setup_visualizations()
 
-            if not hps.do_custom_restore:
-                self._initialize_or_restore()
-                self.print_trainable_variables()
+                # Each of these will create run_dir if it doesn't exist
+                # (do not move above the os.path.isdir check that is in
+                # _setup_run_dir)
+                self._maybe_setup_tensorboard_summaries()
+                self._setup_savers()
+
+                self._setup_session()
+
+                if not hps.do_custom_restore:
+                    self._initialize_or_restore()
+                    self.print_trainable_variables()
 
     @staticmethod
     def _default_super_hash_hyperparameters():
@@ -650,7 +653,7 @@ class RecurrentWhisperer(object):
         name = self.hps.name
         vars_to_train = self._trainable_variables()
 
-        with tf.variable_scope(name + '/records', reuse=False):
+        with tf.variable_scope('records', reuse=False):
             '''Maintain state using TF framework for seamless saving and
             restoring of runs'''
 
@@ -698,7 +701,7 @@ class RecurrentWhisperer(object):
             self.ltl_update = tf.assign(self.ltl, self.ltl_placeholder)
 
 
-        with tf.variable_scope(name + '/optimizer', reuse=False):
+        with tf.variable_scope('optimizer', reuse=False):
 
             # Gradient clipping
             grads = tf.gradients(self.loss, vars_to_train)
