@@ -49,7 +49,7 @@ class AdaptiveLearningRate(object):
 	alr_hps['min_rate'] = 1e-3
 	alr_hps['max_n_steps'] = 1e4
 	alr_hps['n_warmup_steps'] = 0
-	alr_hps['warmup_scale'] = 0.001
+	alr_hps['warmup_scale'] = 1e-3
 	alr_hps['warmup_shape'] = 'gaussian'
 	alr_hps['do_decrease_rate'] = True
 	alr_hps['min_steps_per_decrease'] = 5
@@ -81,20 +81,36 @@ class AdaptiveLearningRate(object):
 			alr.save(...)
 	'''
 
+	default_hps = {
+		'initial_rate': 1.0,
+		'min_rate': 1e-3,
+		'max_n_steps': 1e4,
+		'n_warmup_steps': 0,
+		'warmup_scale': 1e-3,
+		'warmup_shape': 'gaussian',
+		'do_decrease_rate': True,
+		'min_steps_per_decrease': 5,
+		'decrease_factor': 0.95,
+		'do_increase_rate': True,
+		'min_steps_per_increase': 5,
+		'increase_factor': 1/0.95,
+		'verbose': False
+		}
+
 	def __init__(self,
-		initial_rate = 1.0,
-		min_rate = 1e-3,
-		max_n_steps = 1e4,
-		n_warmup_steps = 0,
-		warmup_scale = 1e-3,
-		warmup_shape = 'gaussian',
-		do_decrease_rate = True,
-		min_steps_per_decrease = 5,
-		decrease_factor = 0.95,
-		do_increase_rate = True,
-		min_steps_per_increase = 5,
-		increase_factor = 1/0.95,
-		verbose = False):
+		initial_rate = default_hps['initial_rate'],
+		min_rate = default_hps['min_rate'],
+		max_n_steps = default_hps['max_n_steps'],
+		n_warmup_steps = default_hps['n_warmup_steps'],
+		warmup_scale = default_hps['warmup_scale'],
+		warmup_shape = default_hps['warmup_shape'],
+		do_decrease_rate = default_hps['do_decrease_rate'],
+		min_steps_per_decrease = default_hps['min_steps_per_decrease'],
+		decrease_factor = default_hps['decrease_factor'],
+		do_increase_rate = default_hps['do_increase_rate'],
+		min_steps_per_increase = default_hps['min_steps_per_increase'],
+		increase_factor = default_hps['increase_factor'],
+		verbose = default_hps['verbose']):
 		'''Builds an AdaptiveLearningRate object
 
 		Args:
@@ -369,12 +385,16 @@ class AdaptiveLearningRate(object):
 		assert_non_negative('min_steps_per_increase')
 
 		if self.decrease_factor > 1.0 or self.decrease_factor < 0.:
-			raise ValueError('decrease_factor must be between 0 and 1, but was %f'
-							 % self.decrease_factor)
+			raise ValueError('decrease_factor must be between 0 and 1, '
+			                 'but was %f' % self.decrease_factor)
 
 		if self.increase_factor < 1.0:
 			raise ValueError('increase_factor must be >= 1, but was %f'
 							 % self.increase_factor)
+
+		if self.warmup_shape not in ['exp', 'gaussian']:
+			raise ValueError('warmup_shape must be \'exp\' or \'gaussian\', '
+			                 'but was %s' % self.warmup_shape)
 
 	def _get_warmup_rates(self):
 		'''Determines the warm-up schedule of learning rates, culminating at

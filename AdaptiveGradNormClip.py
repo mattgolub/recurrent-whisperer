@@ -42,13 +42,23 @@ class AdaptiveGradNormClip(object):
 	```
 
 	"""
+
+	default_hps = {
+		'do_adaptive_clipping': True,
+		'sliding_window_len': 128,
+		'percentile': 95.0,
+		'init_clip_val': 1e12,
+		'max_clip_val': 1e12,
+		'verbose': False
+		}
+
 	def __init__(self,
-		do_adaptive_clipping=True,
-		sliding_window_len=128,
-		percentile=95.0,
-		init_clip_val=1e12,
-		max_clip_val=1e12,
-		verbose=False):
+		do_adaptive_clipping=default_hps['do_adaptive_clipping'],
+		sliding_window_len=default_hps['sliding_window_len'],
+		percentile=default_hps['percentile'],
+		init_clip_val=default_hps['init_clip_val'],
+		max_clip_val=default_hps['max_clip_val'],
+		verbose=default_hps['verbose']):
 		'''Builds an AdaptiveGradNormClip object
 
 		Args:

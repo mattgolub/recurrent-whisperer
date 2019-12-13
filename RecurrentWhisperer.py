@@ -277,9 +277,16 @@ class RecurrentWhisperer(object):
             'random_seed': 0,
             'dtype': 'float32', # keep as string (rather than tf.float32)
                                 # for better argparse handling, yaml writing
-            'adam_hps': {'epsilon': 0.01},
-                'alr_hps': {},
-                'agnc_hps': {}}
+            'adam_hps': {
+                'epsilon': 0.01,
+                'beta1': 0.9,
+                'beta2': 0.999,
+                'use_locking': False,
+                'name': 'Adam'
+                },
+            'alr_hps': AdaptiveLearningRate.default_hps,
+            'agnc_hps': AdaptiveGradNormClip.default_hps,
+            }
 
     @staticmethod
     def _default_super_non_hash_hyperparameters():
