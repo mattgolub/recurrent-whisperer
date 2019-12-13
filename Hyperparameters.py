@@ -158,7 +158,7 @@ class Hyperparameters(object):
 
                 str += '%s%s: ' % (indent, key)
                 if isinstance(value, dict):
-                    str += print_helper(value, n_indent+1)
+                    str += '\n' + print_helper(value, n_indent+1)
                 else:
                     str += '%s\n' % value.__str__()
 
