@@ -223,15 +223,11 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        default_hash_hps = self._integrate_hps(
-            self._default_super_hash_hyperparameters(),
-            self._default_hash_hyperparameters())
 
-        default_non_hash_hps = self._integrate_hps(
-            self._default_super_non_hash_hyperparameters(),
-            self._default_non_hash_hyperparameters())
-
-        hps = Hyperparameters(kwargs, default_hash_hps, default_non_hash_hps)
+        subclass = self.__class__
+        hps = Hyperparameters(kwargs,
+                              self.default_hash_hyperparameters(subclass),
+                              self.default_non_hash_hyperparameters(subclass))
         self.hps = hps
         self.dtype = getattr(tf, hps.dtype)
 
@@ -272,9 +268,83 @@ class RecurrentWhisperer(object):
                     self.print_trainable_variables()
 
     @staticmethod
-    def _default_super_hash_hyperparameters():
+    def default_hyperparameters(subclass):
+        ''' Returns the dict of ALL (RecurrentWhisperer + subclass)
+        hyperparameters (both hash and non-hash). This is needed for
+        command-line argument parsing.
 
-        ''' To allow subclasses to effectively manage HPs, this should include all HPs for all helper classes (i.e., '*_hps')--not just those that are changed from their defaults. '''
+        Args:
+            subclass: the __class__ of the object that inherits from
+            RecurrentWhisperer. This provides static access to that subclass'
+            default hyperparameters.
+
+        Returns:
+            dict of hyperparameters.
+        '''
+
+        hps = \
+            RecurrentWhisperer.default_hash_hyperparameters(subclass)
+        non_hash_hps = \
+            RecurrentWhisperer.default_non_hash_hyperparameters(subclass)
+
+        hps.update(non_hash_hps)
+
+        return hps
+
+    @staticmethod
+    def default_hash_hyperparameters(subclass):
+        ''' Returns the dict of ALL (RecurrentWhisperer + subclass)
+        hyperparameters that are included in the run hash.
+
+        Args:
+            subclass: the __class__ of the object that inherits from
+            RecurrentWhisperer. This provides static access to that subclass'
+            default hyperparameters.
+
+        Returns:
+            dict of hyperparameters.
+        '''
+
+        hash_hps = RecurrentWhisperer._integrate_hps(
+            RecurrentWhisperer._default_super_hash_hyperparameters(),
+            subclass._default_hash_hyperparameters())
+
+        return hash_hps
+
+    @staticmethod
+    def default_non_hash_hyperparameters(subclass):
+        ''' Returns the dict of ALL (RecurrentWhisperer + subclass)
+        hyperparameters that are NOT included in the run hash.
+
+        Args:
+            subclass: the __class__ of the object that inherits from
+            RecurrentWhisperer. This provides static access to that subclass'
+            default hyperparameters.
+
+        Returns:
+            dict of hyperparameters.
+        '''
+
+        non_hash_hps = RecurrentWhisperer._integrate_hps(
+            RecurrentWhisperer._default_super_non_hash_hyperparameters(),
+            subclass._default_non_hash_hyperparameters())
+        return non_hash_hps
+
+    @staticmethod
+    def _default_super_hash_hyperparameters():
+        ''' Returns the dict of RecurrentWhisperer hyperparameters that are
+        included in the run hash.
+
+        Args:
+            None.
+
+        Returns:
+            dict of hyperparameters.
+        '''
+
+        ''' To allow subclasses to effectively manage HPs, this should include
+        all HPs for all helper classes (i.e., '*_hps')--not just those that
+        are changed from their defaults. '''
         return {
             'random_seed': 0,
             'dtype': 'float32', # keep as string (rather than tf.float32)
@@ -292,12 +362,19 @@ class RecurrentWhisperer(object):
 
     @staticmethod
     def _default_super_non_hash_hyperparameters():
+        ''' Returns the dict of RecurrentWhisperer hyperparameters that are
+        NOT included in the run hash.
 
-        ''' To allow subclasses to manage HPs, this should include all HPs for
-        all helper classes (i.e., '*_hps')--not just those that are changed
-        from their defaults.'''
+        Args:
+            None.
+
+        Returns:
+            dict of hyperparameters.
+        '''
+
+        # See comment in _default_super_hash_hyperparameters()
         return {
-            'name': 'rw',
+            'name': 'RecurrentWhisperer',
             'max_n_epochs_without_lvl_improvement': 200,
             'min_loss': None,
             'max_train_time': None,
@@ -340,15 +417,23 @@ class RecurrentWhisperer(object):
 
             'log_dir': '/tmp/rnn_logs/',
             'dataset_name': None,
-            'model_name': 'RecurrentWhisperer',
             'n_folds': None,
             'fold_idx': None,}
 
     @staticmethod
     def _integrate_hps(superclass_default_hps, subclass_default_hps):
         '''Integrates default hyperparameters defined in this superclass with
-        those defined in a subclass. Subclasses may override defaults
-        specified by this superclass.
+        those defined in a subclass. Subclass hyperparameters will override
+        defaults specified by this superclass. Integration is done recursively
+        to support dict subclass hyperparameters (e.g., containing
+        hyperparameters for helper classes).
+
+        Example:
+
+        super_def_hps = {'a': 1, 'b': 2, 'c_hps': {'d': 3, 'e': 4}}
+        sub_def_hps = {'b': 5, 'c_hps': {'d': 6}}
+        _integrate_hps(super_def_hps, sub_def_hps)
+            --> {'a': 1, 'b': 5, 'c_hps': {'d': 6, 'e': 4}}
 
         Args:
             superclass_default_hps: dict containing default hyperparameters
@@ -360,9 +445,17 @@ class RecurrentWhisperer(object):
         Returns:
             default_hps: dict containing the integrated hyperparameters.
         '''
+
         default_hps = deepcopy(superclass_default_hps)
         for key, val in subclass_default_hps.iteritems():
-            default_hps[key] = val
+
+            if not isinstance(val, dict) or key not in default_hps:
+                # Base case
+                default_hps[key] = val
+            else:
+                # Recurse
+                default_hps[key] = RecurrentWhisperer._integrate_hps(
+                    default_hps[key], val)
 
         return default_hps
 
