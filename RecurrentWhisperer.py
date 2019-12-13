@@ -521,6 +521,78 @@ class RecurrentWhisperer(object):
         paths = RecurrentWhisperer.get_paths(run_dir)
         return os.path.exists(paths['done_path'])
 
+    @staticmethod
+    def get_command_line_call(run_script,
+                              hp_dict={},
+                              do_format_for_bash=False):
+
+        ''' Generates a command line call to a user-specified bash script with
+        RecurrentWhisperer hyperparameters passed in as command-line arguments.
+        Can be formatted for execution within Python  or from a terminal /
+        bash script.
+
+        Args:
+            run_script: string specifying the bash script call,
+            e.g., 'location/of/your/run_script.sh'
+
+            hp_dict: (optional) dict containing any hps to override defaults.
+            Default: {}
+
+            do_format_for_bash: (optional) bool indicating whether to return
+            the command-line call as a string (for writing into a higher-level
+            bash script; for copying into a terminal). Default: False (see
+            below).
+
+        Returns:
+            Default:
+                cmd_list: a list that is interpretable by subprocess.call:
+                    subprocess.call(cmd_list)
+
+            do_format_for_bash == True:
+                cmd_str: a string (suitable for placing in a bash script or
+                copying into a terminal .
+        '''
+
+        def raise_error():
+        	# This should not be reachable--Hyperparameters.flatted converts to
+        	# a colon delimited format.
+        	raise ValueError('HPs that are themselves dicts are not supported')
+
+        flat_hps = Hyperparameters.flatten(hp_dict)
+        hp_names = flat_hps.keys()
+        hp_names.sort()
+
+        if do_format_for_bash:
+
+            cmd_str = 'python ' + run_script
+            for hp_name in hp_names:
+                val = flat_hps[hp_name]
+                if isinstance(val, dict):
+                    omit_dict_hp(hp_name)
+                else:
+                    cmd_str += str(' --%s=%s' % (hp_name, str(val)))
+
+            return cmd_str
+
+        else:
+
+            cmd_list = ['python', run_script]
+            for hp_name in hp_names:
+                val = flat_hps[hp_name]
+                if isinstance(val, dict):
+                    omit_dict_hp(hp_name)
+                else:
+                    cmd_list.append(str('--%s' % hp_name))
+                    str_val = str(val)
+
+                    # negative numbers misinterpreted by argparse as optional arg. This extra-space hack gets around it.
+                    if str_val[0] == '-':
+                        str_val = ' ' + str_val
+
+                    cmd_list.append(str_val)
+
+            return cmd_list
+
     # *************************************************************************
     # Setup *******************************************************************
     # *************************************************************************
