@@ -81,6 +81,8 @@ class AdaptiveLearningRate(object):
 			alr.save(...)
 	'''
 
+	''' Included for ready access by RecurrentWhisperer
+		(before initializing an instance) '''
 	default_hps = {
 		'initial_rate': 1.0,
 		'min_rate': 1e-3,

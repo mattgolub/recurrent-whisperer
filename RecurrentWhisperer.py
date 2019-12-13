@@ -274,9 +274,7 @@ class RecurrentWhisperer(object):
     @staticmethod
     def _default_super_hash_hyperparameters():
 
-        ''' To allow subclasses to manage HPs, this should include all HPs for
-        all helper classes (i.e., '*_hps')--not just those that are changed
-        from their defaults.'''
+        ''' To allow subclasses to effectively manage HPs, this should include all HPs for all helper classes (i.e., '*_hps')--not just those that are changed from their defaults. '''
         return {
             'random_seed': 0,
             'dtype': 'float32', # keep as string (rather than tf.float32)

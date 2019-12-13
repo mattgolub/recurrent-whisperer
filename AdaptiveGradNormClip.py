@@ -43,6 +43,8 @@ class AdaptiveGradNormClip(object):
 
 	"""
 
+	''' Included for ready access by RecurrentWhisperer
+		(before initializing an instance) '''
 	default_hps = {
 		'do_adaptive_clipping': True,
 		'sliding_window_len': 128,
