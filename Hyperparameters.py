@@ -96,7 +96,7 @@ class Hyperparameters(object):
 
         Args:
             key: A string indicating the name of the hyperparameter to be
-            retrieved. Colon delimitting specifies traversals into
+            retrieved. Colon delimiting specifies traversals into
             (possibly nested) dicts within the master hyperparameters dict.
 
         Returns:
@@ -119,7 +119,7 @@ class Hyperparameters(object):
 
         Args:
             key: A string indicating the name of the hyperparameter to be
-            assigned. Colon delimitting specifies traversals into
+            assigned. Colon delimiting specifies traversals into
             (possibly nested) dicts within the master hyperparameters dict.
             Nested dicts are created if they do not already exist.
 
@@ -405,7 +405,7 @@ class Hyperparameters(object):
 
     @staticmethod
     def parse_colon_delimitted_hp_name(hp_name):
-        ''' Splits a string into the segments preceeding and following the
+        ''' Splits a string into the segments preceding and following the
         first colon. Used to indicate traversing into a sub-dict within a
         dict.
 
@@ -423,7 +423,7 @@ class Hyperparameters(object):
             ValueError if hp_name does not contain any colons.
         '''
         if not ':' in hp_name:
-            raise ValueError('hp_name does not contain delimitting colon.')
+            raise ValueError('hp_name does not contain delimiting colon.')
 
         first_colon_idx = hp_name.index(':')
         dict_name = hp_name[:first_colon_idx]
@@ -434,7 +434,7 @@ class Hyperparameters(object):
     @staticmethod
     def flatten(D):
         ''' Flattens a dict: Values that are themselves dicts are recursively
-        'flattened' by concatenating keys using colon delimitting.
+        'flattened' by concatenating keys using colon delimiting.
 
         Example:
             D = {'a': 1, 'b': {'c':2, 'd':3}}
@@ -463,7 +463,7 @@ class Hyperparameters(object):
     def unflatten(D_flat):
         ''' Unflattens a flattened dict. A flattened dict is a dict with no
         values that are themselves dicts. Nested dicts can be represented in a
-        flattened dict using colon-delimitted string keys.
+        flattened dict using colon-delimited string keys.
 
         Example:
             D_flat = {'a': 1, 'b:c': 2, 'b:d': 3}
@@ -476,7 +476,7 @@ class Hyperparameters(object):
 
         Returns:
             D_unflattened: dict, nested with other dicts as specified by
-            colon delimitting in keys of D_flat.
+            colon delimiting in keys of D_flat.
         '''
 
         def assign_leaf(key, val):
