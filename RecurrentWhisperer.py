@@ -305,7 +305,7 @@ class RecurrentWhisperer(object):
             dict of hyperparameters.
         '''
 
-        hash_hps = RecurrentWhisperer._integrate_hps(
+        hash_hps = Hyperparameters.integrate_hps(
             RecurrentWhisperer._default_super_hash_hyperparameters(),
             subclass._default_hash_hyperparameters())
 
@@ -325,7 +325,7 @@ class RecurrentWhisperer(object):
             dict of hyperparameters.
         '''
 
-        non_hash_hps = RecurrentWhisperer._integrate_hps(
+        non_hash_hps = Hyperparameters.integrate_hps(
             RecurrentWhisperer._default_super_non_hash_hyperparameters(),
             subclass._default_non_hash_hyperparameters())
         return non_hash_hps
@@ -421,45 +421,6 @@ class RecurrentWhisperer(object):
             'fold_idx': None,}
 
     @staticmethod
-    def _integrate_hps(superclass_default_hps, subclass_default_hps):
-        '''Integrates default hyperparameters defined in this superclass with
-        those defined in a subclass. Subclass hyperparameters will override
-        defaults specified by this superclass. Integration is done recursively
-        to support dict subclass hyperparameters (e.g., containing
-        hyperparameters for helper classes).
-
-        Example:
-
-        super_def_hps = {'a': 1, 'b': 2, 'c_hps': {'d': 3, 'e': 4}}
-        sub_def_hps = {'b': 5, 'c_hps': {'d': 6}}
-        _integrate_hps(super_def_hps, sub_def_hps)
-            --> {'a': 1, 'b': 5, 'c_hps': {'d': 6, 'e': 4}}
-
-        Args:
-            superclass_default_hps: dict containing default hyperparameters
-            required by this superclass.
-
-            subclass_default_hps: dict containing default hyperparameters that
-            are subclass specific or override defaults set by this superclass.
-
-        Returns:
-            default_hps: dict containing the integrated hyperparameters.
-        '''
-
-        default_hps = deepcopy(superclass_default_hps)
-        for key, val in subclass_default_hps.iteritems():
-
-            if not isinstance(val, dict) or key not in default_hps:
-                # Base case
-                default_hps[key] = val
-            else:
-                # Recurse
-                default_hps[key] = RecurrentWhisperer._integrate_hps(
-                    default_hps[key], val)
-
-        return default_hps
-
-    @staticmethod
     def get_hash_dir(log_dir, run_hash):
         '''Returns a path to the run_hash in the log_dir.
 
@@ -469,7 +430,7 @@ class RecurrentWhisperer(object):
 
             run_hash: string containing the hyperparameters hash used to
             establish the run directory. Returned by
-            Hyperparameters.get_hash().
+            Hyperparameters.run_hash.
 
         Returns:
             Path to the hash directory.
@@ -487,7 +448,7 @@ class RecurrentWhisperer(object):
 
             run_hash: string containing the hyperparameters hash used to
             establish the run directory. Returned by
-            Hyperparameters.get_hash().
+            Hyperparameters.run_hash.
 
             n_folds: (optional) Non-negative integer specifying the number of
             cross-validation folds in the run.
@@ -719,7 +680,7 @@ class RecurrentWhisperer(object):
         log_dir = hps.log_dir
         n_folds = hps.n_folds
         fold_idx = hps.fold_idx
-        run_hash = hps.get_hash()
+        run_hash = hps.run_hash
         run_dir = self.get_run_dir(log_dir, run_hash, n_folds, fold_idx)
         paths = self.get_paths(run_dir)
 
@@ -1029,7 +990,7 @@ class RecurrentWhisperer(object):
             self._restore_from_checkpoint(self.savers['lvl'], self.lvl_dir)
         else:
             # Initialize new session
-            print('Initializing new run (%s).' % self.hps.get_hash())
+            print('Initializing new run (%s).' % self.hps.run_hash)
             self.session.run(tf.global_variables_initializer())
 
             self.hps.write_yaml(self.hps_yaml_path) # For visual inspection
