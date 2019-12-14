@@ -23,9 +23,9 @@ class Hyperparameters(object):
 
     '''
     def __init__(self,
-                 hps=None,
-                 default_hash_hps=None,
-                 default_non_hash_hps=None,
+                 hps=dict(),
+                 default_hash_hps=dict(),
+                 default_non_hash_hps=dict(),
                  hash_len=10,
                  verbose=False):
         '''Creates a Hyperparameters object.
@@ -69,17 +69,11 @@ class Hyperparameters(object):
 
         self._validate_args(hps, default_hash_hps, default_non_hash_hps)
 
-        if default_hash_hps is None:
-            default_hash_hps = dict()
-
-        if default_non_hash_hps is None:
-            default_non_hash_hps = dict()
-
-        self._hash_len = hash_len
-        self._verbose = verbose
         self._all_hps_as_dict, self._hash_hps_as_dict = \
             self._parse(hps, default_hash_hps, default_non_hash_hps)
 
+        self._hash_len = hash_len
+        self._verbose = verbose
         for key, val in self._all_hps_as_dict.iteritems():
             setattr(self, key, val)
 
@@ -362,8 +356,8 @@ class Hyperparameters(object):
         return self._all_hps_as_dict
 
     def __getitem__(self, key):
-        '''Provides access to an individual hyperparameter value via a colon-
-        delimited hyperparameter name.
+        '''Provides access to an individual hyperparameter value, with support
+        for colon-delimited hyperparameter names.
 
         Args:
             key: A string indicating the name of the hyperparameter to be
@@ -385,8 +379,8 @@ class Hyperparameters(object):
         return get_helper(self._all_hps_as_dict, key)
 
     def __setitem__(self, key, value):
-        '''Assigns an individual hyperparameter value via colon-delimited
-        a hyperparameter name.
+        '''Assigns an individual hyperparameter value, with support for
+        colon-delimited hyperparameter names.
 
         Args:
             key: A string indicating the name of the hyperparameter to be
@@ -410,14 +404,16 @@ class Hyperparameters(object):
             else:
                 D[key] = value
 
+        # Update the value in self._all_hps_as_dict
         set_helper(self._all_hps_as_dict, key, value)
 
-        if ':' in key:
-            raise NotImplementedNotImplementedErrorError(
-                'Have not yet implemented recursive __setitem__ for '
-                'Hyperparameter class variable copies of dict items')
-        else:
-            setattr(self, key, value)
+        # # Update the value stores as a class attribute
+        # if ':' in key:
+        #     # Replace the entire class attribute dict with the updated one
+        #     dict_name, rem_name = self._parse_colon_delimited_hp_name(key)
+        #     setattr(self, dict_name, self._all_hps_as_dict[dict_name])
+        # else:
+        #     setattr(self, key, value)
 
     def __str__(self):
 
@@ -435,7 +431,6 @@ class Hyperparameters(object):
 
             return str
 
-        pdb.set_trace()
         str = print_helper(self._all_hps_as_dict)
 
         return str
@@ -538,8 +533,7 @@ class Hyperparameters(object):
             None.
 
         Raises:
-            ValueError if both default_hash_hps and default_non_hash_hps are
-            None.
+            ValueError if any of the hps args are not dicts.
 
             ValueError if any key in hps is not included in exactly one of
             default_hash_hps or default_non_hash_hps.
@@ -548,9 +542,14 @@ class Hyperparameters(object):
             and default_non_hash_hps.
         '''
 
-        if default_hash_hps is None and default_non_hash_hps is None:
-            raise ValueError('At lease one of default_hash_hps and '
-                'default_non_hash_hps must be specified, but both were None.')
+        if not isinstance(hps, dict):
+            raise ValueError('hps must be a dict but is not.')
+
+        if not isinstance(default_hash_hps, dict):
+            raise ValueError('default_hash_hps must be a dict but is not.')
+
+        if not isinstance(default_non_hash_hps, dict):
+            raise ValueError('default_non_hash_hps must be a dict but is not.')
 
         input_set = set(hps.keys())
         default_hash_set = set(default_hash_hps.keys())
