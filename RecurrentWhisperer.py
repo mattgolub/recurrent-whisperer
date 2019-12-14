@@ -1227,10 +1227,11 @@ class RecurrentWhisperer(object):
         '''
 
         N_EPOCH_SPLITS = 6 # Number of segments to time for profiling
+        do_check_lvl = valid_data is not None
 
         self._setup_training(train_data, valid_data)
 
-        if self._is_training_complete(self._ltl()):
+        if self._is_training_complete(self._ltl(), do_check_lvl):
             # If restoring from a completed run, do not enter training loop
             # and do not save a new checkpoint.
             return
@@ -1276,7 +1277,7 @@ class RecurrentWhisperer(object):
 
             # *****************************************************************
 
-            if self._is_training_complete(epoch_loss, valid_data is not None):
+            if self._is_training_complete(epoch_loss, do_check_lvl):
                 break
 
             epoch_timer.split('other')
@@ -1386,6 +1387,7 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
+
         predictions, summary = self.predict(valid_data)
         print('\tValidation loss: %.2e' % summary['loss'])
 
@@ -1467,9 +1469,12 @@ class RecurrentWhisperer(object):
 
     def _save_checkpoint(self, saver, ckpt_path):
         '''Saves a model checkpoint.
-        COMMENTS NEED UPDATING
+
         Args:
-            None.
+            saver: Tensorflow saver to use, generated via tf.train.Saver(...).
+
+            ckpt_path: string containing the path of the checkpoint to be
+            saved.
 
         Returns:
             None.
@@ -1490,12 +1495,11 @@ class RecurrentWhisperer(object):
         form. This can become relevant if restoring a model and resuming
         training using updated values of non-hash hyperparameters.
 
-        COMMENTS NEED UPDATING
-
         Args:
-            saver
+            saver: Tensorflow saver to use, generated via tf.train.Saver(...).
 
-            ckpt_dir
+            ckpt_dir: string containing the path to the directory containing
+            the checkpoint to be restored.
 
         Returns:
             None.
@@ -1515,7 +1519,7 @@ class RecurrentWhisperer(object):
     def _maybe_save_lvl_checkpoint(self, valid_loss, train_data, valid_data):
         '''Saves a model checkpoint if the current validation loss values is
         lower than all previously evaluated validation loss values. This
-        includes saving model predictions over the traiing and validation data.
+        includes saving model predictions over the training and validation data.
 
         If prediction summaries are generated, those summaries are saved in
         separate .pkl files (and optional .mat files). See docstring for
@@ -1534,7 +1538,7 @@ class RecurrentWhisperer(object):
         '''
         if (self._epoch()==0 or valid_loss < self._lvl()):
 
-            print('Achieved lowest validation loss.')
+            print('\t\tAchieved lowest validation loss.')
 
             self._update_lvl(valid_loss)
             self._update_epoch_last_lvl_improvement(self._epoch())
@@ -1612,7 +1616,7 @@ class RecurrentWhisperer(object):
         summary, train_or_valid_str):
 
         if summary is not None:
-            print('\tSaving lvl summary (%s).' % train_or_valid_str)
+            print('\t\tSaving lvl summary (%s).' % train_or_valid_str)
             # E.g., train_predictions or valid_summary
             filename_no_extension = train_or_valid_str + '_summary'
             self._save_helper(summary, filename_no_extension)
@@ -1632,13 +1636,16 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        train_pred, train_summary = self.predict(train_data)
-        self._maybe_save_lvl_predictions(train_pred, 'train')
-        self._maybe_save_lvl_summaries(train_summary, 'train')
 
-        valid_pred, valid_summary = self.predict(valid_data)
-        self._maybe_save_lvl_predictions(valid_pred, 'valid')
-        self._maybe_save_lvl_summaries(valid_summary, 'valid')
+        if train_data is not None:
+            train_pred, train_summary = self.predict(train_data)
+            self._maybe_save_lvl_predictions(train_pred, 'train')
+            self._maybe_save_lvl_summaries(train_summary, 'train')
+
+        if valid_data is not None:
+            valid_pred, valid_summary = self.predict(valid_data)
+            self._maybe_save_lvl_predictions(valid_pred, 'valid')
+            self._maybe_save_lvl_summaries(valid_summary, 'valid')
 
     def _save_done_file(self):
         '''Save an empty .done file (indicating that the training procedure
@@ -1709,7 +1716,7 @@ class RecurrentWhisperer(object):
             mat_path = os.path.join(self.lvl_dir, filename_no_extension)
             save_mat(data_to_save, pkl_path)
 
-    def _is_training_complete(self, loss, do_check_lvl=False):
+    def _is_training_complete(self, loss, do_check_lvl=True):
         '''Determines whether the training optimization procedure should
         terminate. Termination criteria, governed by hyperparameters, are
         thresholds on the following:
@@ -1718,8 +1725,7 @@ class RecurrentWhisperer(object):
             2) the learning rate
             3) the number of training epochs performed
             4) the number of training epochs performed since the lowest
-               validation loss improved (only if validation data are provided
-               to train(...).
+               validation loss improved (only if do_check_lvl == True).
 
         Args:
             loss: float indicating the most recent loss evaluation across the
@@ -1763,14 +1769,16 @@ class RecurrentWhisperer(object):
                 'maximum allowed.')
             return True
 
-        if do_check_lvl and \
-            self._epoch() - self._epoch_last_lvl_improvement() >= \
+        if do_check_lvl:
+
+            if self._epoch() - self._epoch_last_lvl_improvement() >= \
                 hps.max_n_epochs_without_lvl_improvement:
 
-            print('\nStopping optimization:'
-                  ' reached maximum number of training epochs'
-                  ' without improvement to the lowest validation loss.')
-            return True
+                print('\nStopping optimization:'
+                      ' reached maximum number of training epochs'
+                      ' without improvement to the lowest validation loss.')
+
+                return True
 
         return False
 
@@ -1966,7 +1974,8 @@ class RecurrentWhisperer(object):
         improvement in the lowest validation loss.
 
         Args:
-            epoch: A numpy scalar value indicating the epoch of the most recent improvement in the lowest validation loss.
+            epoch: A numpy scalar value indicating the epoch of the most
+            recent improvement in the lowest validation loss.
 
         Returns:
             None.
