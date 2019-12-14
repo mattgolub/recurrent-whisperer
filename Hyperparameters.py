@@ -305,7 +305,7 @@ class Hyperparameters(object):
             '''
             if ':' in key:
                 dict_name, rem_name = \
-                    Hyperparameters._parse_colon_delimitted_hp_name(key)
+                    Hyperparameters._parse_colon_delimited_hp_name(key)
                 return {dict_name: assign_leaf(rem_name, val)}
             else:
                 return {key: val}
@@ -313,7 +313,7 @@ class Hyperparameters(object):
         def add_helper(D, key, val):
             if ':' in key:
                 dict_name, rem_name = \
-                    Hyperparameters._parse_colon_delimitted_hp_name(key)
+                    Hyperparameters._parse_colon_delimited_hp_name(key)
 
                 if dict_name == 'data_hps':
                     pdb.set_trace()
@@ -363,7 +363,7 @@ class Hyperparameters(object):
 
     def __getitem__(self, key):
         '''Provides access to an individual hyperparameter value via a colon-
-        delimitted hyperparameter name.
+        delimited hyperparameter name.
 
         Args:
             key: A string indicating the name of the hyperparameter to be
@@ -377,7 +377,7 @@ class Hyperparameters(object):
         def get_helper(D, key):
             # Helper function to recursively traverse into dict D.
             if ':' in key:
-                dict_name, rem_name = self._parse_colon_delimitted_hp_name(key)
+                dict_name, rem_name = self._parse_colon_delimited_hp_name(key)
                 return get_helper(D[dict_name], rem_name)
             else:
                 return D[key]
@@ -385,7 +385,7 @@ class Hyperparameters(object):
         return get_helper(self._all_hps_as_dict, key)
 
     def __setitem__(self, key, value):
-        '''Assigns an individual hyperparameter value via colon-delimitted
+        '''Assigns an individual hyperparameter value via colon-delimited
         a hyperparameter name.
 
         Args:
@@ -403,7 +403,7 @@ class Hyperparameters(object):
         def set_helper(D, key, value):
             # Helper function to recursively traverse into dict D.
             if ':' in key:
-                dict_name, rem_name = self._parse_colon_delimitted_hp_name(key)
+                dict_name, rem_name = self._parse_colon_delimited_hp_name(key)
                 if not dict_name in D.keys():
                     D[dict_name] = dict()
                 set_helper(D[dict_name], rem_name, value)
@@ -451,8 +451,8 @@ class Hyperparameters(object):
 
         Implementation note: Comparisons (between input and default hps) are
         NOT made recursively. An hp that is itself a dict is considered in its
-        entirety when determining whether it matches its default value (rather)
-        than being considered element-wise. This means that all hps in a
+        entirety when determining whether it matches its default value (rather
+        than being considered element-wise). This means that all hps in a
         sub-dict will be hashed if any of them deviates from its default value.
         If desired, this could likely be changed without too much trouble using
         the recursive __setitem__() and __getitem__(). First flatten each of
@@ -617,7 +617,7 @@ class Hyperparameters(object):
         return ''.join(str_items)
 
     @staticmethod
-    def _parse_colon_delimitted_hp_name(hp_name):
+    def _parse_colon_delimited_hp_name(hp_name):
         ''' Splits a string into the segments preceding and following the
         first colon. Used to indicate traversing into a sub-dict within a
         dict.
