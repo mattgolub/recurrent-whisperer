@@ -230,7 +230,11 @@ class Hyperparameters(object):
             integrated_hps: dict containing the integrated hyperparameters.
         '''
 
+        # copy needed to prevent infinite recursive links between data
+        # structures in recursive models. deepcopy may be overkill.
         integrated_hps = deepcopy(hps)
+        update_hps = deepcopy(update_hps)
+
         for key, val in update_hps.iteritems():
 
             if not isinstance(val, dict) or key not in integrated_hps:
