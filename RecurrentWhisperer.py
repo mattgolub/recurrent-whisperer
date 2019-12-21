@@ -1167,9 +1167,11 @@ class RecurrentWhisperer(object):
                 'summaries': [], # list of tf.summary.images
                 }
         else:
-            # In the event that this function is called multiple times,
-            # don't recreate existing image placeholders, but do create new ones
-            # if needed due to new figs having been created since last time.
+            '''
+            In the event that this function is called multiple times,
+            don't recreate existing image placeholders, but do create new ones
+            if needed due to new figs having been created since last time.
+            '''
             images = self.tensorboard['images']
 
         figs = self.figs
@@ -1191,8 +1193,10 @@ class RecurrentWhisperer(object):
                     images['placeholders'][fig_name],
                     max_outputs=1))
 
-        # If this is a repeat call to the function, this will orphan an existing
-        # TF op :-(.
+        '''
+        If this is a repeat call to the function, this will orphan an existing
+        TF op :-(.
+        '''
         images['merged_summaries'] = tf.summary.merge(images['summaries'])
 
         self.tensorboard['images'] = images
@@ -1204,7 +1208,8 @@ class RecurrentWhisperer(object):
                         do_generate_lvl_visualizations)
 
         Args:
-            figs: dict with string figure names as keys and matplotlib.pyplot.figure objects as values.
+            figs: dict with string figure names as keys and
+            matplotlib.pyplot.figure objects as values.
 
         Returns:
             None.
