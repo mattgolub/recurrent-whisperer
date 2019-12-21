@@ -1693,7 +1693,7 @@ class RecurrentWhisperer(object):
 
         # Save checkpoint upon completing training
         if self.hps.do_save_ckpt:
-            self._save_checkpoint(self.savers['seso'], self.ckpt_path)
+            self._save_seso_checkpoint()
 
         # Save .done file. Critically placed after saving final checkpoint,
         # but before doing a bunch of other stuff that might fail. This way,
@@ -2098,7 +2098,7 @@ class RecurrentWhisperer(object):
         if self.hps.do_save_ckpt and \
             np.mod(self._epoch(), self.hps.n_epochs_per_ckpt) == 0:
 
-            self._save_checkpoint(self.savers['seso'], self.ckpt_path)
+            self._save_seso_checkpoint()
 
     def _maybe_save_lvl_checkpoint(self, valid_loss, train_data, valid_data):
         '''Saves a model checkpoint if the current validation loss values is
@@ -2129,9 +2129,33 @@ class RecurrentWhisperer(object):
             self._update_epoch_last_lvl_improvement(self._epoch())
 
             if self.hps.do_save_lvl_ckpt:
-                self._save_checkpoint(self.savers['lvl'], self.lvl_ckpt_path)
+                self._save_lvl_checkpoint()
 
             self.refresh_lvl_files(train_data, valid_data)
+
+    def _save_lvl_checkpoint(self):
+        ''' Saves a lowest-validation-loss checkpoint.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+        print('\t\tSaving lvl checkpoint ...')
+        self._save_checkpoint(self.savers['lvl'], self.lvl_ckpt_path)
+
+    def _save_seso_checkpoint(self):
+        ''' Saves an every-so-often checkpoint.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+        print('\tSaving checkpoint...')
+        self._save_checkpoint(self.savers['seso'], self.ckpt_path)
 
     def _save_checkpoint(self, saver, ckpt_path):
         '''Saves a model checkpoint.
@@ -2145,7 +2169,6 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        print('\tSaving checkpoint...')
         self._update_train_time()
         saver.save(self.session, ckpt_path, global_step=self._step())
 
