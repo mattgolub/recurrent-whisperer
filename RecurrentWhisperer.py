@@ -936,7 +936,7 @@ class RecurrentWhisperer(object):
 
         Returns:
             figs: dict with string figure names as keys and matplotlib.pyplot.figure objects as values. Typical usage will
-            populate this dict upon the first call to _update_visualizations().
+            populate this dict upon the first call to update_visualizations().
         '''
         self.figs = dict()
 
@@ -1703,7 +1703,7 @@ class RecurrentWhisperer(object):
 
         if self.hps.do_generate_final_visualizations:
 
-            self._update_visualizations(train_data, valid_data, is_final=True)
+            self.update_visualizations(train_data, valid_data, is_final=True)
 
             if self.hps.do_save_tensorboard_images:
                 self._update_tensorboard_images()
@@ -1716,7 +1716,7 @@ class RecurrentWhisperer(object):
                 # Generate LVL visualizations
                 print('\tGenerating visualizations from restored LVL model...')
                 self.restore_from_lvl_checkpoint()
-                self._update_visualizations(train_data, valid_data,
+                self.update_visualizations(train_data, valid_data,
                     is_final=True)
 
                 if self.hps.do_save_tensorboard_images:
@@ -1759,7 +1759,7 @@ class RecurrentWhisperer(object):
         if hps.do_generate_training_visualizations and \
             np.mod(self._epoch(), hps.n_epochs_per_visualization_update) == 0:
 
-            self._update_visualizations(train_data, valid_data, is_final=False)
+            self.update_visualizations(train_data, valid_data, is_final=False)
 
             if hps.do_save_tensorboard_images:
                 self._update_tensorboard_images()
@@ -1767,7 +1767,7 @@ class RecurrentWhisperer(object):
             if hps.do_save_training_visualizations:
                 self.save_visualizations()
 
-    def _update_visualizations(self, train_data, valid_data=None,
+    def update_visualizations(self, train_data, valid_data=None,
         is_final=False):
         '''Updates visualizations in self.figs. Only called if
             do_generate_training_visualizations OR
@@ -1779,7 +1779,7 @@ class RecurrentWhisperer(object):
             valid_data: dict containing the validation data.
 
             is_final: bool indicating whether this is the final time
-            _update_visualizations will be called (e.g., upon termination of
+            update_visualizations will be called (e.g., upon termination of
             training).
 
         Returns:
