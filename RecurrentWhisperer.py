@@ -1124,9 +1124,8 @@ class RecurrentWhisperer(object):
             A merged TF summary that, once executed via session.run(...), can be sent to Tensorboard via add_summary(...).
         '''
 
-        name = self.hps.name
         summaries = []
-        with tf.variable_scope(name + '/' + scope, reuse=False):
+        with tf.variable_scope(scope, reuse=False):
             for name, op in ops_dict.iteritems():
                 summaries.append(summary_fcn(name, op))
 
