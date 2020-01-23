@@ -15,6 +15,7 @@ import shutil
 import ntpath
 import logging
 from copy import deepcopy
+from subprocess import call
 import pdb
 
 import tensorflow as tf
@@ -710,6 +711,26 @@ class RecurrentWhisperer(object):
                     cmd_list.append(str_val)
 
             return cmd_list
+
+    @staticmethod
+    def execute_command_line_call(run_script, hp_dict={}):
+        ''' Executes a command line call to a user-specified bash script with
+        RecurrentWhisperer hyperparameters passed in as command-line arguments.
+
+        Args:
+            run_script: string specifying the bash script call,
+            e.g., 'location/of/your/run_script.sh'
+
+            hp_dict: (optional) dict containing any hps to override defaults.
+            Default: {}
+
+        Returns:
+            None.
+        '''
+        cmd_list = RecurrentWhisperer.get_command_line_call(
+            run_script, hp_dict)
+        print(cmd_list)
+        call(cmd_list)
 
     # *************************************************************************
     # Setup *******************************************************************
