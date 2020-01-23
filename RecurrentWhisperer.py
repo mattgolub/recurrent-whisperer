@@ -1461,30 +1461,6 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    @staticmethod # This will soon move to CustomLayers
-    def _apply_weight_regularization(vars, weight_regularizer=tf.nn.l2_loss):
-        ''' Returns regularization loss applied to TF variables.
-
-        Args:
-            vars: A list of TF variables whose values will contribute to this
-            regularization loss.
-
-            weight_regularizer (optional): A TF loss function to be applied to
-            the variables in vars. Default: tf.nn.l2_loss.
-
-        Returns:
-            A TF scalar--the sum of the regularizer across all input variables.
-        '''
-
-        # Print the parameters that are regularized via L2
-        if len(vars) == 0:
-            return tf.constant(0.0)
-        else:
-            print('Applying L2 regularization to the following parameters:')
-            for v in vars:
-                print('\t' +  v.name + ' ' + str(v.shape))
-            return tf.reduce_sum([weight_regularizer(v) for v in vars])
-
     def _setup_training(self, train_data, valid_data=None):
         '''Performs any tasks that must be completed before entering the
         training loop in self.train.
