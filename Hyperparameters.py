@@ -252,7 +252,7 @@ class Hyperparameters(object):
         return self._get_hash_hps(self.integrated_hps, self.default_hash_hps)
 
     @property
-    def run_hash(self):
+    def hash(self):
         '''Computes a hash of all non-default hash hyperparameters.
         In most applications (e.g., setting up run directories), this is the
         hash that should be used. By omitting default hps, hashes become more
@@ -266,10 +266,10 @@ class Hyperparameters(object):
         Returns:
             string containing the hyperparameters hash.
         '''
-        return self._generate_hash(self.hps_to_hash)[0:self._hash_len]
+        return self._generate_hash(self.hps_to_hash)
 
     @property
-    def _run_hash_all_hps(self):
+    def _hash_all_hps(self):
         '''Computes a hash of all hyperparameters, including default and
         non-hash hyperparameters. This function is provided as a convenience
         for testing.
@@ -280,7 +280,7 @@ class Hyperparameters(object):
         Returns:
             string containing the hyperparameters hash.
         '''
-        return self._generate_hash(self.integrated_hps)[0:self._hash_len]
+        return self._generate_hash(self.integrated_hps)
 
     def save(self, save_path):
         '''Saves the Hyperparameters object.
@@ -642,7 +642,7 @@ class Hyperparameters(object):
         # Generate the hash for that string
         h = hashlib.new('sha512')
         h.update(str_to_hash)
-        hps_hash = h.hexdigest()
+        hps_hash = h.hexdigest()[0:self._hash_len]
 
         return hps_hash
 

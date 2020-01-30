@@ -752,7 +752,7 @@ class RecurrentWhisperer(object):
         log_dir = hps.log_dir
         n_folds = hps.n_folds
         fold_idx = hps.fold_idx
-        run_hash = hps.run_hash
+        run_hash = hps.hash
         run_dir = self.get_run_dir(log_dir, run_hash, n_folds, fold_idx)
         paths = self.get_paths(run_dir)
 
@@ -1062,7 +1062,7 @@ class RecurrentWhisperer(object):
             self._restore_from_checkpoint(self.savers['lvl'], self.lvl_dir)
         else:
             # Initialize new session
-            print('Initializing new run (%s).' % self.hps.run_hash)
+            print('Initializing new run (%s).' % self.hps.hash)
             self.session.run(tf.global_variables_initializer())
 
             self.hps.save_yaml(self.hps_yaml_path) # For visual inspection
