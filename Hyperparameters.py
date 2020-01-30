@@ -298,7 +298,7 @@ class Hyperparameters(object):
         file.write(cPickle.dumps(self.integrated_hps))
         file.close()
 
-    def write_yaml(self, save_path):
+    def save_yaml(self, save_path):
         # Note, this doesn't do well with numpy variables.
         # Ideally, make sure everything is bool, int, float, string, etc.
         self._maybe_print('Writing Hyperparameters YAML file.')

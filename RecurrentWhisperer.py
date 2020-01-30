@@ -1065,7 +1065,7 @@ class RecurrentWhisperer(object):
             print('Initializing new run (%s).' % self.hps.run_hash)
             self.session.run(tf.global_variables_initializer())
 
-            self.hps.write_yaml(self.hps_yaml_path) # For visual inspection
+            self.hps.save_yaml(self.hps_yaml_path) # For visual inspection
             self.hps.save(self.hps_path) # For restoring a run via its run_dir
             # (i.e., without needing to manually specify hps)
 
