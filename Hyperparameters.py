@@ -397,16 +397,15 @@ class Hyperparameters(object):
 
         def add_helper(D, key, val):
             if ':' in key:
+
                 dict_name, rem_name = \
                     Hyperparameters._parse_colon_delimited_hp_name(key)
-
-                if dict_name == 'data_hps':
-                    pdb.set_trace()
 
                 if dict_name in D:
                     D[dict_name] = add_helper(D[dict_name], rem_name, val)
                 else:
                     D[dict_name] = assign_leaf(rem_name, val)
+
             else:
                 D[key] = val
 
@@ -582,11 +581,12 @@ class Hyperparameters(object):
         # values) If not, user may have mistyped an hp name.
         default_union = default_hash_set.union(default_non_hash_set)
         if not input_set.issubset(default_union):
+            error_msg = str('Attempted to override hyperparameter(s) '
+                'with no defined defaults.\n')
             for violating_key in input_set - default_union:
-                print('%s is not a valid hyperparameter '
-                    '(has no specified default).' % violating_key)
-            raise ValueError('Attempted to override hyperparameter(s) '
-                             'with no defined defaults.')
+                error_msg += str('\t%s is not a valid hyperparameter '
+                    '(has no specified default).\n' % violating_key)
+            raise ValueError(error_msg)
 
     @staticmethod
     def _get_hash_hps(hps, default_hash_hps):
