@@ -1272,7 +1272,7 @@ class RecurrentWhisperer(object):
 
     @staticmethod
     def _tensorboard_image_name(fig_name):
-        ''' Replaces all but the last instance of '/' with '-'. Facilitates
+        ''' Replaces all instances of '/' with '-'. Facilitates
         differentiating figure paths from Tensorboard Image scopes.
 
         Args:
@@ -1285,11 +1285,7 @@ class RecurrentWhisperer(object):
         key = os.sep
         replacement = '-'
 
-        n = fig_name.count(key)
-        if n <= 1:
-            return fig_name
-        else:
-            return fig_name.replace(key, replacement, n-1)
+        return fig_name.replace(key, replacement)
 
     @staticmethod
     def _fig2array(fig):
