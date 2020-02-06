@@ -1207,9 +1207,11 @@ class RecurrentWhisperer(object):
             images['placeholders'][fig_name] = \
                 tf.placeholder(tf.uint8, (1, fig_height, fig_width, 3))
 
+            tb_fig_name = fig_name
+
             images['summaries'].append(
                 tf.summary.image(
-                    fig_name,
+                    tb_fig_name,
                     images['placeholders'][fig_name],
                     max_outputs=1))
 
@@ -1262,6 +1264,27 @@ class RecurrentWhisperer(object):
 
         self.tensorboard['writer'].add_summary(
             ev_merged_image_summaries, self._step())
+
+    @staticmethod
+    def tensorboard_image_name(fig_name):
+        ''' Replaces all but the last instance of '/' with '-'. Facilitates
+        differentiating figure paths from Tensorboard Image scopes.
+
+        Args:
+            fig_name: string, e.g., 'partial/path/to/your/figure'
+
+        Returns:
+            Updated version fig_name, e.g., 'partial-path-to-your/figure'.
+        '''
+
+        key = os.sep
+        replacement = '-'
+
+        n = fig_name.count(key)
+        if n <= 1:
+            return fig_name
+        else:
+            return fig_name.replace(key, replacement, n-1)
 
     @staticmethod
     def _fig2array(fig):
