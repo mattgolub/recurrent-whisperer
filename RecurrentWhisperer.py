@@ -248,6 +248,11 @@ class RecurrentWhisperer(object):
 
         self._setup_run_dir()
 
+        if 'CUDA_VISIBLE_DEVICES' in os.environ:
+            print('\n\nCUDA_VISIBLE_DEVICES: %s'
+                % str(os.environ['CUDA_VISIBLE_DEVICES']))
+        print('Building TF model on %s\n' % hps.device)
+
         with tf.device(hps.device):
 
             with tf.variable_scope(hps.name, reuse=tf.AUTO_REUSE):
@@ -1207,7 +1212,7 @@ class RecurrentWhisperer(object):
             images['placeholders'][fig_name] = \
                 tf.placeholder(tf.uint8, (1, fig_height, fig_width, 3))
 
-            tb_fig_name = fig_name
+            tb_fig_name = self._tensorboard_image_name(fig_name)
 
             images['summaries'].append(
                 tf.summary.image(
@@ -1266,7 +1271,7 @@ class RecurrentWhisperer(object):
             ev_merged_image_summaries, self._step())
 
     @staticmethod
-    def tensorboard_image_name(fig_name):
+    def _tensorboard_image_name(fig_name):
         ''' Replaces all but the last instance of '/' with '-'. Facilitates
         differentiating figure paths from Tensorboard Image scopes.
 
