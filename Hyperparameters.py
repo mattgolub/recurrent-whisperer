@@ -568,6 +568,10 @@ class Hyperparameters(object):
             and default_non_hash_hps.
         '''
 
+        Hyperparameters._validate_keys(hps)
+        Hyperparameters._validate_keys(default_hash_hps)
+        Hyperparameters._validate_keys(default_non_hash_hps)
+
         if not isinstance(hps, dict):
             raise ValueError('hps must be a dict but is not.')
 
@@ -602,6 +606,31 @@ class Hyperparameters(object):
                 error_msg += str('\t%s is not a valid hyperparameter '
                     '(has no specified default).\n' % violating_key)
             raise ValueError(error_msg)
+
+    @staticmethod
+    def _validate_keys(hps):
+        ''' Recursively checks that all keys are strings or dicts.
+
+        Args:
+            hps: a (potentially nested) dict with keys as string
+            hyperparameter names.
+
+        Returns:
+            None.
+
+        Raises:
+            ValueError if any keys are not strings or dicts.
+        '''
+
+        for key, val in hps.iteritems():
+
+            assert (isinstance(key, str)),\
+                ('Hyperparameters keys must be strings, '
+                 'but found one of type: %s' % str(type(key)))
+
+            if isinstance(val, dict):
+                Hyperparameters._validate_keys(val)
+
 
     @staticmethod
     def _get_hash_hps(hps, default_hash_hps):
