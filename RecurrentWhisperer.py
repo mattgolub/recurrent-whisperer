@@ -1736,8 +1736,7 @@ class RecurrentWhisperer(object):
                 # Generate LVL visualizations
                 print('\tGenerating visualizations from restored LVL model...')
                 self.restore_from_lvl_checkpoint()
-                self.update_visualizations(train_data, valid_data,
-                    is_final=True)
+                self.update_visualizations(train_data, valid_data, is_lvl=True)
 
                 if self.hps.do_save_tensorboard_images:
                     self._update_tensorboard_images()
@@ -1788,7 +1787,8 @@ class RecurrentWhisperer(object):
                 self.save_visualizations()
 
     def update_visualizations(self, train_data, valid_data=None,
-        is_final=False):
+        is_final=False,
+        is_lvl=False):
         '''Updates visualizations in self.figs. Only called if
             do_generate_training_visualizations OR
             do_generate_lvl_visualizations.
@@ -1798,9 +1798,11 @@ class RecurrentWhisperer(object):
 
             valid_data: dict containing the validation data.
 
-            is_final: bool indicating whether this is the final time
-            update_visualizations will be called (e.g., upon termination of
-            training).
+            is_final: bool indicating if this call is made when the model is in its final state after training has terminated.
+
+            is_lvl: bool indicating if this call is made when the model is in its lowest-validation-loss state.
+
+            The two flags above can be used to signal generating a more comprehensive set of visualizations and / or analyses than those that are periodically generated throughout training.
 
         Returns:
             None.

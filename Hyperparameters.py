@@ -631,7 +631,6 @@ class Hyperparameters(object):
             if isinstance(val, dict):
                 Hyperparameters._validate_keys(val)
 
-
     @staticmethod
     def _get_hash_hps(hps, default_hash_hps):
         '''
