@@ -353,6 +353,11 @@ class Hyperparameters(object):
 
         D_flat = dict()
         for key, val in D.iteritems():
+
+            assert (isinstance(key, str)),\
+                ('Hyperparameters keys must be strings, '
+                 'but found one of type: %s' % str(type(key)))
+
             if isinstance(val, dict):
                 val_flat = Hyperparameters.flatten(val)
                 for key2, val2 in val_flat.iteritems():
@@ -388,6 +393,11 @@ class Hyperparameters(object):
             potentially nested dict. Because it's the first entry, there
             is no chance of overwriting an existing dict.
             '''
+
+            assert (isinstance(key, str)),\
+                ('Hyperparameters keys must be strings, '
+                 'but found one of type: %s' % str(type(key)))
+
             if ':' in key:
                 dict_name, rem_name = \
                     Hyperparameters._parse_colon_delimited_hp_name(key)
@@ -396,6 +406,11 @@ class Hyperparameters(object):
                 return {key: val}
 
         def add_helper(D, key, val):
+
+            assert (isinstance(key, str)),\
+                ('Hyperparameters keys must be strings, '
+                 'but found one of type: %s' % str(type(key)))
+
             if ':' in key:
 
                 dict_name, rem_name = \
