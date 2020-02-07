@@ -24,6 +24,14 @@ import numpy.random as npr
 import cPickle
 import scipy.io as spio
 
+if os.environ.get('DISPLAY','') == '':
+    # Ensures smooth running across environments, including servers without
+    # graphical backends.
+    print('No display found. Using non-interactive Agg backend.')
+    import matplotlib
+    matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
 from AdaptiveLearningRate import AdaptiveLearningRate
 from AdaptiveGradNormClip import AdaptiveGradNormClip
 from Hyperparameters import Hyperparameters
@@ -1837,6 +1845,56 @@ class RecurrentWhisperer(object):
                 os.makedirs(figs_dir_i)
 
             fig.savefig(file_path, bbox_inches='tight', format=format, dpi=dpi)
+
+    def _get_fig(self, fig_name,
+        width=6.4,
+        height=4.8,
+        tight_layout=True):
+        ''' Retrieves an existing figure or creates a new one.
+
+        Args:
+            fig_name: string containing a unique name for the requested
+            figure. This is used to determine the filename to be used when
+            saving the figure and the name of the corresponding Tensorboard
+            Image. See also: tensorboard_image_name(...).
+
+            width, height: (optional) width and height of requested figure, in
+            inches. These are only used when creating a new figure--they does
+            not update an existing one. Defaults: 6.4, 4.8.
+
+            tight_layout (optional): See matplotlib.pyplot.figure docstring.
+
+        Returns:
+            The requested matplotlib.pyplot figure.
+        '''
+
+        if fig_name not in self.figs:
+            self.figs[fig_name] = plt.figure(
+                figsize=(width, height),
+                tight_layout=tight_layout)
+
+        fig = self.figs[fig_name]
+        fig.clf()
+
+        return fig
+
+    @staticmethod
+    def refresh_figs():
+        ''' Refreshes all matplotlib figures.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+        if os.environ.get('DISPLAY','') == '':
+            # If executing on a server with no graphical back-end
+            pass
+        else:
+            plt.ion()
+            plt.show()
+            plt.pause(1e-10)
 
     # *************************************************************************
     # Scalar access and updates ***********************************************
