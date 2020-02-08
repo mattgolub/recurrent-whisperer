@@ -298,6 +298,8 @@ class RecurrentWhisperer(object):
 
         Returns:
             dict of hyperparameters.
+
+        To Do: Convert this and related functions to @classmethod.
         '''
 
         hps = \
