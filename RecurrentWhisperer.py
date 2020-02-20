@@ -2502,6 +2502,7 @@ class RecurrentWhisperer(object):
         Raises:
             FileNotFoundError (if no lowest-validation-loss checkpoint exists).
         '''
+
         if model_checkpoint_path is None:
             lvl_ckpt = tf.train.get_checkpoint_state(self.lvl_dir)
             model_checkpoint_path = lvl_ckpt.model_checkpoint_path

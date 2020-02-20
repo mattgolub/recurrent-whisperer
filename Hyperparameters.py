@@ -180,9 +180,11 @@ class Hyperparameters(object):
     @staticmethod
     def integrate_hps(hps, update_hps):
         '''Integrates two hyperparameter dicts, with update_hps overriding and
-        possibly adding novel items to hps. Integration is done recursively to
-        support dict hyperparameters (e.g., containing hyperparameters for
-        helper classes).
+        possibly adding novel items to hps.
+
+        Integration is done recursively to support selective updating within
+        hyperparameters that are themselves hyperparameters dicts (e.g.,
+        containing hyperparameters for helper classes).
 
         Note: This function does not perform any checks on the structure of
         hps or update_hps. See example application 1 below. If needed, such
@@ -194,6 +196,9 @@ class Hyperparameters(object):
             sub_def_hps = {'b': 5, 'c_hps': {'d': 6}}
             integrate_hps(super_def_hps, sub_def_hps)
                 --> {'a': 1, 'b': 5, 'c_hps': {'d': 6, 'e': 4}}
+
+            Notice that c_hps does not become sub_def_hps['c_hps'], but rather
+            only c_hps['d'] is changed from super_def_hps['c_hps'].
 
         Example application:
 
