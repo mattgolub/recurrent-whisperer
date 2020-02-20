@@ -2345,46 +2345,48 @@ class RecurrentWhisperer(object):
                 None.
         '''
 
-        def save_pkl(data_to_save, save_path_no_extension):
-            '''Pickle and save data as .pkl file.
-
-            Args:
-                data_to_save: any pickle-able object to be pickled and saved.
-
-                save_path_no_extension: path at which to save the data,
-                including an extensionless filename.
-
-            Returns:
-                None.
-            '''
-
-            save_path = save_path_no_extension + '.pkl'
-            file = open(save_path, 'wb')
-            file.write(cPickle.dumps(data_to_save))
-            file.close()
-
-        def save_mat(data_to_save, save_path_no_extension):
-            '''Save data as .mat file.
-
-            Args:
-                save_path_no_extension: path at which to save the data,
-                including an extensionless filename.
-
-                data_to_save: dict containing data to be saved.
-
-            Returns:
-                None.
-            '''
-
-            save_path = save_path_no_extension + '.mat'
-            spio.savemat(save_path, data_to_save)
-
         pkl_path = os.path.join(self.lvl_dir, filename_no_extension)
-        save_pkl(data_to_save, pkl_path)
+        self._save_pkl(data_to_save, pkl_path)
 
         if self.hps.do_save_lvl_mat_files:
             mat_path = os.path.join(self.lvl_dir, filename_no_extension)
-            save_mat(data_to_save, pkl_path)
+            self._save_mat(data_to_save, pkl_path)
+
+    @staticmethod
+    def _save_pkl(data_to_save, save_path_no_extension):
+        '''Pickle and save data as .pkl file.
+
+        Args:
+            data_to_save: any pickle-able object to be pickled and saved.
+
+            save_path_no_extension: path at which to save the data,
+            including an extensionless filename.
+
+        Returns:
+            None.
+        '''
+
+        save_path = save_path_no_extension + '.pkl'
+        file = open(save_path, 'wb')
+        file.write(cPickle.dumps(data_to_save))
+        file.close()
+
+    @staticmethod
+    def _save_mat(data_to_save, save_path_no_extension):
+        '''Save data as .mat file.
+
+        Args:
+            save_path_no_extension: path at which to save the data,
+            including an extensionless filename.
+
+            data_to_save: dict containing data to be saved.
+
+        Returns:
+            None.
+        '''
+
+        save_path = save_path_no_extension + '.mat'
+        spio.savemat(save_path, data_to_save)
 
     # *************************************************************************
     # Loading and Restoring ***************************************************
@@ -2599,6 +2601,18 @@ class RecurrentWhisperer(object):
         path_to_file = RecurrentWhisperer._get_lvl_path(
             run_dir, train_or_valid_str, predictions_or_summary_str)
 
+        return RecurrentWhisperer._load_pkl(path_to_file)
+
+    @staticmethod
+    def _load_pkl(path_to_file):
+        '''Loads previously saved data.
+
+        Args:
+            path_to_file: string containing the path to the saved .pkl data.
+
+        Returns:
+            dict containing saved data.
+        '''
         if os.path.exists(path_to_file):
             file = open(path_to_file, 'rb')
             load_path = file.read()
