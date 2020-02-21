@@ -1194,6 +1194,11 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
+        figs = self.figs
+
+        if len(figs) == 0:
+            # If no figs have been created, there's nothing to do here.
+            return;
 
         if 'images' not in self.tensorboard:
             # The first time this function is called
@@ -1208,8 +1213,6 @@ class RecurrentWhisperer(object):
             if needed due to new figs having been created since last time.
             '''
             images = self.tensorboard['images']
-
-        figs = self.figs
 
         for fig_name, fig in figs.iteritems():
 
@@ -1252,11 +1255,16 @@ class RecurrentWhisperer(object):
             None.
         '''
 
+        figs = self.figs
+
+        if len(figs) == 0:
+            # If no figs have been created, there's nothing to do here.
+            return;
+
         # This done only on the first call to _update_tensorboard_images
         if 'images' not in self.tensorboard:
             self._setup_tensorboard_images()
 
-        figs = self.figs
         images = self.tensorboard['images']
 
         # Check to see whether any new figures have been added since the
