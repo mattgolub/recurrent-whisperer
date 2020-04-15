@@ -885,6 +885,11 @@ class RecurrentWhisperer(object):
 
             self.train_timer = Timer()
 
+            ''' Counter to track the current training epoch number. An epoch
+            is defined as one complete pass through the training data (i.e.,
+            multiple batches).'''
+            self.epoch = 0
+
             self.train_time = tf.Variable(
                 0, name='train_time', trainable=False, dtype=tf.float32)
             self.train_time_placeholder = tf.placeholder(
@@ -895,29 +900,13 @@ class RecurrentWhisperer(object):
             self.global_step = tf.Variable(
                 0, name='global_step', trainable=False, dtype=tf.int32)
 
-            self.epoch = tf.Variable(
-                0, name='epoch', trainable=False, dtype=tf.int32)
-
-            self.increment_epoch = tf.assign_add(
-                self.epoch, 1, name='increment_epoch')
-
             # lowest validation loss
             self.lvl = tf.Variable(
                 np.inf, name='lvl', trainable=False, dtype=self.dtype)
             self.lvl_placeholder = tf.placeholder(
                 self.dtype, name='lowest_validation_loss')
             self.lvl_update = tf.assign(self.lvl, self.lvl_placeholder)
-
-            # epoch of most recent improvement in lowest validation loss
-            self.epoch_last_lvl_improvement = tf.Variable(
-                0, name='epoch_last_lvl_improvement',
-                trainable=False, dtype=self.dtype)
-            self.epoch_last_lvl_improvement_placeholder = tf.placeholder(
-                self.dtype, name='epoch_last_lvl_improvement')
-            self.epoch_last_lvl_improvement_update = \
-                tf.assign(
-                    self.epoch_last_lvl_improvement,
-                    self.epoch_last_lvl_improvement_placeholder)
+            self.epoch_last_lvl_improvement = 0
 
             # lowest training loss
             self.ltl = tf.Variable(
@@ -925,7 +914,6 @@ class RecurrentWhisperer(object):
             self.ltl_placeholder = tf.placeholder(
                 self.dtype, name='lowest_training_loss')
             self.ltl_update = tf.assign(self.ltl, self.ltl_placeholder)
-
 
         with tf.variable_scope('optimizer', reuse=False):
 
@@ -1477,9 +1465,9 @@ class RecurrentWhisperer(object):
         epoch_grad_norm = compute_epoch_average(batch_grad_norms, batch_sizes)
         self.adaptive_grad_norm_clip.update(epoch_grad_norm)
 
-        self._increment_epoch()
+        self.epoch += 1
 
-        print('Epoch %d:' % self._epoch())
+        print('Epoch %d:' % self.epoch)
         print('\tTraining loss: %.2e;' % epoch_loss)
         print('\tImprovement in training loss: %.2e;' % loss_improvement)
         print('\tLearning rate: %.2e;' %  self.adaptive_learning_rate())
@@ -1620,7 +1608,7 @@ class RecurrentWhisperer(object):
             pass
         else:
             n = self.hps.n_epochs_per_validation_update
-            if np.mod(self._epoch(), n) == 0:
+            if np.mod(self.epoch, n) == 0:
                 self.update_validation(train_data, valid_data)
 
     def update_validation(self, train_data, valid_data):
@@ -1701,7 +1689,7 @@ class RecurrentWhisperer(object):
 
         if do_check_lvl:
 
-            if self._epoch() - self._epoch_last_lvl_improvement() >= \
+            if self.epoch - self.epoch_last_lvl_improvement >= \
                 hps.max_n_epochs_without_lvl_improvement:
 
                 print('\nStopping optimization:'
@@ -1794,7 +1782,7 @@ class RecurrentWhisperer(object):
 
         hps = self.hps
         if hps.do_generate_training_visualizations and \
-            np.mod(self._epoch(), hps.n_epochs_per_visualization_update) == 0:
+            np.mod(self.epoch, hps.n_epochs_per_visualization_update) == 0:
 
             self.update_visualizations(train_data, valid_data, is_final=False)
 
@@ -1923,30 +1911,6 @@ class RecurrentWhisperer(object):
         '''
         return self.session.run(self.global_step)
 
-    def _epoch(self):
-        '''Returns the current training epoch number. An epoch is defined as
-        one complete pass through the training data (i.e., multiple batches).
-
-        Args:
-            None.
-
-        Returns:
-            epoch: int specifying the current epoch number.
-        '''
-        return self.session.run(self.epoch)
-
-    def _epoch_last_lvl_improvement(self):
-        '''Returns the epoch of the last improvement of the lowest validation
-        loss.
-
-        Args:
-            None.
-
-        Returns:
-            epoch: int specifying the epoch number.
-        '''
-        return self.session.run(self.epoch_last_lvl_improvement)
-
     def _lvl(self):
         '''Returns the lowest validation loss encountered thus far during
         training.
@@ -1997,22 +1961,12 @@ class RecurrentWhisperer(object):
             self.train_time_update,
             feed_dict={self.train_time_placeholder: time_val})
 
-    def _increment_epoch(self):
-        '''Runs the TF op that increments the epoch number.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        '''
-        self.session.run(self.increment_epoch)
-
     def _update_ltl(self, ltl):
-        '''Runs the TF op that updates the lowest training loss.
+        ''' Updates the lowest training loss.
 
         Args:
-            ltl: A numpy scalar value indicating the (new) lowest training loss.
+            ltl: A numpy scalar value indicating the (new) lowest training
+            loss.
 
         Returns:
             None.
@@ -2023,7 +1977,8 @@ class RecurrentWhisperer(object):
             feed_dict={self.ltl_placeholder: ltl})
 
     def _update_lvl(self, lvl, epoch=None):
-        '''Runs the TF ops that update the lowest validation loss and the epoch of the last improvement.
+        ''' Updates the lowest validation loss and the epoch of this
+        improvement.
 
         Args:
             lvl: A numpy scalar value indicating the (new) lowest validation
@@ -2035,14 +1990,17 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        if epoch is None:
-            epoch = self._epoch()
 
+        # Not Tensorflow
+        if epoch is None:
+            epoch = self.epoch
+
+        # Not Tensorflow
+        self.epoch_last_lvl_improvement = epoch
+
+        # Tensorflow
         self.session.run(
-            self.lvl_update,
-            feed_dict={
-                self.lvl_placeholder: lvl,
-                self.epoch_last_lvl_improvement_placeholder: epoch})
+            self.lvl_update, feed_dict={self.lvl_placeholder: lvl})
 
     # *************************************************************************
     # TF Variables access and updates *****************************************
@@ -2172,7 +2130,7 @@ class RecurrentWhisperer(object):
             None.
         '''
         if self.hps.do_save_ckpt and \
-            np.mod(self._epoch(), self.hps.n_epochs_per_ckpt) == 0:
+            np.mod(self.epoch, self.hps.n_epochs_per_ckpt) == 0:
 
             self._save_seso_checkpoint()
 
@@ -2197,7 +2155,7 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        if (self._epoch()==0 or valid_loss < self._lvl()):
+        if (self.epoch==0 or valid_loss < self._lvl()):
 
             print('\t\tAchieved lowest validation loss.')
 
