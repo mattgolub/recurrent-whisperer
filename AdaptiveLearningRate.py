@@ -222,8 +222,8 @@ class AdaptiveLearningRate(object):
 			self.learning_rate = initial_rate
 
 		if self.verbose:
-			print('AdaptiveLearningRate schedule requires at least %d steps:' %
-				self.min_steps)
+			print('AdaptiveLearningRate schedule requires at least %s steps:' %
+				str(self.min_steps))
 
 	def __call__(self):
 		'''Returns the current learning rate.'''
