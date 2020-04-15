@@ -2022,34 +2022,27 @@ class RecurrentWhisperer(object):
             self.ltl_update,
             feed_dict={self.ltl_placeholder: ltl})
 
-    def _update_lvl(self, lvl):
-        '''Runs the TF op that updates the lowest validation loss.
+    def _update_lvl(self, lvl, epoch=None):
+        '''Runs the TF ops that update the lowest validation loss and the epoch of the last improvement.
 
         Args:
             lvl: A numpy scalar value indicating the (new) lowest validation
             loss.
 
+            epoch (optional): Numpy scalar indicating the epoch of this
+            improvement. Default: the current epoch.
+
         Returns:
             None.
         '''
+        if epoch is None:
+            epoch = self._epoch()
+
         self.session.run(
             self.lvl_update,
-            feed_dict={self.lvl_placeholder: lvl})
-
-    def _update_epoch_last_lvl_improvement(self, epoch):
-        '''Runs the TF op that updates the counter that tracks the most recent
-        improvement in the lowest validation loss.
-
-        Args:
-            epoch: A numpy scalar value indicating the epoch of the most
-            recent improvement in the lowest validation loss.
-
-        Returns:
-            None.
-        '''
-        self.session.run(
-            self.epoch_last_lvl_improvement_update,
-            feed_dict={self.epoch_last_lvl_improvement_placeholder: epoch})
+            feed_dict={
+                self.lvl_placeholder: lvl,
+                self.epoch_last_lvl_improvement_placeholder: epoch})
 
     # *************************************************************************
     # TF Variables access and updates *****************************************
@@ -2094,7 +2087,6 @@ class RecurrentWhisperer(object):
         return matching_vars
 
     def update_variables_optimized(self, vars_to_train,
-        do_reset_termination_criteria=True,
         do_reset_loss_history=True,
         do_reset_learning_rate=True,
         do_reset_gradient_clipping=True):
@@ -2106,9 +2098,6 @@ class RecurrentWhisperer(object):
         Args:
             vars_to_train (optional): list of TF variables to be optimized.
             Each variable must be in tf.trainable_variables().
-
-            do_reset_termination_criteria (optional): bool indicating whether
-            to reset training termination criteria. Default: True.
 
             do_reset_loss_history (optional): bool indicating whether to reset
             records of the lowest training and validation losses (so that
@@ -2126,9 +2115,6 @@ class RecurrentWhisperer(object):
         '''
 
         hps = self.hps
-
-        if do_reset_termination_criteria:
-            self._update_epoch_last_lvl_improvement(self._epoch())
 
         if do_reset_loss_history:
             self._update_ltl(np.inf)
@@ -2216,7 +2202,6 @@ class RecurrentWhisperer(object):
             print('\t\tAchieved lowest validation loss.')
 
             self._update_lvl(valid_loss)
-            self._update_epoch_last_lvl_improvement(self._epoch())
 
             if self.hps.do_save_lvl_ckpt:
                 self._save_lvl_checkpoint()
