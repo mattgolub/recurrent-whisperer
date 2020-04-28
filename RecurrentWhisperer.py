@@ -62,10 +62,12 @@ class RecurrentWhisperer(object):
     _default_non_hash_hyperparameters()
     _setup_model(...)
     _setup_training(...)
-    _get_data_batches(...)
-    _get_batch_size(...)
     _train_batch(...)
-    predict(...)
+    _predict_batch(...)
+    _get_batch_size(...)
+    _get_data_batches(...)
+    _split_data_into_batches(...)
+    _combine_prediction_batches(...)
     _update_valid_tensorboard_summaries
     _update_visualization(...)
     '''
@@ -1326,21 +1328,26 @@ class RecurrentWhisperer(object):
     # *************************************************************************
 
     def train(self, train_data=None, valid_data=None):
-        '''Trains the model with respect to a set of training data. Manages
-        the core tasks involved in model training:
-            -randomly batching the training data
+        '''Trains the model, managing the following core tasks:
+
+            -randomly batching or generating training data
             -updating model parameters via gradients over each data batch
             -periodically evaluating the validation data
             -periodically updating visualization
             -periodically saving model checkpoints
 
-        By convention, this call is the first time this class object has
-        access to the data (train and valid).
+        By convention, this call is the first time this object sees any data
+        (train and valid, or as generated batch-by-batch by
+        _get_data_batches(...)).
 
         Args:
-            train_data: dict containing the training data.
+            train_data (optional): dict containing the training data. If not
+            provided (i.e., train_data=None), the subclass implementation of
+            _get_data_batches(...) must generate training data on the fly.
+            Default: None.
 
-            valid_data: dict containing the validation data.
+            valid_data (optional): dict containing the validation data.
+            Default: None.
 
         Returns:
             None.
@@ -1416,24 +1423,6 @@ class RecurrentWhisperer(object):
             epoch_loss: float indicating the average loss across the epoch of
             training batches.
         '''
-        def compute_epoch_average(vals, n):
-            '''Computes a weighted average of evaluations of a summary
-            statistic across an epoch of data batches.
-
-            Args:
-                vals: list of floats containing the summary statistic
-                evaluations to be averaged.
-
-                n: list of ints containing the number of data examples per
-                data batch.
-
-            Returns:
-                avg: float indicating the weighted average.
-            '''
-            weights = np.true_divide(n, np.sum(n))
-            avg = np.dot(weights, vals)
-            return avg
-
         n_batches = len(data_batches)
 
         batch_losses = np.zeros(n_batches)
@@ -1448,7 +1437,7 @@ class RecurrentWhisperer(object):
             batch_grad_norms[batch_idx] = batch_summary['grad_global_norm']
             batch_sizes[batch_idx] = self._get_batch_size(batch_data)
 
-        epoch_loss = compute_epoch_average(batch_losses, batch_sizes)
+        epoch_loss = self._compute_epoch_average(batch_losses, batch_sizes)
 
         if self.prev_loss is None:
             loss_improvement = np.nan
@@ -1462,7 +1451,8 @@ class RecurrentWhisperer(object):
 
         self.adaptive_learning_rate.update(epoch_loss)
 
-        epoch_grad_norm = compute_epoch_average(batch_grad_norms, batch_sizes)
+        epoch_grad_norm = self._compute_epoch_average(
+            batch_grad_norms, batch_sizes)
         self.adaptive_grad_norm_clip.update(epoch_grad_norm)
 
         self.epoch += 1
@@ -1507,34 +1497,6 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def _get_data_batches(self, train_data):
-        '''Randomly splits the training data into a set of batches.
-        Randomization should reference the random number generator in self.rng
-        so that runs can be reliably reproduced.
-
-        Args:
-            train_data: dict containing the training data.
-
-        Returns:
-            list of dicts, where each dict contains a batch of training data.
-        '''
-        raise StandardError(
-            '%s must be implemented by RecurrentWhisperer subclass'
-             % sys._getframe().f_code.co_name)
-
-    def _get_batch_size(self, batch_data):
-        '''Returns the number of training examples in a batch of training data.
-
-        Args:
-            batch_data: dict containing one batch of training data.
-
-        Returns:
-            int specifying the number of examples in batch_data.
-        '''
-        raise StandardError(
-            '%s must be implemented by RecurrentWhisperer subclass'
-             % sys._getframe().f_code.co_name)
-
     def _train_batch(self, batch_data):
         '''Runs one training step. This function must evaluate the Tensorboard
         summaries:
@@ -1562,10 +1524,9 @@ class RecurrentWhisperer(object):
              % sys._getframe().f_code.co_name)
 
     def predict(self, data):
-        '''Runs the model given its inputs.
-
-        If validation data are provided to train(), predictions are optionally
-        saved each time a new lowest validation loss is achieved.
+        ''' Runs a forward pass through the model using given input data. If
+        the input data are larger than the batch size, the data are processed
+        sequentially in multiple batches.
 
         Args:
             data: dict containing requisite data for generating predictions.
@@ -1573,20 +1534,130 @@ class RecurrentWhisperer(object):
 
         Returns:
             predictions: dict containing model predictions based on data. Key/
-            value pairs will be specific to the subclass implementation. Must
-            contain key: 'loss' whose value is a scalar indicating the
-            evaluation of the overall objective function being minimized
-            during training.
+            value pairs will be specific to the subclass implementation.
 
             summary: dict containing high-level summaries of the predictions.
             Key/value pairs will be specific to the subclass implementation.
-            If validation data are provided to train(), predictions and
-            summary will be maintained in separate saved files that are
-            updated each time a new lowest validation loss is achieved. By
-            placing lightweight objects as values in summary (e.g., scalars),
-            the summary file can be loaded faster for post-training analyses
-            that do not require loading the potentially bulky predictions.
+            Must contain key: 'loss' whose value is a scalar indicating the
+            evaluation of the overall objective function being minimized
+            during training.
+
+        If/when saving checkpoints, predictions and summary are saved into
+        separate files. By placing lightweight objects as values in summary
+        (e.g., scalars), the summary file can be loaded faster for post-
+        training analyses that do not require loading the potentially bulky
+        predictions.
         '''
+
+        data_batches = self._split_data_into_batches(data)
+        n_batches = len(data_batches)
+        pred_list = []
+        summary_list = []
+        for batch_idx in range(n_batches):
+
+            batch_data = data_batches[batch_idx]
+            batch_size = self._get_batch_size(batch_data)
+
+            print('\t\tPredict: batch %d of %d (%d trials)'
+                  % (batch_idx+1, n_batches, batch_size))
+
+            batch_predictions, batch_summary = self._predict_batch(batch_data)
+
+            pred_list.append(batch_predictions)
+            summary_list.append(batch_summary)
+
+        predictions, summary = self._combine_prediction_batches(
+            pred_list, summary_list)
+
+        assert ('loss' in summary),\
+            ('summary must minimally contain key: \'loss\', but does not.')
+
+        return predictions, summary
+
+    def _predict_batch(self, batch_data):
+        ''' Runs a forward pass through the model using a single batch of data.
+
+        Args:
+            data: dict containing requisite data for generating predictions.
+            Key/value pairs will be specific to the subclass implementation.
+
+        Returns:
+            predictions: See docstring for predict().
+
+            summary:  See docstring for predict().
+        '''
+
+        raise StandardError(
+            '%s must be implemented by RecurrentWhisperer subclass'
+             % sys._getframe().f_code.co_name)
+
+    def _get_batch_size(self, batch_data):
+        '''Returns the number of training examples in a batch of training data.
+
+        Args:
+            batch_data: dict containing one batch of training data.
+
+        Returns:
+            int specifying the number of examples in batch_data.
+        '''
+        raise StandardError(
+            '%s must be implemented by RecurrentWhisperer subclass'
+             % sys._getframe().f_code.co_name)
+
+    def _get_data_batches(self, train_data=None):
+        ''' Splits data into batches or generates data batches on the fly.
+
+        Args:
+            train_data (optional): a fixed set of training data to be randomly
+            split into batches (e.g., using _split_data_into_batches(...)). If
+            not provided, this function must otherwise generate the data.
+            Default: None.
+
+        Returns:
+            list of dicts, where each dict contains one batch of data.
+        '''
+
+        raise StandardError(
+            '%s must be implemented by RecurrentWhisperer subclass'
+             % sys._getframe().f_code.co_name)
+
+    def _split_data_into_batches(self, data):
+        '''Randomly splits the training data into a set of batches.
+        Randomization should reference the random number generator in self.rng
+        so that runs can be reliably reproduced.
+
+        Args:
+            data: dict containing the to-be-split data.
+
+        Returns:
+            list of dicts, where each dict contains one batch of data.
+        '''
+
+        raise StandardError(
+            '%s must be implemented by RecurrentWhisperer subclass'
+             % sys._getframe().f_code.co_name)
+
+    def _combine_prediction_batches(self, pred_list, summary_list):
+        ''' Combines predictions and summaries across multiple batches. This is
+        required by predict(...), which first splits data into multiple
+        batches (if necessary) before sequentially calling _predict_batch(...)
+        on each data batch.
+
+        Args:
+            pred_list: list of prediction dicts, each generated by
+            _predict_batch(...)
+
+            summary_list: list of summary dicts, each generated by
+            _predict_batch(...).
+
+        Returns:
+            pred: a single prediction dict containing the combined predictions
+            from pred_list.
+
+            summary: a single summary dict containing the combined summaries
+            from summary_list.
+        '''
+
         raise StandardError(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
@@ -1633,6 +1704,26 @@ class RecurrentWhisperer(object):
 
         self._maybe_save_lvl_checkpoint(
             summary['loss'], train_data, valid_data)
+
+    @staticmethod
+    def _compute_epoch_average(batch_vals, batch_sizes):
+        '''Computes a weighted average of evaluations of a summary
+        statistic across an epoch of data batches. This is all done in
+        numpy (no Tensorflow).
+
+        Args:
+            batch_vals: list of floats containing the summary statistic
+            evaluated on each batch.
+
+            batch_sizes: list of ints containing the number of data
+            examples per data batch.
+
+        Returns:
+            avg: float indicating the weighted average.
+        '''
+        weights = np.true_divide(batch_sizes, np.sum(batch_sizes))
+        avg = np.dot(weights, batch_vals)
+        return avg
 
     def _is_training_complete(self, loss, do_check_lvl=True):
         '''Determines whether the training optimization procedure should
