@@ -20,13 +20,13 @@ Next, install all dependencies in your virtual environment. This step will depen
 For GPU-enabled TensorFlow, use:
 
 ```bash
-$ pip install -e git+https://github.com/mattgolub/recurrent-whisperer.git@master#egg=v1.0.0[gpu]
+$ pip install -e git+https://github.com/mattgolub/recurrent-whisperer.git@master#egg=v1.3.0[gpu]
 ```
 
 For CPU-only TensorFlow, use:
 
 ```bash
-$ pip install -e git+https://github.com/mattgolub/recurrent-whisperer.git@master#egg=v1.0.0[cpu]
+$ pip install -e git+https://github.com/mattgolub/recurrent-whisperer.git@master#egg=v1.3.0[cpu]
 ```
 
 When you are finished working in your virtual environment, enter:
