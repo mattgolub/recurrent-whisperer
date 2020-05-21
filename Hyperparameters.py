@@ -554,8 +554,8 @@ class Hyperparameters(object):
 
     @staticmethod
     def _validate_args(hps, default_hash_hps, default_non_hash_hps):
-        ''' Checks to ensure the dicts provided to __init__ fit the stated
-        requirements.
+        ''' Checks to ensure the dicts provided to __init__ fit the
+        requirements as stated in __init__().
 
         Args:
             See docstring for __init__.
@@ -586,9 +586,15 @@ class Hyperparameters(object):
         if not isinstance(default_non_hash_hps, dict):
             raise ValueError('default_non_hash_hps must be a dict but is not.')
 
-        input_set = set(hps.keys())
-        default_hash_set = set(default_hash_hps.keys())
-        default_non_hash_set = set(default_non_hash_hps.keys())
+        # Flatten all HP dicts to ensure validation recursively into HPs that
+        # are themselves HP dicts..
+        flat_hps = Hyperparameters.flatten(hps)
+        flat_def_hash_hps = Hyperparameters.flatten(default_hash_hps)
+        flat_def_non_hash_hps = Hyperparameters.flatten(default_non_hash_hps)
+
+        input_set = set(flat_hps.keys())
+        default_hash_set = set(flat_def_hash_hps.keys())
+        default_non_hash_set = set(flat_def_non_hash_hps.keys())
 
         # Check to make sure each default hp is either hash or non-hash
         # (not both).
