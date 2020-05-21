@@ -181,9 +181,17 @@ class RecurrentWhisperer(object):
                 maintain a .pkl file containing predictions over the training
                 data based on the lowest-validation-loss parameters.
 
+                do_save_lvl_train_summaries: bool indicating whether to
+                maintain a .pkl file containing summaries of the training
+                predictions based on the lowest-validation-loss parameters.
+
                 do_save_lvl_valid_predictions: bool indicating whether to
                 maintain a .pkl file containing predictions over the validation
                 data based on the lowest-validation-loss parameters.
+
+                do_save_lvl_valid_summaries: bool indicating whether to
+                maintain a .pkl file containing summaries of the validation
+                 predictions based on the lowest-validation-loss parameters.
 
                 do_save_lvl_mat_files: bool indicating whether to save .mat
                 files containing predictions over the training and validation
@@ -236,6 +244,7 @@ class RecurrentWhisperer(object):
         '''
 
         subclass = self.__class__
+
         hps = Hyperparameters(kwargs,
                               self.default_hash_hyperparameters(subclass),
                               self.default_non_hash_hyperparameters(subclass))
@@ -422,7 +431,9 @@ class RecurrentWhisperer(object):
             'do_save_lvl_visualizations': True,
 
             'do_save_lvl_train_predictions': True,
+            'do_save_lvl_train_summaries': True,
             'do_save_lvl_valid_predictions': True,
+            'do_save_lvl_valid_summaries': True,
             'do_save_lvl_mat_files': False,
 
             'max_ckpt_to_keep': 1,
@@ -1523,7 +1534,7 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def predict(self, data):
+    def predict(self, data, do_batch=False):
         ''' Runs a forward pass through the model using given input data. If
         the input data are larger than the batch size, the data are processed
         sequentially in multiple batches.
@@ -1549,25 +1560,38 @@ class RecurrentWhisperer(object):
         predictions.
         '''
 
-        data_batches = self._split_data_into_batches(data)
-        n_batches = len(data_batches)
-        pred_list = []
-        summary_list = []
-        for batch_idx in range(n_batches):
+        if do_batch:
+            # THIS MESSES WITH VISUALIZATIONS. Here data are randomly batched,
+            # then recombined. But no one outside of this function knows about
+            # the effective shuffling of trials!
+            #
+            # To do: ensure trials are recombined into their original order.
+            # This will require tracking trial IDs and passing those to
+            # _combined_prediction_batches().
 
-            batch_data = data_batches[batch_idx]
-            batch_size = self._get_batch_size(batch_data)
+            data_batches = self._split_data_into_batches(data)
+            n_batches = len(data_batches)
+            pred_list = []
+            summary_list = []
+            for batch_idx in range(n_batches):
 
-            print('\t\tPredict: batch %d of %d (%d trials)'
-                  % (batch_idx+1, n_batches, batch_size))
+                batch_data = data_batches[batch_idx]
+                batch_size = self._get_batch_size(batch_data)
 
-            batch_predictions, batch_summary = self._predict_batch(batch_data)
+                print('\t\tPredict: batch %d of %d (%d trials)'
+                      % (batch_idx+1, n_batches, batch_size))
 
-            pred_list.append(batch_predictions)
-            summary_list.append(batch_summary)
+                batch_predictions, batch_summary = self._predict_batch(
+                    batch_data)
 
-        predictions, summary = self._combine_prediction_batches(
-            pred_list, summary_list)
+                pred_list.append(batch_predictions)
+                summary_list.append(batch_summary)
+
+            predictions, summary = self._combine_prediction_batches(
+                pred_list, summary_list)
+
+        else:
+            predictions, summary = self._predict_batch(data)
 
         assert ('loss' in summary),\
             ('summary must minimally contain key: \'loss\', but does not.')
@@ -2255,7 +2279,15 @@ class RecurrentWhisperer(object):
             if self.hps.do_save_lvl_ckpt:
                 self._save_lvl_checkpoint()
 
-            self.refresh_lvl_files(train_data, valid_data)
+            if self.hps.do_save_lvl_train_predictions or \
+                self.hps.do_save_lvl_train_summaries:
+
+                self.refresh_lvl_files(train_data, 'train')
+
+            if self.hps.do_save_lvl_valid_predictions or \
+                self.hps.do_save_lvl_valid_summaries:
+
+                self.refresh_lvl_files(valid_data, 'valid')
 
     def _save_lvl_checkpoint(self):
         ''' Saves a lowest-validation-loss checkpoint.
@@ -2333,31 +2365,27 @@ class RecurrentWhisperer(object):
             filename_no_extension = train_or_valid_str + '_summary'
             self._save_helper(summary, filename_no_extension)
 
-    def refresh_lvl_files(self, train_data, valid_data):
-        '''Saves model predictions over the training and validation data.
+    def refresh_lvl_files(self, data, train_or_valid_str):
+        '''Saves model predictions over the training or validation data.
 
         If prediction summaries are generated, those summaries are saved in
         separate .pkl files (and optional .mat files). See docstring for
         predict() for additional detail.
 
         Args:
-            train_data: dict containing the training data.
+            data: dict containing either the training or validation data.
 
-            valid_data: dict containing the validation data.
+            train_or_valid_str: either 'train' or 'valid', indicating whether
+            data contains training data or validation data, respectively.
 
         Returns:
             None.
         '''
 
-        if train_data is not None:
-            train_pred, train_summary = self.predict(train_data)
-            self._maybe_save_lvl_predictions(train_pred, 'train')
-            self._maybe_save_lvl_summaries(train_summary, 'train')
-
-        if valid_data is not None:
-            valid_pred, valid_summary = self.predict(valid_data)
-            self._maybe_save_lvl_predictions(valid_pred, 'valid')
-            self._maybe_save_lvl_summaries(valid_summary, 'valid')
+        if data is not None:
+            pred, summary = self.predict(data)
+            self._maybe_save_lvl_predictions(pred, train_or_valid_str)
+            self._maybe_save_lvl_summaries(summary, train_or_valid_str)
 
     def _save_done_file(self):
         '''Save an empty .done file (indicating that the training procedure
