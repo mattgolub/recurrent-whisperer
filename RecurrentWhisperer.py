@@ -786,6 +786,7 @@ class RecurrentWhisperer(object):
         run_dir = self.get_run_dir(log_dir, run_hash, n_folds, fold_idx)
         paths = self.get_paths(run_dir)
 
+        self.run_hash = run_hash
         self.run_dir = paths['run_dir']
         self.hps_dir = paths['hps_dir']
         self.hps_path = paths['hps_path']
@@ -1472,7 +1473,7 @@ class RecurrentWhisperer(object):
 
         self._increment_epoch()
 
-        print('Epoch %d:' % self._epoch)
+        print('Run %s, Epoch %d:' % (self.run_hash, self._epoch))
         print('\tTraining loss: %.2e;' % epoch_loss)
         print('\tImprovement in training loss: %.2e;' % loss_improvement)
         print('\tLearning rate: %.2e;' %  self.adaptive_learning_rate())
@@ -1807,9 +1808,12 @@ class RecurrentWhisperer(object):
             return True
 
         if do_check_lvl:
-
-            if self._epoch - self.epoch_last_lvl_improvement >= \
-                hps.max_n_epochs_without_lvl_improvement:
+            # Check whether lvl has been given a value (after being
+            # initialized to np.inf), and if so, check whether that value has
+            # improved recently.
+            if not np.isinf(self._lvl) and \
+                self._epoch - self.epoch_last_lvl_improvement >= \
+                    hps.max_n_epochs_without_lvl_improvement:
 
                 print('\nStopping optimization:'
                       ' reached maximum number of training epochs'
