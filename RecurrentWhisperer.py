@@ -275,6 +275,8 @@ class RecurrentWhisperer(object):
         with tf.device(hps.device):
 
             with tf.variable_scope(hps.name, reuse=tf.AUTO_REUSE):
+
+                self._setup_records()
                 self._setup_model()
                 self._setup_optimizer()
 
@@ -868,19 +870,9 @@ class RecurrentWhisperer(object):
         sys.stdout = self._log_file
         sys.stderr = self._log_file
 
-    def _trainable_variables(self):
-        ''' Returns a list of TF Variables that are updated during each call to
-        _train_batch(...).
-
-        Args: None
-
-        Returns:
-            A list of TF Variables.
-        '''
-        return tf.trainable_variables()
-
-    def _setup_optimizer(self):
-        '''Sets up an AdamOptimizer with gradient norm clipping.
+    def _setup_records(self):
+        '''Sets up basic record keeping for training steps, epochs, timing,
+        and lowest training/validation losses.
 
         Args:
             None.
@@ -888,9 +880,6 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-
-        name = self.hps.name
-        vars_to_train = self._trainable_variables()
 
         with tf.variable_scope('records', reuse=False):
             '''Maintain state using TF framework for seamless saving and
@@ -901,7 +890,10 @@ class RecurrentWhisperer(object):
             ''' Counter to track the current training epoch number. An epoch
             is defined as one complete pass through the training data (i.e.,
             multiple batches).'''
-            self.epoch = 0
+            self.epoch = tf.Variable(
+                0, name='epoch', trainable=False, dtype=tf.int32)
+            self.increment_epoch = tf.assign_add(
+                self.epoch, 1, name='increment_epoch')
 
             self.train_time = tf.Variable(
                 0, name='train_time', trainable=False, dtype=tf.float32)
@@ -927,6 +919,18 @@ class RecurrentWhisperer(object):
             self.ltl_placeholder = tf.placeholder(
                 self.dtype, name='lowest_training_loss')
             self.ltl_update = tf.assign(self.ltl, self.ltl_placeholder)
+
+    def _setup_optimizer(self):
+        '''Sets up an AdamOptimizer with gradient norm clipping.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+
+        vars_to_train = self.trainable_variables
 
         with tf.variable_scope('optimizer', reuse=False):
 
@@ -1124,7 +1128,7 @@ class RecurrentWhisperer(object):
 
         if self.hps.do_save_tensorboard_histograms:
             hist_ops = {}
-            for v in self._trainable_variables():
+            for v in self.trainable_variables:
                 hist_ops[v.name] = v
             self.tensorboard['merged_hist_summary'] = \
                 self._build_merged_tensorboard_summaries(
@@ -1287,7 +1291,7 @@ class RecurrentWhisperer(object):
             images['merged_summaries'], feed_dict=images_feed_dict)
 
         self.tensorboard['writer'].add_summary(
-            ev_merged_image_summaries, self._step())
+            ev_merged_image_summaries, self._step)
 
     @staticmethod
     def _tensorboard_image_name(fig_name):
@@ -1369,7 +1373,7 @@ class RecurrentWhisperer(object):
 
         self._setup_training(train_data, valid_data)
 
-        if self._is_training_complete(self._ltl(), do_check_lvl):
+        if self._is_training_complete(self._ltl, do_check_lvl):
             # If restoring from a completed run, do not enter training loop
             # and do not save a new checkpoint.
             return
@@ -1457,7 +1461,7 @@ class RecurrentWhisperer(object):
         self.prev_loss = epoch_loss
 
         # Update lowest training loss (if applicable)
-        if epoch_loss < self._ltl():
+        if epoch_loss < self._ltl:
             self._update_ltl(epoch_loss)
 
         self.adaptive_learning_rate.update(epoch_loss)
@@ -1466,9 +1470,9 @@ class RecurrentWhisperer(object):
             batch_grad_norms, batch_sizes)
         self.adaptive_grad_norm_clip.update(epoch_grad_norm)
 
-        self.epoch += 1
+        self._increment_epoch()
 
-        print('Epoch %d:' % self.epoch)
+        print('Epoch %d:' % self._epoch)
         print('\tTraining loss: %.2e;' % epoch_loss)
         print('\tImprovement in training loss: %.2e;' % loss_improvement)
         print('\tLearning rate: %.2e;' %  self.adaptive_learning_rate())
@@ -1703,7 +1707,7 @@ class RecurrentWhisperer(object):
             pass
         else:
             n = self.hps.n_epochs_per_validation_update
-            if np.mod(self.epoch, n) == 0:
+            if np.mod(self._epoch, n) == 0:
                 self.update_validation(train_data, valid_data)
 
     def update_validation(self, train_data, valid_data):
@@ -1804,7 +1808,7 @@ class RecurrentWhisperer(object):
 
         if do_check_lvl:
 
-            if self.epoch - self.epoch_last_lvl_improvement >= \
+            if self._epoch - self.epoch_last_lvl_improvement >= \
                 hps.max_n_epochs_without_lvl_improvement:
 
                 print('\nStopping optimization:'
@@ -1897,7 +1901,7 @@ class RecurrentWhisperer(object):
 
         hps = self.hps
         if hps.do_generate_training_visualizations and \
-            np.mod(self.epoch, hps.n_epochs_per_visualization_update) == 0:
+            np.mod(self._epoch, hps.n_epochs_per_visualization_update) == 0:
 
             self.update_visualizations(train_data, valid_data, is_final=False)
 
@@ -1919,11 +1923,15 @@ class RecurrentWhisperer(object):
 
             valid_data: dict containing the validation data.
 
-            is_final: bool indicating if this call is made when the model is in its final state after training has terminated.
+            is_final: bool indicating if this call is made when the model is
+            in its final state after training has terminated.
 
-            is_lvl: bool indicating if this call is made when the model is in its lowest-validation-loss state.
+            is_lvl: bool indicating if this call is made when the model is in
+            its lowest-validation-loss state.
 
-            The two flags above can be used to signal generating a more comprehensive set of visualizations and / or analyses than those that are periodically generated throughout training.
+            The two flags above can be used to signal generating a more
+            comprehensive set of visualizations and / or analyses than those
+            that are periodically generated throughout training.
 
         Returns:
             None.
@@ -2012,7 +2020,43 @@ class RecurrentWhisperer(object):
     # *************************************************************************
     # Scalar access and updates ***********************************************
     # *************************************************************************
+    #
+    # Convention: properties beginning with _ return numpy or python numeric
+    # types (e.g., _epoch, _lvl). Their non-underscored counterparts
+    # (e.g., epoch, lvl) are (or return) TF types, and most of these are setup
+    # in _setup_records().
 
+    @property
+    def trainable_variables(self):
+        ''' Returns a list of TF Variables that are updated during each call to
+        _train_batch(...).
+
+        Args: None
+
+        Returns:
+            A list of TF Variables.
+        '''
+        return tf.trainable_variables()
+
+    @property
+    def _epoch(self):
+        '''Returns the number of training epochs taken thus far. An epoch is
+        typically defined as one pass through all training examples, possibly
+        using multiple batches (although this may depend on subclass-specific
+        implementation details).
+
+        Args:
+            None.
+
+        Returns:
+            epoch: int specifying the current epoch number.
+        '''
+        return self.session.run(self.epoch)
+
+    def _increment_epoch(self):
+        self.session.run(self.increment_epoch)
+
+    @property
     def _step(self):
         '''Returns the number of training steps taken thus far. A step is
         typically taken with each batch of training data (although this may
@@ -2026,6 +2070,7 @@ class RecurrentWhisperer(object):
         '''
         return self.session.run(self.global_step)
 
+    @property
     def _lvl(self):
         '''Returns the lowest validation loss encountered thus far during
         training.
@@ -2038,6 +2083,33 @@ class RecurrentWhisperer(object):
         '''
         return self.session.run(self.lvl)
 
+    def _update_lvl(self, lvl, epoch=None):
+        ''' Updates the lowest validation loss and the epoch of this
+        improvement.
+
+        Args:
+            lvl: A numpy scalar value indicating the (new) lowest validation
+            loss.
+
+            epoch (optional): Numpy scalar indicating the epoch of this
+            improvement. Default: the current epoch.
+
+        Returns:
+            None.
+        '''
+
+        # Not Tensorflow
+        if epoch is None:
+            epoch = self._epoch
+
+        # Not Tensorflow
+        self.epoch_last_lvl_improvement = epoch
+
+        # Tensorflow
+        self.session.run(
+            self.lvl_update, feed_dict={self.lvl_placeholder: lvl})
+
+    @property
     def _ltl(self):
         '''Returns the lowest training loss encountered thus far (i.e., across
         an entire pass through the training data).
@@ -2049,6 +2121,21 @@ class RecurrentWhisperer(object):
             ltl: float specifying the lowest training loss.
         '''
         return self.session.run(self.ltl)
+
+    def _update_ltl(self, ltl):
+        ''' Updates the lowest training loss.
+
+        Args:
+            ltl: A numpy scalar value indicating the (new) lowest training
+            loss.
+
+        Returns:
+            None.
+        '''
+
+        self.session.run(
+            self.ltl_update,
+            feed_dict={self.ltl_placeholder: ltl})
 
     def _get_train_time(self):
         '''Returns the time elapsed during training, measured in seconds, and
@@ -2076,47 +2163,6 @@ class RecurrentWhisperer(object):
             self.train_time_update,
             feed_dict={self.train_time_placeholder: time_val})
 
-    def _update_ltl(self, ltl):
-        ''' Updates the lowest training loss.
-
-        Args:
-            ltl: A numpy scalar value indicating the (new) lowest training
-            loss.
-
-        Returns:
-            None.
-        '''
-
-        self.session.run(
-            self.ltl_update,
-            feed_dict={self.ltl_placeholder: ltl})
-
-    def _update_lvl(self, lvl, epoch=None):
-        ''' Updates the lowest validation loss and the epoch of this
-        improvement.
-
-        Args:
-            lvl: A numpy scalar value indicating the (new) lowest validation
-            loss.
-
-            epoch (optional): Numpy scalar indicating the epoch of this
-            improvement. Default: the current epoch.
-
-        Returns:
-            None.
-        '''
-
-        # Not Tensorflow
-        if epoch is None:
-            epoch = self.epoch
-
-        # Not Tensorflow
-        self.epoch_last_lvl_improvement = epoch
-
-        # Tensorflow
-        self.session.run(
-            self.lvl_update, feed_dict={self.lvl_placeholder: lvl})
-
     # *************************************************************************
     # TF Variables access and updates *****************************************
     # *************************************************************************
@@ -2134,7 +2180,7 @@ class RecurrentWhisperer(object):
         '''
 
         n_params = sum([np.prod(v.shape).value \
-            for v in self._trainable_variables()])
+            for v in self.trainable_variables])
 
         return n_params
 
@@ -2152,7 +2198,7 @@ class RecurrentWhisperer(object):
             a list of TF variables whose name match the search criteria.
         '''
         matching_vars = []
-        for v in self._trainable_variables():
+        for v in self.trainable_variables:
             hits = [name_component in v.name
                 for name_component in name_components]
             if all(hits):
@@ -2226,7 +2272,7 @@ class RecurrentWhisperer(object):
             None.
         '''
         print('\nTrainable variables:')
-        for v in self._trainable_variables():
+        for v in self.trainable_variables:
             print('\t' + v.name + ': ' + str(v.shape))
         print('')
 
@@ -2245,7 +2291,7 @@ class RecurrentWhisperer(object):
             None.
         '''
         if self.hps.do_save_ckpt and \
-            np.mod(self.epoch, self.hps.n_epochs_per_ckpt) == 0:
+            np.mod(self._epoch, self.hps.n_epochs_per_ckpt) == 0:
 
             self._save_seso_checkpoint()
 
@@ -2270,7 +2316,7 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        if (self.epoch==0 or valid_loss < self._lvl()):
+        if (self._epoch==0 or valid_loss < self._lvl):
 
             print('\t\tAchieved lowest validation loss.')
 
@@ -2326,7 +2372,7 @@ class RecurrentWhisperer(object):
             None.
         '''
         self._update_train_time()
-        saver.save(self.session, ckpt_path, global_step=self._step())
+        saver.save(self.session, ckpt_path, global_step=self._step)
 
         ckpt_dir, ckpt_fname = os.path.split(ckpt_path)
         self.adaptive_learning_rate.save(ckpt_dir)
