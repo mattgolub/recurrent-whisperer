@@ -650,8 +650,11 @@ class Hyperparameters(object):
             input_hps that are to be hashed (i.e., keys with non-default
             values that are also keys in default_hash_hps).
         '''
-        keys = hps.keys()
-        default_keys = default_hash_hps.keys()
+        flat_hps = Hyperparameters.flatten(hps)
+        flat_defaults = Hyperparameters.flatten(default_hash_hps)
+
+        keys = flat_hps.keys()
+        default_keys = flat_defaults.keys()
 
         ''' Because of the checks in _validate_args, we only need to check the
         intersection: Keys that are unique to hps are non-hash hps. Keys that
@@ -660,24 +663,20 @@ class Hyperparameters(object):
         keys_to_check = set(keys).intersection(set(default_keys))
 
         # Add non-default entries to dict for hashing
-        hps_to_hash = dict()
+        flat_hps_to_hash = dict()
         for key in keys_to_check:
 
-            val = hps[key]
+            val = flat_hps[key]
 
             # Allows for 'None' to be used in command line arguments.
             if val == 'None':
                 val = None
 
-            if not isinstance(val, dict):
-                # Base case:
-                # If value is not default, add it to the dict for hashing.
-                if val != default_hash_hps[key]:
-                    hps_to_hash[key] = val
-            else:
-                # Recurse:
-                hps_to_hash.update(Hyperparameters._get_hash_hps(
-                    val, default_hash_hps[key]))
+            # If value is not default, add it to the dict for hashing.
+            if val != flat_defaults[key]:
+                flat_hps_to_hash[key] = val
+
+        hps_to_hash = Hyperparameters.unflatten(flat_hps_to_hash)
 
         return hps_to_hash
 
