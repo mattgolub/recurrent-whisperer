@@ -67,7 +67,7 @@ class Hyperparameters(object):
             default_non_hash_hps is not specified.
         '''
 
-        self._validate_args(hps, default_hash_hps, default_non_hash_hps)
+        # self._validate_args(hps, default_hash_hps, default_non_hash_hps)
 
         self.default_hash_hps = default_hash_hps
         self.default_non_hash_hps = default_non_hash_hps
@@ -340,7 +340,7 @@ class Hyperparameters(object):
             return yaml.load(yaml_file)
 
     @staticmethod
-    def flatten(D):
+    def flatten(D, delimiter=':'):
         ''' Flattens a dict: Values that are themselves dicts are recursively
         'flattened' by concatenating keys using colon delimiting.
 
@@ -360,20 +360,20 @@ class Hyperparameters(object):
         for key, val in D.iteritems():
 
             assert (isinstance(key, str)),\
-                ('Hyperparameters keys must be strings, '
+                ('Keys must be strings, '
                  'but found one of type: %s' % str(type(key)))
 
             if isinstance(val, dict):
                 val_flat = Hyperparameters.flatten(val)
                 for key2, val2 in val_flat.iteritems():
-                    D_flat[key + ':' + key2] = val2
+                    D_flat[key + delimiter + key2] = val2
             else:
                 D_flat[key] = val
 
         return D_flat
 
     @staticmethod
-    def unflatten(D_flat):
+    def unflatten(D_flat, delimiter=':'):
         ''' Unflattens a flattened dict. A flattened dict is a dict with no
         values that are themselves dicts. Nested dicts can be represented in a
         flattened dict using colon-delimited string keys.
@@ -400,12 +400,13 @@ class Hyperparameters(object):
             '''
 
             assert (isinstance(key, str)),\
-                ('Hyperparameters keys must be strings, '
+                ('Keys must be strings, '
                  'but found one of type: %s' % str(type(key)))
 
             if ':' in key:
                 dict_name, rem_name = \
-                    Hyperparameters._parse_colon_delimited_hp_name(key)
+                    Hyperparameters._parse_delimited_hp_name(
+                        key, delimiter=delimiter)
                 return {dict_name: assign_leaf(rem_name, val)}
             else:
                 return {key: val}
@@ -413,13 +414,14 @@ class Hyperparameters(object):
         def add_helper(D, key, val):
 
             assert (isinstance(key, str)),\
-                ('Hyperparameters keys must be strings, '
+                ('Keys must be strings, '
                  'but found one of type: %s' % str(type(key)))
 
-            if ':' in key:
+            if delimiter in key:
 
                 dict_name, rem_name = \
-                    Hyperparameters._parse_colon_delimited_hp_name(key)
+                    Hyperparameters._parse_delimited_hp_name(
+                        key, delimiter=delimiter)
 
                 if dict_name in D:
                     D[dict_name] = add_helper(D[dict_name], rem_name, val)
@@ -505,7 +507,7 @@ class Hyperparameters(object):
         be necessary given how original attributes were setup.'''
         if ':' in key:
             # Replace the entire class attribute dict with the updated one
-            dict_name, rem_name = self._parse_colon_delimited_hp_name(key)
+            dict_name, rem_name = self._parse_delimited_hp_name(key)
             setattr(self, dict_name, self.integrated_hps[dict_name])
         else:
             setattr(self, key, value)
@@ -516,7 +518,7 @@ class Hyperparameters(object):
         if ':' in key:
 
             dict_name, rem_name = \
-                Hyperparameters._parse_colon_delimited_hp_name(key)
+                Hyperparameters._parse_delimited_hp_name(key)
 
             if not dict_name in D.keys():
 
@@ -739,7 +741,7 @@ class Hyperparameters(object):
         return ''.join(str_items)
 
     @staticmethod
-    def _parse_colon_delimited_hp_name(hp_name):
+    def _parse_delimited_hp_name(hp_name, delimiter=':'):
         ''' Splits a string into the segments preceding and following the
         first colon. Used to indicate traversing into a sub-dict within a
         dict.
@@ -759,11 +761,12 @@ class Hyperparameters(object):
             ValueError if hp_name does not contain any colons.
         '''
         if not ':' in hp_name:
-            raise ValueError('hp_name does not contain delimiting colon.')
+            raise ValueError(
+                'hp_name does not contain delimiter (%s).' % delimitter)
 
-        first_colon_idx = hp_name.index(':')
-        dict_name = hp_name[:first_colon_idx]
-        rem_name = hp_name[(first_colon_idx + 1):]
+        first_idx = hp_name.index(delimiter)
+        dict_name = hp_name[:first_idx]
+        rem_name = hp_name[(first_idx + 1):]
 
         return dict_name, rem_name
 
