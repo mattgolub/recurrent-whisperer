@@ -67,7 +67,7 @@ class Hyperparameters(object):
             default_non_hash_hps is not specified.
         '''
 
-        # self._validate_args(hps, default_hash_hps, default_non_hash_hps)
+        self._validate_args(hps, default_hash_hps, default_non_hash_hps)
 
         self.default_hash_hps = default_hash_hps
         self.default_non_hash_hps = default_non_hash_hps
