@@ -65,8 +65,8 @@ class RecurrentWhisperer(object):
     _train_batch(...)
     _predict_batch(...)
     _get_batch_size(...)
-    _get_data_batches(...)
     _split_data_into_batches(...)
+    _subselect_batch(...)
     _combine_prediction_batches(...)
     _update_valid_tensorboard_summaries
     _update_visualization(...)
@@ -94,6 +94,11 @@ class RecurrentWhisperer(object):
             Hyperparameters included in the run directory hash (defined in
             _default_hash_hyperparameters):
 
+                max_batch_size: int specifying the size of the largest batch
+                to create during training / prediction. Data are batched into
+                roughly equal sized batches, depending on whether the number
+                of trials divides evenly by this number.
+
                 random_seed: int specifying the random seed for the numpy
                 random generator used for randomly batching data and
                 initializing model parameters. Default: 0
@@ -115,7 +120,9 @@ class RecurrentWhisperer(object):
             Hyperparameters not included in the run directory hash (defined in
             _default_non_hash_hyperparameters):
 
-                name: string describing this instance of RecurrentWhisperer. Used for scoping and uniquifying of TF variables. Default: 'rw'.
+                name: string describing this instance of RecurrentWhisperer.
+                Used for scoping and uniquifying of TF variables.
+                Default: 'rw'.
 
                 max_n_epochs_without_lvl_improvement: int specifying
                 optimization termination criteria on the number of training
@@ -143,8 +150,8 @@ class RecurrentWhisperer(object):
                 hyperparameters has saved checkpoints--the previous run will
                 be deleted and restarted rather than resumed). Default: False.
 
-                do_save_tensorboard_summaries: bool indicating whether or not to
-                save summaries to Tensorboard. Default: True.
+                do_save_tensorboard_summaries: bool indicating whether or not
+                to save summaries to Tensorboard. Default: True.
 
                 do_save_tensorboard_histograms: bool indicating whether or not
                 to save histograms of each trained variable to Tensorboard
@@ -162,9 +169,9 @@ class RecurrentWhisperer(object):
                 achieved. Default: True.
 
                 do_generate_training_visualizations: bool indicating whether or
-                not to generate visualizations periodically throughout training.
-                Frequency is controlled by n_epoochs_per_visualization_update.
-                Default: True.
+                not to generate visualizations periodically throughout
+                training. Frequency is controlled by
+                n_epoochs_per_visualization_update. Default: True.
 
                 do_save_training_visualizations: bool indicating whether or not
                 to save the training visualizations to Tensorboard. Default:
@@ -217,7 +224,7 @@ class RecurrentWhisperer(object):
                 of epochs between updates of any visualizations. Default: 100.
 
                 device: String specifying the hardware on which to place this
-                model. E.g., "gpu:0" or "gpu:0". Default: "gpu:0".
+                model. E.g., "gpu:0" or "gpu:1". Default: "gpu:0".
 
                 per_process_gpu_memory_fraction: float specifying the maximum
                 fraction of GPU memory to allocate. Set to None to allow
@@ -379,6 +386,7 @@ class RecurrentWhisperer(object):
         all HPs for all helper classes (i.e., '*_hps')--not just those that
         are changed from their defaults. '''
         return {
+            'max_batch_size': 256,
             'random_seed': 0,
             'dtype': 'float32', # keep as string (rather than tf.float32)
                                 # for better argparse handling, yaml writing
@@ -921,6 +929,23 @@ class RecurrentWhisperer(object):
                 self.dtype, name='lowest_training_loss')
             self.ltl_update = tf.assign(self.ltl, self.ltl_placeholder)
 
+    def _setup_model(self):
+        '''Defines the Tensorflow model including:
+            -tf.placeholders for input data and prediction targets
+            -a mapping from inputs to predictions
+            -a scalar loss op named self.loss for comparing predictions to
+            targets, regularization, etc.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+        raise StandardError(
+            '%s must be implemented by RecurrentWhisperer subclass'
+             % sys._getframe().f_code.co_name)
+
     def _setup_optimizer(self):
         '''Sets up an AdamOptimizer with gradient norm clipping.
 
@@ -1428,6 +1453,22 @@ class RecurrentWhisperer(object):
 
         self._close_training(train_data, valid_data)
 
+    def _setup_training(self, train_data, valid_data=None):
+        '''Performs any tasks that must be completed before entering the
+        training loop in self.train.
+
+        Args:
+            train_data: dict containing the training data.
+
+            valid_data: dict containing the validation data.
+
+        Returns:
+            None.
+        '''
+        raise StandardError(
+            '%s must be implemented by RecurrentWhisperer subclass'
+             % sys._getframe().f_code.co_name)
+
     def _train_epoch(self, data_batches):
         '''Performs training steps across an epoch of training data batches.
 
@@ -1479,39 +1520,6 @@ class RecurrentWhisperer(object):
         print('\tLearning rate: %.2e;' %  self.adaptive_learning_rate())
 
         return epoch_loss
-
-    def _setup_model(self):
-        '''Defines the Tensorflow model including:
-            -tf.placeholders for input data and prediction targets
-            -a mapping from inputs to predictions
-            -a scalar loss op named self.loss for comparing predictions to
-            targets, regularization, etc.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        '''
-        raise StandardError(
-            '%s must be implemented by RecurrentWhisperer subclass'
-             % sys._getframe().f_code.co_name)
-
-    def _setup_training(self, train_data, valid_data=None):
-        '''Performs any tasks that must be completed before entering the
-        training loop in self.train.
-
-        Args:
-            train_data: dict containing the training data.
-
-            valid_data: dict containing the validation data.
-
-        Returns:
-            None.
-        '''
-        raise StandardError(
-            '%s must be implemented by RecurrentWhisperer subclass'
-             % sys._getframe().f_code.co_name)
 
     def _train_batch(self, batch_data):
         '''Runs one training step. This function must evaluate the Tensorboard
@@ -1574,13 +1582,13 @@ class RecurrentWhisperer(object):
             # This will require tracking trial IDs and passing those to
             # _combined_prediction_batches().
 
-            data_batches = self._split_data_into_batches(data)
-            n_batches = len(data_batches)
+            batches_list, idx_list = self._split_data_into_batches(data)
+            n_batches = len(batches_list)
             pred_list = []
             summary_list = []
             for batch_idx in range(n_batches):
 
-                batch_data = data_batches[batch_idx]
+                batch_data = batches_list[batch_idx]
                 batch_size = self._get_batch_size(batch_data)
 
                 print('\t\tPredict: batch %d of %d (%d trials)'
@@ -1593,7 +1601,7 @@ class RecurrentWhisperer(object):
                 summary_list.append(batch_summary)
 
             predictions, summary = self._combine_prediction_batches(
-                pred_list, summary_list)
+                pred_list, summary_list, idx_list)
 
         else:
             predictions, summary = self._predict_batch(data)
@@ -1633,40 +1641,90 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def _get_data_batches(self, train_data=None):
-        ''' Splits data into batches or generates data batches on the fly.
+    def _get_data_batches(self, data=None):
+        ''' Splits data into batches OR generates data batches on the fly.
 
         Args:
-            train_data (optional): a fixed set of training data to be randomly
-            split into batches (e.g., using _split_data_into_batches(...)). If
-            not provided, this function must otherwise generate the data.
-            Default: None.
+            data (optional): a set of data examples to be randomly split into
+            batches (e.g., using _split_data_into_batches(...)). Type can be
+            subclass dependent (e.g., dict, list, custom class). If not
+            provided, _generate_data_batches() will be used (and thus must be
+            implemented in the subclass). Default: None.
 
         Returns:
-            list of dicts, where each dict contains one batch of data.
-        '''
+            data_list: list of dicts, where each dict contains one batch of
+            data.
+            '''
 
-        raise StandardError(
-            '%s must be implemented by RecurrentWhisperer subclass'
-             % sys._getframe().f_code.co_name)
+        if data is None:
+            return self._generate_data_batches()
+        else:
+            # Cleaner currently to not return idx_list, since otherwise would
+            # require output argument handling in train().
+            data_batches, idx_list = self._split_data_into_batches(data)
+            return data_batches
 
     def _split_data_into_batches(self, data):
-        '''Randomly splits the training data into a set of batches.
-        Randomization should reference the random number generator in self.rng
-        so that runs can be reliably reproduced.
+        ''' Randomly splits data into a set of batches. If the number of
+        trials in data evenly divides by max_batch_size, all batches have size
+        max_batch_size. Otherwise, the last batch is smaller containing the
+        remainder trials.
 
         Args:
             data: dict containing the to-be-split data.
 
         Returns:
-            list of dicts, where each dict contains one batch of data.
+            data_list: list of dicts, where each dict contains one batch of
+            data.
+
+            idx_list: list, where each element, idx_list[i], is a list of the
+            trial indices for the corresponding batch of data in data_list[i].
+            This is used to recombine the trials back into their original
+            (i.e., pre-batching) order by _combine_prediction_batches().
+        '''
+
+        n_trials = self._get_batch_size(data)
+        max_batch_size = self.hps.max_batch_size
+        n_batches = int(np.ceil(float(n_trials)/max_batch_size))
+
+        shuffled_indices = range(n_trials)
+        self.rng.shuffle(shuffled_indices)
+
+        data_batches = []
+        batch_indices = []
+
+        start = 0
+        for i in range(n_batches):
+
+            stop = min(start + max_batch_size, n_trials)
+
+            batch_idx = shuffled_indices[start:stop]
+            batch_indices.append(batch_idx)
+            batch_data = self._subselect_batch(data, batch_idx)
+            data_batches.append(batch_data)
+
+            start = stop
+
+        return data_batches, batch_indices
+
+    def _subselect_batch(self, data, batch_idx):
+        ''' Subselect a batch of data given the batch indices.
+
+        Args:
+            data: dict containing the to-be-subselected data.
+
+            batch_idx:  that specifies the subselection
+            of the data (e.g., an array-like of trial indices).
+
+        Returns:
+            subselected_data: dict containing the subselected data.
         '''
 
         raise StandardError(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def _combine_prediction_batches(self, pred_list, summary_list):
+    def _combine_prediction_batches(self, pred_list, summary_list, idx_list):
         ''' Combines predictions and summaries across multiple batches. This is
         required by predict(...), which first splits data into multiple
         batches (if necessary) before sequentially calling _predict_batch(...)
@@ -1685,6 +1743,10 @@ class RecurrentWhisperer(object):
 
             summary: a single summary dict containing the combined summaries
             from summary_list.
+
+            idx_list: list, where each element is a list of trial indexes as
+            returned by _split_data_into_batches(...). This is used to
+            restore the original ordering of the trials (i.e., pre batching).
         '''
 
         raise StandardError(
