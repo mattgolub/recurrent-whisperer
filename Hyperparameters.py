@@ -22,6 +22,9 @@ class Hyperparameters(object):
     settings, and hashes for organizing model checkpoint directories.
 
     '''
+
+    _delimiter = ':'
+
     def __init__(self,
                  hps=dict(),
                  default_hash_hps=dict(),
@@ -340,7 +343,7 @@ class Hyperparameters(object):
             return yaml.load(yaml_file)
 
     @staticmethod
-    def flatten(D, delimiter=':'):
+    def flatten(D, delimiter=_delimiter):
         ''' Flattens a dict: Values that are themselves dicts are recursively
         'flattened' by concatenating keys using colon delimiting.
 
@@ -373,7 +376,7 @@ class Hyperparameters(object):
         return D_flat
 
     @staticmethod
-    def unflatten(D_flat, delimiter=':'):
+    def unflatten(D_flat, delimiter=_delimiter):
         ''' Unflattens a flattened dict. A flattened dict is a dict with no
         values that are themselves dicts. Nested dicts can be represented in a
         flattened dict using colon-delimited string keys.
@@ -622,7 +625,8 @@ class Hyperparameters(object):
 
     @staticmethod
     def _validate_keys(hps):
-        ''' Recursively checks that all keys are strings or dicts.
+        ''' Recursively checks that all keys are strings or dicts, and that
+        string keys do not contain the delimiter.
 
         Args:
             hps: a (potentially nested) dict with keys as string
@@ -640,6 +644,18 @@ class Hyperparameters(object):
             assert (isinstance(key, str)),\
                 ('Hyperparameters keys must be strings, '
                  'but found one of type: %s' % str(type(key)))
+
+            assert Hyperparameters._delimiter not in key, \
+                ('Hyperparameter keys cannot contain the delimiter (%s) '
+                 'in the current implementation, but found \'%s\'' %
+                 (Hyperparameters._delimiter, key))
+            ''' If this becomes problematic, it might be worth reimplementing
+            some of this class, where all HP dicts are immediately flattened
+            and all internal manipulations are done on these flattened dicts.
+            This would obviate all of the recursive functionality. Or a
+            band-aid fix would be to flatten then unflatten all dicts in
+            __init__().
+            '''
 
             if isinstance(val, dict):
                 Hyperparameters._validate_keys(val)
@@ -784,7 +800,7 @@ class Hyperparameters(object):
 
 
 def test():
-    ''' Test suite for some (but not yet all) of Hyperparameters
+    ''' Test suite for some (but not yet all) of Hyperparameters'
     functionality.
     '''
 
