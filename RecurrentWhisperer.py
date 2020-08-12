@@ -251,10 +251,8 @@ class RecurrentWhisperer(object):
         '''
 
         subclass = self.__class__
+        hps = self.setup_hps(kwargs, subclass)
 
-        hps = Hyperparameters(kwargs,
-                              self.default_hash_hyperparameters(subclass),
-                              self.default_non_hash_hyperparameters(subclass))
         self.hps = hps
         self.dtype = getattr(tf, hps.dtype)
 
@@ -509,6 +507,13 @@ class RecurrentWhisperer(object):
         raise StandardError(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
+
+    @staticmethod
+    def setup_hps(hps_dict, subclass):
+
+        return Hyperparameters(hps_dict,
+            subclass.default_hash_hyperparameters(subclass),
+            subclass.default_non_hash_hyperparameters(subclass))
 
     @staticmethod
     def get_hash_dir(log_dir, run_hash):
@@ -2575,6 +2580,10 @@ class RecurrentWhisperer(object):
     # *************************************************************************
 
     @staticmethod
+    def exists_lvl_train_predictions(run_dir):
+        return RecurrentWhisperer._exists_lvl(run_dir, 'train', 'predictions')
+
+    @staticmethod
     def load_lvl_train_predictions(run_dir):
         '''Loads all model predictions made over the training data by the lvl
         model.
@@ -2588,6 +2597,10 @@ class RecurrentWhisperer(object):
         '''
         return RecurrentWhisperer._load_lvl_helper(
             run_dir, 'train', 'predictions')
+
+    @staticmethod
+    def exists_lvl_train_summary(run_dir):
+        return RecurrentWhisperer._exists_lvl(run_dir, 'train', 'summary')
 
     @staticmethod
     def load_lvl_train_summary(run_dir):
@@ -2605,6 +2618,10 @@ class RecurrentWhisperer(object):
             run_dir, 'train', 'summary')
 
     @staticmethod
+    def exists_lvl_valid_predictions(run_dir):
+        return RecurrentWhisperer._exists_lvl(run_dir, 'valid', 'predictions')
+
+    @staticmethod
     def load_lvl_valid_predictions(run_dir):
         '''Loads all model predictions from train_predictions.pkl.
 
@@ -2620,6 +2637,10 @@ class RecurrentWhisperer(object):
 
         return RecurrentWhisperer._load_lvl_helper(
             run_dir, 'valid', 'predictions')
+
+    @staticmethod
+    def exists_lvl_valid_summary(run_dir):
+        return RecurrentWhisperer._exists_lvl(run_dir, 'valid', 'summary')
 
     @staticmethod
     def load_lvl_valid_summary(run_dir):
@@ -2784,6 +2805,34 @@ class RecurrentWhisperer(object):
             run_dir, train_or_valid_str, predictions_or_summary_str)
 
         return RecurrentWhisperer._load_pkl(path_to_file)
+
+    @staticmethod
+    def _exists_lvl(
+        run_dir,
+        train_or_valid_str,
+        predictions_or_summary_str):
+        '''Checks if previously saved model predictions or summaries exist.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+            train_or_valid_str: either 'train' or 'valid', indicating whether
+            to load predictions/summary from the training data or validation
+            data, respectively.
+
+            predictions_or_summary_str: either 'predictions' or 'summary',
+            indicating whether to load model predictions or summaries thereof,
+            respectively.
+
+        Returns:
+            True if the lvl file exists.
+        '''
+
+        path_to_file = RecurrentWhisperer._get_lvl_path(
+            run_dir, train_or_valid_str, predictions_or_summary_str)
+
+        return os.path.exists(path_to_file)
 
     @staticmethod
     def _load_pkl(path_to_file):
