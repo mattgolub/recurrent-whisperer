@@ -124,6 +124,12 @@ class RecurrentWhisperer(object):
                 Used for scoping and uniquifying of TF variables.
                 Default: 'rw'.
 
+                mode: string identifying the mode in which the model will be
+                used. This is never used internally, and is only included for
+                optional use by external run scripts. This is included here
+                to simplify command-line argument parsing, which is already
+                nicely handled by Hyperparameters.py Default: 'train'.
+
                 max_n_epochs_without_lvl_improvement: int specifying
                 optimization termination criteria on the number of training
                 epochs performed without improvements to the lowest validation
@@ -414,6 +420,7 @@ class RecurrentWhisperer(object):
         # See comment in _default_super_hash_hyperparameters()
         return {
             'name': 'RecurrentWhisperer',
+            'mode': 'train',
             'max_n_epochs_without_lvl_improvement': 200,
             'min_loss': None,
             'max_train_time': None,
@@ -1144,7 +1151,7 @@ class RecurrentWhisperer(object):
         self.tensorboard['writer'] = tf.summary.FileWriter(self.events_dir)
         self.tensorboard['writer'].add_graph(tf.get_default_graph())
 
-    	if self.hps.do_save_tensorboard_summaries:
+        if self.hps.do_save_tensorboard_summaries:
             self._setup_tensorboard_summaries()
 
     def _setup_tensorboard_summaries(self):
