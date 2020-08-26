@@ -1,0 +1,273 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<html><head><title>Python: module AdaptiveLearningRate</title>
+<meta charset="utf-8">
+</head><body bgcolor="#f0f0f8">
+
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="heading">
+<tr bgcolor="#7799ee">
+<td valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial">&nbsp;<br><big><big><strong>AdaptiveLearningRate</strong></big></big></font></td
+><td align=right valign=bottom
+><font color="#ffffff" face="helvetica, arial"><a href=".">index</a><br><a href="file:/home/matt/github/recurrent-whisperer/AdaptiveLearningRate.py">/home/matt/github/recurrent-whisperer/AdaptiveLearningRate.py</a></font></td></tr></table>
+    <p><tt><a href="#AdaptiveLearningRate">AdaptiveLearningRate</a>.py<br>
+Written&nbsp;using&nbsp;Python&nbsp;2.7.12<br>
+@&nbsp;Matt&nbsp;Golub,&nbsp;August&nbsp;2018.<br>
+Please&nbsp;direct&nbsp;correspondence&nbsp;to&nbsp;mgolub@stanford.edu.</tt></p>
+<p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#aa55cc">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Modules</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#aa55cc"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><table width="100%" summary="list"><tr><td width="25%" valign=top><a href="cPickle.html">cPickle</a><br>
+<a href="numpy.html">numpy</a><br>
+</td><td width="25%" valign=top><a href="numpy.random.html">numpy.random</a><br>
+<a href="os.html">os</a><br>
+</td><td width="25%" valign=top><a href="pdb.html">pdb</a><br>
+<a href="matplotlib.pyplot.html">matplotlib.pyplot</a><br>
+</td><td width="25%" valign=top></td></tr></table></td></tr></table><p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#ee77aa">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Classes</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#ee77aa"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><dl>
+<dt><font face="helvetica, arial"><a href="__builtin__.html#object">__builtin__.object</a>
+</font></dt><dd>
+<dl>
+<dt><font face="helvetica, arial"><a href="AdaptiveLearningRate.html#AdaptiveLearningRate">AdaptiveLearningRate</a>
+</font></dt></dl>
+</dd>
+</dl>
+ <p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#ffc8d8">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#000000" face="helvetica, arial"><a name="AdaptiveLearningRate">class <strong>AdaptiveLearningRate</strong></a>(<a href="__builtin__.html#object">__builtin__.object</a>)</font></td></tr>
+    
+<tr bgcolor="#ffc8d8"><td rowspan=2><tt>&nbsp;&nbsp;&nbsp;</tt></td>
+<td colspan=2><tt>Class&nbsp;for&nbsp;managing&nbsp;an&nbsp;adaptive&nbsp;learning&nbsp;rate&nbsp;schedule&nbsp;based&nbsp;on&nbsp;the<br>
+recent&nbsp;history&nbsp;of&nbsp;loss&nbsp;values.&nbsp;The&nbsp;adaptive&nbsp;schedule&nbsp;begins&nbsp;with&nbsp;an<br>
+optional&nbsp;warm-up&nbsp;period,&nbsp;during&nbsp;which&nbsp;the&nbsp;learning&nbsp;rate&nbsp;logarithmically<br>
+increases&nbsp;up&nbsp;to&nbsp;the&nbsp;initial&nbsp;rate.&nbsp;For&nbsp;the&nbsp;remainder&nbsp;of&nbsp;the&nbsp;training<br>
+procedure,&nbsp;the&nbsp;learning&nbsp;rate&nbsp;will&nbsp;increase&nbsp;following&nbsp;a&nbsp;period&nbsp;of&nbsp;monotonic<br>
+improvements&nbsp;in&nbsp;the&nbsp;loss&nbsp;and&nbsp;will&nbsp;decrease&nbsp;if&nbsp;a&nbsp;loss&nbsp;is&nbsp;encountered&nbsp;that<br>
+is&nbsp;worse&nbsp;than&nbsp;all&nbsp;losses&nbsp;in&nbsp;the&nbsp;recent&nbsp;period.&nbsp;Hyperparameters&nbsp;control&nbsp;the<br>
+length&nbsp;of&nbsp;each&nbsp;of&nbsp;these&nbsp;periods&nbsp;and&nbsp;the&nbsp;extent&nbsp;of&nbsp;each&nbsp;type&nbsp;of&nbsp;learning<br>
+rate&nbsp;change.<br>
+&nbsp;<br>
+Note&nbsp;that&nbsp;this&nbsp;control&nbsp;flow&nbsp;is&nbsp;asymmetric--stricter&nbsp;criteria&nbsp;must&nbsp;be&nbsp;met<br>
+for&nbsp;increases&nbsp;than&nbsp;for&nbsp;decreases&nbsp;in&nbsp;the&nbsp;learning&nbsp;rate&nbsp;This&nbsp;choice&nbsp;1)<br>
+encourages&nbsp;decreases&nbsp;in&nbsp;the&nbsp;learning&nbsp;rate&nbsp;when&nbsp;moving&nbsp;into&nbsp;regimes&nbsp;with&nbsp;a<br>
+flat&nbsp;loss&nbsp;surface,&nbsp;and&nbsp;2)&nbsp;attempts&nbsp;to&nbsp;avoid&nbsp;instabilities&nbsp;that&nbsp;can&nbsp;arise<br>
+when&nbsp;the&nbsp;learning&nbsp;rate&nbsp;is&nbsp;too&nbsp;high&nbsp;(and&nbsp;the&nbsp;often&nbsp;irreversible<br>
+pathological&nbsp;parameter&nbsp;updates&nbsp;that&nbsp;can&nbsp;result).&nbsp;Practically,<br>
+hyperparameters&nbsp;may&nbsp;need&nbsp;to&nbsp;be&nbsp;tuned&nbsp;to&nbsp;optimize&nbsp;the&nbsp;learning&nbsp;schedule&nbsp;and<br>
+to&nbsp;ensure&nbsp;that&nbsp;the&nbsp;learning&nbsp;rate&nbsp;does&nbsp;not&nbsp;explode.<br>
+&nbsp;<br>
+See&nbsp;<a href="#AdaptiveLearningRate-test">test</a>(...)&nbsp;to&nbsp;simulate&nbsp;learning&nbsp;rate&nbsp;trajectories&nbsp;based&nbsp;on&nbsp;specified<br>
+hyperparameters.<br>
+&nbsp;<br>
+The&nbsp;standard&nbsp;usage&nbsp;is&nbsp;as&nbsp;follows:<br>
+&nbsp;<br>
+#&nbsp;Set&nbsp;hyperparameters&nbsp;as&nbsp;desired.<br>
+alr_hps&nbsp;=&nbsp;dict()<br>
+alr_hps['initial_rate']&nbsp;=&nbsp;1.0<br>
+alr_hps['min_rate']&nbsp;=&nbsp;1e-3<br>
+alr_hps['max_n_steps']&nbsp;=&nbsp;1e4<br>
+alr_hps['n_warmup_steps']&nbsp;=&nbsp;0<br>
+alr_hps['warmup_scale']&nbsp;=&nbsp;1e-3<br>
+alr_hps['warmup_shape']&nbsp;=&nbsp;'gaussian'<br>
+alr_hps['do_decrease_rate']&nbsp;=&nbsp;True<br>
+alr_hps['min_steps_per_decrease']&nbsp;=&nbsp;5<br>
+alr_hps['decrease_factor']&nbsp;=&nbsp;0.95<br>
+alr_hps['do_increase_rate']&nbsp;=&nbsp;True<br>
+alr_hps['min_steps_per_increase']&nbsp;=&nbsp;5<br>
+alr_hps['increase_factor']&nbsp;=&nbsp;1./0.95<br>
+alr_hps['verbose']&nbsp;=&nbsp;False<br>
+alr&nbsp;=&nbsp;<a href="#AdaptiveLearningRate">AdaptiveLearningRate</a>(**alr_hps)<br>
+&nbsp;<br>
+#&nbsp;This&nbsp;loop&nbsp;iterates&nbsp;through&nbsp;the&nbsp;optimization&nbsp;procedure.<br>
+while&nbsp;~alr.<a href="#AdaptiveLearningRate-is_finished">is_finished</a>():<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Get&nbsp;the&nbsp;current&nbsp;learning&nbsp;rate<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;learning_rate&nbsp;=&nbsp;alr()<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Use&nbsp;the&nbsp;current&nbsp;learning&nbsp;rate&nbsp;to&nbsp;update&nbsp;the&nbsp;model&nbsp;parameters.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Get&nbsp;the&nbsp;loss&nbsp;of&nbsp;the&nbsp;model&nbsp;after&nbsp;the&nbsp;update.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;params,&nbsp;loss&nbsp;=&nbsp;run_one_training_step(params,&nbsp;learning_rate,&nbsp;...)<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Update&nbsp;the&nbsp;learning&nbsp;rate&nbsp;based&nbsp;on&nbsp;the&nbsp;most&nbsp;recent&nbsp;loss&nbsp;value<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;and&nbsp;an&nbsp;internally&nbsp;managed&nbsp;history&nbsp;of&nbsp;loss&nbsp;values.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;alr.<a href="#AdaptiveLearningRate-update">update</a>(loss)<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;(Optional):&nbsp;Occasionally&nbsp;save&nbsp;model&nbsp;checkpoints&nbsp;along&nbsp;with&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;<a href="#AdaptiveLearningRate">AdaptiveLearningRate</a>&nbsp;<a href="__builtin__.html#object">object</a>&nbsp;(for&nbsp;seamless&nbsp;restoration&nbsp;of&nbsp;a&nbsp;training<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;session)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if&nbsp;some_other_conditions(...):<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;save_checkpoint(params,&nbsp;...)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;alr.<a href="#AdaptiveLearningRate-save">save</a>(...)<br>&nbsp;</tt></td></tr>
+<tr><td>&nbsp;</td>
+<td width="100%">Methods defined here:<br>
+<dl><dt><a name="AdaptiveLearningRate-__call__"><strong>__call__</strong></a>(self)</dt><dd><tt>Returns&nbsp;the&nbsp;current&nbsp;learning&nbsp;rate.</tt></dd></dl>
+
+<dl><dt><a name="AdaptiveLearningRate-__init__"><strong>__init__</strong></a>(self, initial_rate<font color="#909090">=1.0</font>, min_rate<font color="#909090">=0.001</font>, max_n_steps<font color="#909090">=10000.0</font>, n_warmup_steps<font color="#909090">=0</font>, warmup_scale<font color="#909090">=0.001</font>, warmup_shape<font color="#909090">='gaussian'</font>, do_decrease_rate<font color="#909090">=True</font>, min_steps_per_decrease<font color="#909090">=5</font>, decrease_factor<font color="#909090">=0.95</font>, do_increase_rate<font color="#909090">=True</font>, min_steps_per_increase<font color="#909090">=5</font>, increase_factor<font color="#909090">=1.0526315789473684</font>, verbose<font color="#909090">=False</font>)</dt><dd><tt>Builds&nbsp;an&nbsp;<a href="#AdaptiveLearningRate">AdaptiveLearningRate</a>&nbsp;<a href="__builtin__.html#object">object</a><br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;A&nbsp;set&nbsp;of&nbsp;optional&nbsp;keyword&nbsp;arguments&nbsp;for&nbsp;overriding&nbsp;the&nbsp;default<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;values&nbsp;of&nbsp;the&nbsp;following&nbsp;hyperparameters:<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;initial_rate:&nbsp;Non-negative&nbsp;float&nbsp;specifying&nbsp;the&nbsp;initial&nbsp;learning<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rate.&nbsp;Default:&nbsp;1.0.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;min_rate:&nbsp;Non-negative&nbsp;float&nbsp;specifying&nbsp;the&nbsp;largest&nbsp;learning<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rate&nbsp;for&nbsp;which&nbsp;<a href="#AdaptiveLearningRate-is_finished">is_finished</a>()&nbsp;returns&nbsp;False.&nbsp;This&nbsp;can&nbsp;optionally&nbsp;be<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;used&nbsp;externally&nbsp;to&nbsp;signal&nbsp;termination&nbsp;of&nbsp;the&nbsp;optimization<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;procedure.&nbsp;This&nbsp;argument&nbsp;is&nbsp;never&nbsp;used&nbsp;internally--the&nbsp;learning<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rate&nbsp;behavior&nbsp;doesn't&nbsp;depend&nbsp;on&nbsp;this&nbsp;value.&nbsp;Default:&nbsp;1e-3.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;max_n_steps:&nbsp;Non-negative&nbsp;integer&nbsp;specifying&nbsp;the&nbsp;maximum&nbsp;number&nbsp;of<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;steps&nbsp;before&nbsp;<a href="#AdaptiveLearningRate-is_finished">is_finished</a>()&nbsp;will&nbsp;return&nbsp;True.&nbsp;This&nbsp;can&nbsp;optionally&nbsp;be<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;used&nbsp;externally&nbsp;to&nbsp;signal&nbsp;termination&nbsp;of&nbsp;the&nbsp;optimization<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;procedure.&nbsp;This&nbsp;argument&nbsp;is&nbsp;never&nbsp;used&nbsp;internally--the&nbsp;learning<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rate&nbsp;behavior&nbsp;doesn't&nbsp;depend&nbsp;on&nbsp;this&nbsp;value.&nbsp;Default:&nbsp;1e4.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;n_warmup_steps:&nbsp;Non-negative&nbsp;int&nbsp;specifying&nbsp;the&nbsp;number&nbsp;of&nbsp;warm-up<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;steps&nbsp;to&nbsp;take.&nbsp;During&nbsp;these&nbsp;warm-up&nbsp;steps,&nbsp;the&nbsp;learning&nbsp;rate&nbsp;will<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;monotonically&nbsp;increase&nbsp;up&nbsp;to&nbsp;initial_rate&nbsp;(according&nbsp;to<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;warmup_scale&nbsp;and&nbsp;warmup_shape).&nbsp;Default:&nbsp;0&nbsp;(i.e.,&nbsp;no<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;warm-up).<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;warmup_scale:&nbsp;Float&nbsp;between&nbsp;0&nbsp;and&nbsp;1&nbsp;specifying&nbsp;the&nbsp;learning&nbsp;rate<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;on&nbsp;the&nbsp;first&nbsp;warm-up&nbsp;step,&nbsp;relative&nbsp;to&nbsp;initial_rate.&nbsp;The&nbsp;first<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;warm-up&nbsp;learning&nbsp;rate&nbsp;is&nbsp;warmup_scale&nbsp;*&nbsp;initial_rate.&nbsp;Default:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0.001.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;warmup_shape:&nbsp;String&nbsp;indicating&nbsp;the&nbsp;shape&nbsp;of&nbsp;the&nbsp;increasing<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;learning&nbsp;rate&nbsp;during&nbsp;the&nbsp;warm-up&nbsp;period.&nbsp;Options&nbsp;are&nbsp;'exp'<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(exponentially&nbsp;increasing&nbsp;learning&nbsp;rates;&nbsp;slope&nbsp;increases<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;throughout)&nbsp;or&nbsp;'gaussian'&nbsp;(slope&nbsp;increases,&nbsp;then&nbsp;decreases;&nbsp;rate<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ramps&nbsp;up&nbsp;faster&nbsp;and&nbsp;levels&nbsp;off&nbsp;smoother&nbsp;than&nbsp;with&nbsp;'exp').<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Default:&nbsp;'gaussian'.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_decrease_rate:&nbsp;Bool&nbsp;indicating&nbsp;whether&nbsp;or&nbsp;not&nbsp;to&nbsp;decrease&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;learning&nbsp;rate&nbsp;during&nbsp;training&nbsp;(after&nbsp;any&nbsp;warm-up).&nbsp;Default:&nbsp;True.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;min_steps_per_decrease:&nbsp;Non-negative&nbsp;int&nbsp;specifying&nbsp;the&nbsp;number<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;of&nbsp;recent&nbsp;steps'&nbsp;loss&nbsp;values&nbsp;to&nbsp;consider&nbsp;when&nbsp;deciding&nbsp;whether&nbsp;to<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;decrease&nbsp;the&nbsp;learning&nbsp;rate.&nbsp;Learning&nbsp;rate&nbsp;decreases&nbsp;are&nbsp;made&nbsp;when<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;a&nbsp;loss&nbsp;value&nbsp;is&nbsp;encountered&nbsp;that&nbsp;is&nbsp;worse&nbsp;than&nbsp;every&nbsp;loss&nbsp;value&nbsp;in<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;this&nbsp;window.&nbsp;When&nbsp;the&nbsp;learning&nbsp;rate&nbsp;is&nbsp;decreased,&nbsp;no&nbsp;further<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;decreases&nbsp;are&nbsp;considered&nbsp;until&nbsp;this&nbsp;many&nbsp;new&nbsp;steps&nbsp;have<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;transpired.&nbsp;Larger&nbsp;values&nbsp;will&nbsp;slow&nbsp;convergence&nbsp;due&nbsp;to&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;learning&nbsp;rate.&nbsp;Default&nbsp;5.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;decrease_factor:&nbsp;Float&nbsp;between&nbsp;0&nbsp;and&nbsp;1&nbsp;specifying&nbsp;the&nbsp;extent&nbsp;of<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;learning&nbsp;rate&nbsp;decreases.&nbsp;Whenever&nbsp;a&nbsp;decrease&nbsp;is&nbsp;made,&nbsp;the&nbsp;learning<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rate&nbsp;decreases&nbsp;from&nbsp;x&nbsp;to&nbsp;decrease_factor&nbsp;*&nbsp;x.&nbsp;Values&nbsp;closer&nbsp;to&nbsp;1<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;will&nbsp;slow&nbsp;convergence&nbsp;due&nbsp;to&nbsp;the&nbsp;learning&nbsp;rate.&nbsp;Default:&nbsp;0.95.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_increase_rate:&nbsp;Bool&nbsp;indicating&nbsp;whether&nbsp;or&nbsp;not&nbsp;to&nbsp;increase&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;learning&nbsp;rate&nbsp;during&nbsp;training&nbsp;(after&nbsp;any&nbsp;warm-up).&nbsp;Default:&nbsp;True.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;min_steps_per_increase:&nbsp;Non-negative&nbsp;int&nbsp;specifying&nbsp;the&nbsp;number<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;of&nbsp;recent&nbsp;steps'&nbsp;loss&nbsp;values&nbsp;to&nbsp;consider&nbsp;when&nbsp;deciding&nbsp;whether&nbsp;to<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;increase&nbsp;the&nbsp;learning&nbsp;rate.&nbsp;Learning&nbsp;rate&nbsp;increases&nbsp;are&nbsp;made&nbsp;when<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;the&nbsp;loss&nbsp;has&nbsp;monotonically&nbsp;decreased&nbsp;over&nbsp;this&nbsp;many&nbsp;steps.&nbsp;When<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;the&nbsp;learning&nbsp;rate&nbsp;is&nbsp;increased,&nbsp;no&nbsp;further&nbsp;increases&nbsp;are<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;considered&nbsp;until&nbsp;this&nbsp;many&nbsp;new&nbsp;steps&nbsp;have&nbsp;transpired.&nbsp;Default&nbsp;5.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;increase_factor:&nbsp;Float&nbsp;greater&nbsp;than&nbsp;1&nbsp;specifying&nbsp;the&nbsp;extent&nbsp;of<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;learning&nbsp;rate&nbsp;increases.&nbsp;Whenever&nbsp;an&nbsp;increase&nbsp;is&nbsp;made,&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;learning&nbsp;rate&nbsp;increases&nbsp;from&nbsp;x&nbsp;to&nbsp;increase_factor&nbsp;*&nbsp;x.&nbsp;Larger<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;values&nbsp;will&nbsp;slow&nbsp;convergence&nbsp;due&nbsp;to&nbsp;the&nbsp;learning&nbsp;rate.&nbsp;Default:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1./0.95.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;verbose:&nbsp;Bool&nbsp;indicating&nbsp;whether&nbsp;or&nbsp;not&nbsp;to&nbsp;print&nbsp;status&nbsp;updates.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Default:&nbsp;False.</tt></dd></dl>
+
+<dl><dt><a name="AdaptiveLearningRate-is_finished"><strong>is_finished</strong></a>(self, do_check_step<font color="#909090">=True</font>, do_check_rate<font color="#909090">=True</font>)</dt><dd><tt>Indicates&nbsp;termination&nbsp;of&nbsp;the&nbsp;optimization&nbsp;procedure.&nbsp;Note:&nbsp;this<br>
+function&nbsp;is&nbsp;never&nbsp;used&nbsp;internally&nbsp;and&nbsp;does&nbsp;not&nbsp;influence&nbsp;the&nbsp;behavior<br>
+of&nbsp;the&nbsp;adaptive&nbsp;learning&nbsp;rate.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_check_step:&nbsp;Bool&nbsp;indicating&nbsp;whether&nbsp;to&nbsp;check&nbsp;if&nbsp;the&nbsp;step&nbsp;has<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;reached&nbsp;max_n_steps.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_check_rate:&nbsp;Bool&nbsp;indicating&nbsp;whether&nbsp;to&nbsp;check&nbsp;if&nbsp;the&nbsp;learning&nbsp;rate<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;has&nbsp;fallen&nbsp;below&nbsp;min_rate.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Bool&nbsp;indicating&nbsp;whether&nbsp;any&nbsp;of&nbsp;the&nbsp;termination&nbsp;criteria&nbsp;have&nbsp;been<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;met.</tt></dd></dl>
+
+<dl><dt><a name="AdaptiveLearningRate-restore"><strong>restore</strong></a>(self, restore_dir)</dt><dd><tt>Restores&nbsp;the&nbsp;state&nbsp;of&nbsp;a&nbsp;previously&nbsp;saved&nbsp;<a href="#AdaptiveLearningRate">AdaptiveLearningRate</a><br>
+<a href="__builtin__.html#object">object</a>.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;restore_dir:&nbsp;A&nbsp;string&nbsp;containing&nbsp;the&nbsp;directory&nbsp;in&nbsp;which&nbsp;to&nbsp;find&nbsp;a<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;previously&nbsp;saved&nbsp;<a href="#AdaptiveLearningRate">AdaptiveLearningRate</a>&nbsp;<a href="__builtin__.html#object">object</a>.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
+
+<dl><dt><a name="AdaptiveLearningRate-save"><strong>save</strong></a>(self, save_dir)</dt><dd><tt>Saves&nbsp;the&nbsp;current&nbsp;state&nbsp;of&nbsp;the&nbsp;<a href="#AdaptiveLearningRate">AdaptiveLearningRate</a>&nbsp;<a href="__builtin__.html#object">object</a>.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;save_dir:&nbsp;A&nbsp;string&nbsp;containing&nbsp;the&nbsp;directory&nbsp;in&nbsp;which&nbsp;to&nbsp;save.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
+
+<dl><dt><a name="AdaptiveLearningRate-test"><strong>test</strong></a>(self, bias<font color="#909090">=0.0</font>, fig<font color="#909090">=None</font>)</dt><dd><tt>Generates&nbsp;and&nbsp;plots&nbsp;an&nbsp;adaptive&nbsp;learning&nbsp;rate&nbsp;schedule&nbsp;based&nbsp;on&nbsp;a<br>
+loss&nbsp;function&nbsp;that&nbsp;is&nbsp;a&nbsp;1-dimensional&nbsp;biased&nbsp;random&nbsp;walk.&nbsp;This&nbsp;can&nbsp;be<br>
+used&nbsp;as&nbsp;a&nbsp;zero-th&nbsp;order&nbsp;analysis&nbsp;of&nbsp;hyperparameter&nbsp;settings,<br>
+understanding&nbsp;that&nbsp;in&nbsp;a&nbsp;realistic&nbsp;optimization&nbsp;setting,&nbsp;the&nbsp;loss&nbsp;will<br>
+depend&nbsp;highly&nbsp;on&nbsp;the&nbsp;learning&nbsp;rate&nbsp;(such&nbsp;dependencies&nbsp;are&nbsp;not&nbsp;included<br>
+in&nbsp;this&nbsp;simulation).<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;bias:&nbsp;A&nbsp;float&nbsp;specifying&nbsp;the&nbsp;bias&nbsp;of&nbsp;the&nbsp;random&nbsp;walk&nbsp;used&nbsp;to<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;simulate&nbsp;loss&nbsp;values.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
+
+<dl><dt><a name="AdaptiveLearningRate-update"><strong>update</strong></a>(self, loss)</dt><dd><tt>Updates&nbsp;the&nbsp;learning&nbsp;rate&nbsp;based&nbsp;on&nbsp;the&nbsp;most&nbsp;recent&nbsp;loss&nbsp;value<br>
+relative&nbsp;to&nbsp;the&nbsp;recent&nbsp;history&nbsp;of&nbsp;loss&nbsp;values.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;loss:&nbsp;A&nbsp;float&nbsp;indicating&nbsp;the&nbsp;loss&nbsp;from&nbsp;the&nbsp;current&nbsp;training&nbsp;step.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;A&nbsp;float&nbsp;indicating&nbsp;the&nbsp;updated&nbsp;learning&nbsp;rate.</tt></dd></dl>
+
+<hr>
+Data descriptors defined here:<br>
+<dl><dt><strong>__dict__</strong></dt>
+<dd><tt>dictionary&nbsp;for&nbsp;instance&nbsp;variables&nbsp;(if&nbsp;defined)</tt></dd>
+</dl>
+<dl><dt><strong>__weakref__</strong></dt>
+<dd><tt>list&nbsp;of&nbsp;weak&nbsp;references&nbsp;to&nbsp;the&nbsp;object&nbsp;(if&nbsp;defined)</tt></dd>
+</dl>
+<dl><dt><strong>min_steps</strong></dt>
+<dd><tt>Computes&nbsp;the&nbsp;minimum&nbsp;number&nbsp;of&nbsp;steps&nbsp;required&nbsp;before&nbsp;the&nbsp;learning<br>
+rate&nbsp;falls&nbsp;below&nbsp;the&nbsp;min_rate,&nbsp;i.e.,&nbsp;assuming&nbsp;the&nbsp;rate&nbsp;decreases&nbsp;at<br>
+every&nbsp;opportunity&nbsp;permitted&nbsp;by&nbsp;the&nbsp;properties&nbsp;of&nbsp;this<br>
+AdaptiveLearningRate&nbsp;object.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;None.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;An&nbsp;int&nbsp;specifying&nbsp;the&nbsp;minimum&nbsp;number&nbsp;of&nbsp;steps&nbsp;in&nbsp;the&nbsp;adaptive<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;learning&nbsp;rate&nbsp;schedule.</tt></dd>
+</dl>
+<hr>
+Data and other attributes defined here:<br>
+<dl><dt><strong>default_hps</strong> = {'decrease_factor': 0.95, 'do_decrease_rate': True, 'do_increase_rate': True, 'increase_factor': 1.0526315789473684, 'initial_rate': 1.0, 'max_n_steps': 10000.0, 'min_rate': 0.001, 'min_steps_per_decrease': 5, 'min_steps_per_increase': 5, 'n_warmup_steps': 0, ...}</dl>
+
+</td></tr></table></td></tr></table>
+</body></html>

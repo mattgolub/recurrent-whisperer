@@ -1,0 +1,300 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<html><head><title>Python: module Hyperparameters</title>
+<meta charset="utf-8">
+</head><body bgcolor="#f0f0f8">
+
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="heading">
+<tr bgcolor="#7799ee">
+<td valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial">&nbsp;<br><big><big><strong>Hyperparameters</strong></big></big></font></td
+><td align=right valign=bottom
+><font color="#ffffff" face="helvetica, arial"><a href=".">index</a><br><a href="file:/home/matt/github/recurrent-whisperer/Hyperparameters.py">/home/matt/github/recurrent-whisperer/Hyperparameters.py</a></font></td></tr></table>
+    <p><tt><a href="#Hyperparameters">Hyperparameters</a>.py<br>
+Written&nbsp;using&nbsp;Python&nbsp;2.7.12<br>
+@&nbsp;Matt&nbsp;Golub,&nbsp;August&nbsp;2018.<br>
+Please&nbsp;direct&nbsp;correspondence&nbsp;to&nbsp;mgolub@stanford.edu.</tt></p>
+<p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#aa55cc">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Modules</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#aa55cc"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><table width="100%" summary="list"><tr><td width="25%" valign=top><a href="argparse.html">argparse</a><br>
+<a href="cPickle.html">cPickle</a><br>
+</td><td width="25%" valign=top><a href="hashlib.html">hashlib</a><br>
+<a href="pdb.html">pdb</a><br>
+</td><td width="25%" valign=top><a href="yaml.html">yaml</a><br>
+</td><td width="25%" valign=top></td></tr></table></td></tr></table><p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#ee77aa">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Classes</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#ee77aa"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><dl>
+<dt><font face="helvetica, arial"><a href="__builtin__.html#object">__builtin__.object</a>
+</font></dt><dd>
+<dl>
+<dt><font face="helvetica, arial"><a href="Hyperparameters.html#Hyperparameters">Hyperparameters</a>
+</font></dt></dl>
+</dd>
+</dl>
+ <p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#ffc8d8">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#000000" face="helvetica, arial"><a name="Hyperparameters">class <strong>Hyperparameters</strong></a>(<a href="__builtin__.html#object">__builtin__.object</a>)</font></td></tr>
+    
+<tr bgcolor="#ffc8d8"><td rowspan=2><tt>&nbsp;&nbsp;&nbsp;</tt></td>
+<td colspan=2><tt>A&nbsp;general&nbsp;class&nbsp;for&nbsp;managing&nbsp;a&nbsp;model's&nbsp;hyperparameters,&nbsp;default<br>
+settings,&nbsp;and&nbsp;hashes&nbsp;for&nbsp;organizing&nbsp;model&nbsp;checkpoint&nbsp;directories.<br>&nbsp;</tt></td></tr>
+<tr><td>&nbsp;</td>
+<td width="100%">Methods defined here:<br>
+<dl><dt><a name="Hyperparameters-__getitem__"><strong>__getitem__</strong></a>(self, key)</dt><dd><tt>Provides&nbsp;access&nbsp;to&nbsp;an&nbsp;individual&nbsp;hyperparameter&nbsp;value,&nbsp;with&nbsp;support<br>
+for&nbsp;colon-delimited&nbsp;hyperparameter&nbsp;names.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;key:&nbsp;A&nbsp;string&nbsp;indicating&nbsp;the&nbsp;name&nbsp;of&nbsp;the&nbsp;hyperparameter&nbsp;to&nbsp;be<br>
+&nbsp;&nbsp;&nbsp;&nbsp;retrieved.&nbsp;Colon&nbsp;delimiting&nbsp;specifies&nbsp;traversals&nbsp;into<br>
+&nbsp;&nbsp;&nbsp;&nbsp;(possibly&nbsp;nested)&nbsp;dicts&nbsp;within&nbsp;the&nbsp;master&nbsp;hyperparameters&nbsp;dict.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;hyperparameter&nbsp;value&nbsp;corresponding&nbsp;to&nbsp;the&nbsp;name&nbsp;in&nbsp;key.</tt></dd></dl>
+
+<dl><dt><a name="Hyperparameters-__init__"><strong>__init__</strong></a>(self, hps<font color="#909090">={}</font>, default_hash_hps<font color="#909090">={}</font>, default_non_hash_hps<font color="#909090">={}</font>, hash_len<font color="#909090">=10</font>, verbose<font color="#909090">=False</font>)</dt><dd><tt>Creates&nbsp;a&nbsp;<a href="#Hyperparameters">Hyperparameters</a>&nbsp;<a href="__builtin__.html#object">object</a>.<br>
+&nbsp;<br>
+The&nbsp;resulting&nbsp;<a href="__builtin__.html#object">object</a>&nbsp;contains&nbsp;hyperparameters&nbsp;as&nbsp;class&nbsp;attributes,<br>
+with&nbsp;default&nbsp;values&nbsp;overridden&nbsp;by&nbsp;the&nbsp;settings&nbsp;in&nbsp;hps.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;hps:&nbsp;dict&nbsp;containing&nbsp;hyperparameter&nbsp;names&nbsp;as&nbsp;keys&nbsp;and<br>
+&nbsp;&nbsp;&nbsp;&nbsp;corresponding&nbsp;settings&nbsp;as&nbsp;values.&nbsp;These&nbsp;settings&nbsp;are&nbsp;used&nbsp;to<br>
+&nbsp;&nbsp;&nbsp;&nbsp;override&nbsp;default&nbsp;values.&nbsp;All&nbsp;values&nbsp;must&nbsp;be&nbsp;also&nbsp;included&nbsp;in&nbsp;either<br>
+&nbsp;&nbsp;&nbsp;&nbsp;default_hash_hps&nbsp;or&nbsp;default_non_hash_hps.&nbsp;Default:&nbsp;None.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;default_hash_hps:&nbsp;dict&nbsp;containing&nbsp;hyperparameters&nbsp;and&nbsp;their<br>
+&nbsp;&nbsp;&nbsp;&nbsp;default&nbsp;values&nbsp;for&nbsp;the&nbsp;set&nbsp;of&nbsp;hyperparameters&nbsp;to&nbsp;be&nbsp;hashed.&nbsp;These<br>
+&nbsp;&nbsp;&nbsp;&nbsp;hyperparameters&nbsp;may&nbsp;affect&nbsp;the&nbsp;model&nbsp;architecture&nbsp;or&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;trajectory&nbsp;of&nbsp;fitting,&nbsp;and&nbsp;as&nbsp;such&nbsp;are&nbsp;typically&nbsp;swept&nbsp;during<br>
+&nbsp;&nbsp;&nbsp;&nbsp;hyperparameter&nbsp;optimization.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;default_non_hash_hps:&nbsp;dict&nbsp;containing&nbsp;hyperparameters&nbsp;and&nbsp;their<br>
+&nbsp;&nbsp;&nbsp;&nbsp;default&nbsp;values&nbsp;for&nbsp;the&nbsp;set&nbsp;of&nbsp;hyperparameters&nbsp;that&nbsp;are&nbsp;not<br>
+&nbsp;&nbsp;&nbsp;&nbsp;included&nbsp;in&nbsp;the&nbsp;hash.&nbsp;These&nbsp;hyperparameters&nbsp;should&nbsp;not&nbsp;influence<br>
+&nbsp;&nbsp;&nbsp;&nbsp;the&nbsp;model&nbsp;architecture&nbsp;or&nbsp;the&nbsp;trajectory&nbsp;of&nbsp;fitting.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;hash_len&nbsp;(optional):&nbsp;int&nbsp;between&nbsp;1&nbsp;and&nbsp;512&nbsp;specifying&nbsp;the&nbsp;number<br>
+&nbsp;&nbsp;&nbsp;&nbsp;of&nbsp;hex&nbsp;characters&nbsp;to&nbsp;include&nbsp;in&nbsp;the&nbsp;hyperparameters&nbsp;hash&nbsp;(all<br>
+&nbsp;&nbsp;&nbsp;&nbsp;others&nbsp;are&nbsp;truncated).&nbsp;Larger&nbsp;values&nbsp;in&nbsp;this&nbsp;range&nbsp;may&nbsp;be<br>
+&nbsp;&nbsp;&nbsp;&nbsp;necessary&nbsp;for&nbsp;massive&nbsp;hyperparameter&nbsp;searches,&nbsp;where&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;likelihood&nbsp;of&nbsp;hash&nbsp;collisions&nbsp;may&nbsp;be&nbsp;non-negligible.&nbsp;Default:&nbsp;10.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;verbose&nbsp;(optional):&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;to&nbsp;print&nbsp;status<br>
+&nbsp;&nbsp;&nbsp;&nbsp;updates.&nbsp;Default:&nbsp;False.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.<br>
+&nbsp;<br>
+Raises:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;ValueError&nbsp;if&nbsp;at&nbsp;least&nbsp;one&nbsp;default_hash_hps&nbsp;or<br>
+&nbsp;&nbsp;&nbsp;&nbsp;default_non_hash_hps&nbsp;is&nbsp;not&nbsp;specified.</tt></dd></dl>
+
+<dl><dt><a name="Hyperparameters-__setitem__"><strong>__setitem__</strong></a>(self, key, value)</dt><dd><tt>Assigns&nbsp;an&nbsp;individual&nbsp;hyperparameter&nbsp;value,&nbsp;with&nbsp;support&nbsp;for<br>
+colon-delimited&nbsp;hyperparameter&nbsp;names.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;key:&nbsp;A&nbsp;string&nbsp;indicating&nbsp;the&nbsp;name&nbsp;of&nbsp;the&nbsp;hyperparameter&nbsp;to&nbsp;be<br>
+&nbsp;&nbsp;&nbsp;&nbsp;assigned.&nbsp;Colon&nbsp;delimiting&nbsp;specifies&nbsp;traversals&nbsp;into<br>
+&nbsp;&nbsp;&nbsp;&nbsp;(possibly&nbsp;nested)&nbsp;dicts&nbsp;within&nbsp;the&nbsp;master&nbsp;hyperparameters&nbsp;dict.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Nested&nbsp;dicts&nbsp;are&nbsp;created&nbsp;if&nbsp;they&nbsp;do&nbsp;not&nbsp;already&nbsp;exist.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;value:&nbsp;The&nbsp;value&nbsp;of&nbsp;the&nbsp;hyperparameter&nbsp;to&nbsp;be&nbsp;assigned.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
+
+<dl><dt><a name="Hyperparameters-__str__"><strong>__str__</strong></a>(self)</dt></dl>
+
+<dl><dt><a name="Hyperparameters-restore_from_yaml"><strong>restore_from_yaml</strong></a>(self, yaml_path)</dt></dl>
+
+<dl><dt><a name="Hyperparameters-save"><strong>save</strong></a>(self, save_path)</dt><dd><tt>Saves&nbsp;the&nbsp;<a href="#Hyperparameters">Hyperparameters</a>&nbsp;<a href="__builtin__.html#object">object</a>.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;save_path:&nbsp;string&nbsp;containing&nbsp;the&nbsp;path&nbsp;at&nbsp;which&nbsp;to&nbsp;save&nbsp;these<br>
+&nbsp;&nbsp;&nbsp;&nbsp;hyperparameter&nbsp;settings&nbsp;(including&nbsp;filename&nbsp;and&nbsp;arbitrary<br>
+&nbsp;&nbsp;&nbsp;&nbsp;extension).<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
+
+<dl><dt><a name="Hyperparameters-save_yaml"><strong>save_yaml</strong></a>(self, save_path)</dt></dl>
+
+<hr>
+Static methods defined here:<br>
+<dl><dt><a name="Hyperparameters-flatten"><strong>flatten</strong></a>(D, delimiter<font color="#909090">=':'</font>)</dt><dd><tt>Flattens&nbsp;a&nbsp;dict:&nbsp;Values&nbsp;that&nbsp;are&nbsp;themselves&nbsp;dicts&nbsp;are&nbsp;recursively<br>
+'flattened'&nbsp;by&nbsp;concatenating&nbsp;keys&nbsp;using&nbsp;colon&nbsp;delimiting.<br>
+&nbsp;<br>
+Example:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;D&nbsp;=&nbsp;{'a':&nbsp;1,&nbsp;'b':&nbsp;{'c':2,&nbsp;'d':3}}<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<a href="#Hyperparameters-flatten">flatten</a>(D)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;{'a':&nbsp;1,&nbsp;'b:c':&nbsp;2,&nbsp;'b:d':&nbsp;3}<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;D:&nbsp;Python&nbsp;dict.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;D_flat:&nbsp;The&nbsp;flattened&nbsp;dict.</tt></dd></dl>
+
+<dl><dt><a name="Hyperparameters-integrate_hps"><strong>integrate_hps</strong></a>(hps, update_hps)</dt><dd><tt>Integrates&nbsp;two&nbsp;hyperparameter&nbsp;dicts,&nbsp;with&nbsp;update_hps&nbsp;overriding&nbsp;and<br>
+possibly&nbsp;adding&nbsp;novel&nbsp;items&nbsp;to&nbsp;hps.<br>
+&nbsp;<br>
+Integration&nbsp;is&nbsp;done&nbsp;recursively&nbsp;to&nbsp;support&nbsp;selective&nbsp;updating&nbsp;within<br>
+hyperparameters&nbsp;that&nbsp;are&nbsp;themselves&nbsp;hyperparameters&nbsp;dicts&nbsp;(e.g.,<br>
+containing&nbsp;hyperparameters&nbsp;for&nbsp;helper&nbsp;classes).<br>
+&nbsp;<br>
+Note:&nbsp;This&nbsp;function&nbsp;does&nbsp;not&nbsp;perform&nbsp;any&nbsp;checks&nbsp;on&nbsp;the&nbsp;structure&nbsp;of<br>
+hps&nbsp;or&nbsp;update_hps.&nbsp;See&nbsp;example&nbsp;application&nbsp;1&nbsp;below.&nbsp;If&nbsp;needed,&nbsp;such<br>
+checks&nbsp;should&nbsp;be&nbsp;performed&nbsp;before&nbsp;calling&nbsp;this&nbsp;function.<br>
+&nbsp;<br>
+Example:<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;super_def_hps&nbsp;=&nbsp;{'a':&nbsp;1,&nbsp;'b':&nbsp;2,&nbsp;'c_hps':&nbsp;{'d':&nbsp;3,&nbsp;'e':&nbsp;4}}<br>
+&nbsp;&nbsp;&nbsp;&nbsp;sub_def_hps&nbsp;=&nbsp;{'b':&nbsp;5,&nbsp;'c_hps':&nbsp;{'d':&nbsp;6}}<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<a href="#Hyperparameters-integrate_hps">integrate_hps</a>(super_def_hps,&nbsp;sub_def_hps)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--&gt;&nbsp;{'a':&nbsp;1,&nbsp;'b':&nbsp;5,&nbsp;'c_hps':&nbsp;{'d':&nbsp;6,&nbsp;'e':&nbsp;4}}<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Notice&nbsp;that&nbsp;c_hps&nbsp;does&nbsp;not&nbsp;become&nbsp;sub_def_hps['c_hps'],&nbsp;but&nbsp;rather<br>
+&nbsp;&nbsp;&nbsp;&nbsp;only&nbsp;c_hps['d']&nbsp;is&nbsp;changed&nbsp;from&nbsp;super_def_hps['c_hps'].<br>
+&nbsp;<br>
+Example&nbsp;application:<br>
+&nbsp;<br>
+1.&nbsp;&nbsp;Overriding&nbsp;default&nbsp;hps.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;integrated_hps&nbsp;=&nbsp;<a href="#Hyperparameters-integrate_hps">integrate_hps</a>(default_hps,&nbsp;input_hps)<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;This&nbsp;is&nbsp;the&nbsp;use&nbsp;case&nbsp;found&nbsp;in&nbsp;<a href="#Hyperparameters">Hyperparameters</a>.<a href="#Hyperparameters-__init__">__init__</a>().&nbsp;Here,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;default_hps&nbsp;contains&nbsp;the&nbsp;set&nbsp;of&nbsp;all&nbsp;possible&nbsp;hyperparameters&nbsp;along<br>
+&nbsp;&nbsp;&nbsp;&nbsp;with&nbsp;their&nbsp;default&nbsp;settings.&nbsp;Those&nbsp;defaults&nbsp;are&nbsp;then&nbsp;updated&nbsp;by<br>
+&nbsp;&nbsp;&nbsp;&nbsp;input_hps,&nbsp;which&nbsp;in&nbsp;this&nbsp;use&nbsp;case&nbsp;would&nbsp;contain&nbsp;a&nbsp;subset&nbsp;of&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;hyperparameters&nbsp;in&nbsp;default_hps,&nbsp;along&nbsp;with&nbsp;values&nbsp;for&nbsp;overriding<br>
+&nbsp;&nbsp;&nbsp;&nbsp;those&nbsp;default&nbsp;settings.&nbsp;In&nbsp;this&nbsp;case,&nbsp;it&nbsp;might&nbsp;be&nbsp;necessary&nbsp;to<br>
+&nbsp;&nbsp;&nbsp;&nbsp;ensure&nbsp;that&nbsp;all&nbsp;input_hps&nbsp;indeed&nbsp;have&nbsp;a&nbsp;corresponding&nbsp;entry&nbsp;in<br>
+&nbsp;&nbsp;&nbsp;&nbsp;default_hps&nbsp;(e.g.,&nbsp;to&nbsp;protect&nbsp;against&nbsp;user&nbsp;error).&nbsp;This&nbsp;check&nbsp;is<br>
+&nbsp;&nbsp;&nbsp;&nbsp;not&nbsp;performed&nbsp;by&nbsp;integrate_hps--for&nbsp;<a href="#Hyperparameters">Hyperparameters</a>,&nbsp;that&nbsp;check&nbsp;is<br>
+&nbsp;&nbsp;&nbsp;&nbsp;in&nbsp;_validate_args()).<br>
+&nbsp;<br>
+2.&nbsp;&nbsp;Integrating&nbsp;a&nbsp;superclass'&nbsp;default&nbsp;hyperparameters&nbsp;with&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;hyperparameters&nbsp;of&nbsp;a&nbsp;subclass:<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;integrated_hps&nbsp;=&nbsp;<a href="#Hyperparameters-integrate_hps">integrate_hps</a>(super_hps,&nbsp;subclass_hps)<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Subclass&nbsp;hyperparameters&nbsp;will&nbsp;override&nbsp;defaults&nbsp;specified&nbsp;by&nbsp;this<br>
+&nbsp;&nbsp;&nbsp;&nbsp;superclass,&nbsp;and&nbsp;possibly&nbsp;add&nbsp;new&nbsp;hyperparameters&nbsp;not&nbsp;present&nbsp;in<br>
+&nbsp;&nbsp;&nbsp;&nbsp;the&nbsp;superclass.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;hps:&nbsp;dict&nbsp;containing&nbsp;hyperparameters&nbsp;to&nbsp;be&nbsp;updated.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;update_hps:&nbsp;dict&nbsp;containing&nbsp;updates&nbsp;(overrides&nbsp;+&nbsp;additions)&nbsp;to&nbsp;hps.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;integrated_hps:&nbsp;dict&nbsp;containing&nbsp;the&nbsp;integrated&nbsp;hyperparameters.</tt></dd></dl>
+
+<dl><dt><a name="Hyperparameters-parse_command_line"><strong>parse_command_line</strong></a>(default_hps, description<font color="#909090">=None</font>)</dt><dd><tt>Parses&nbsp;command-line&nbsp;arguments&nbsp;into&nbsp;a&nbsp;dict&nbsp;of&nbsp;hyperparameters.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;default_hps:&nbsp;dict&nbsp;specifying&nbsp;all&nbsp;default&nbsp;hyperparameter&nbsp;settings.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;All&nbsp;values&nbsp;must&nbsp;have&nbsp;type&nbsp;bool,&nbsp;int,&nbsp;float,&nbsp;str,&nbsp;or&nbsp;dict.&nbsp;Values<br>
+&nbsp;&nbsp;&nbsp;&nbsp;that&nbsp;are&nbsp;dicts&nbsp;must&nbsp;themselves&nbsp;have&nbsp;values&nbsp;of&nbsp;only&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;aforementioned&nbsp;types.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Nesting&nbsp;of&nbsp;dicts&nbsp;is&nbsp;supported&nbsp;at&nbsp;the&nbsp;command&nbsp;line&nbsp;using<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;colon&nbsp;delimiters,&nbsp;e.g.:<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;python&nbsp;your_script.py&nbsp;--d1:d2:n&nbsp;10<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;will&nbsp;update&nbsp;the&nbsp;value&nbsp;in&nbsp;default_hps['d1']['d2']['n']&nbsp;to&nbsp;be&nbsp;10.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;description&nbsp;(optional):&nbsp;string&nbsp;containing&nbsp;text&nbsp;to&nbsp;display&nbsp;if&nbsp;help<br>
+&nbsp;&nbsp;&nbsp;&nbsp;commands&nbsp;(-h,&nbsp;--help)&nbsp;are&nbsp;invoked&nbsp;at&nbsp;the&nbsp;command&nbsp;line.&nbsp;See<br>
+&nbsp;&nbsp;&nbsp;&nbsp;argparse.ArugmentParser&nbsp;for&nbsp;further&nbsp;details.&nbsp;Default:&nbsp;None.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;matching&nbsp;default_hps,&nbsp;but&nbsp;with&nbsp;values&nbsp;replaced&nbsp;by&nbsp;any<br>
+&nbsp;&nbsp;&nbsp;&nbsp;corresponding&nbsp;values&nbsp;provided&nbsp;at&nbsp;the&nbsp;command&nbsp;line.</tt></dd></dl>
+
+<dl><dt><a name="Hyperparameters-restore"><strong>restore</strong></a>(restore_path)</dt><dd><tt>Loads&nbsp;hyperparameters&nbsp;from&nbsp;a&nbsp;saved&nbsp;<a href="#Hyperparameters">Hyperparameters</a>&nbsp;<a href="__builtin__.html#object">object</a>.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;restore_path:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;string&nbsp;containing&nbsp;the&nbsp;path&nbsp;of&nbsp;a&nbsp;previously&nbsp;saved<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#Hyperparameters">Hyperparameters</a>&nbsp;<a href="__builtin__.html#object">object</a>&nbsp;(including&nbsp;filename&nbsp;and&nbsp;extension).<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;containing&nbsp;all&nbsp;hyperparameter&nbsp;names&nbsp;and&nbsp;settings&nbsp;from&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;previously&nbsp;saved&nbsp;<a href="#Hyperparameters">Hyperparameters</a>&nbsp;<a href="__builtin__.html#object">object</a>.</tt></dd></dl>
+
+<dl><dt><a name="Hyperparameters-unflatten"><strong>unflatten</strong></a>(D_flat, delimiter<font color="#909090">=':'</font>)</dt><dd><tt>Unflattens&nbsp;a&nbsp;flattened&nbsp;dict.&nbsp;A&nbsp;flattened&nbsp;dict&nbsp;is&nbsp;a&nbsp;dict&nbsp;with&nbsp;no<br>
+values&nbsp;that&nbsp;are&nbsp;themselves&nbsp;dicts.&nbsp;Nested&nbsp;dicts&nbsp;can&nbsp;be&nbsp;represented&nbsp;in&nbsp;a<br>
+flattened&nbsp;dict&nbsp;using&nbsp;colon-delimited&nbsp;string&nbsp;keys.<br>
+&nbsp;<br>
+Example:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;D_flat&nbsp;=&nbsp;{'a':&nbsp;1,&nbsp;'b:c':&nbsp;2,&nbsp;'b:d':&nbsp;3}<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<a href="#Hyperparameters-unflatten">unflatten</a>(D_flat)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;{'a':&nbsp;1,&nbsp;'b':&nbsp;{'c':&nbsp;2,&nbsp;'d':&nbsp;3}}<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;D_flat:&nbsp;dict&nbsp;with&nbsp;values&nbsp;of&nbsp;type&nbsp;bool,&nbsp;int,&nbsp;float,&nbsp;or&nbsp;str&nbsp;(no<br>
+&nbsp;&nbsp;&nbsp;&nbsp;dicts&nbsp;allowed).<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;D_unflattened:&nbsp;dict,&nbsp;nested&nbsp;with&nbsp;other&nbsp;dicts&nbsp;as&nbsp;specified&nbsp;by<br>
+&nbsp;&nbsp;&nbsp;&nbsp;colon&nbsp;delimiting&nbsp;in&nbsp;keys&nbsp;of&nbsp;D_flat.</tt></dd></dl>
+
+<hr>
+Data descriptors defined here:<br>
+<dl><dt><strong>__weakref__</strong></dt>
+<dd><tt>list&nbsp;of&nbsp;weak&nbsp;references&nbsp;to&nbsp;the&nbsp;object&nbsp;(if&nbsp;defined)</tt></dd>
+</dl>
+<dl><dt><strong>hash</strong></dt>
+<dd><tt>Computes&nbsp;a&nbsp;hash&nbsp;of&nbsp;all&nbsp;non-default&nbsp;hash&nbsp;hyperparameters.<br>
+In&nbsp;most&nbsp;applications&nbsp;(e.g.,&nbsp;setting&nbsp;up&nbsp;run&nbsp;directories),&nbsp;this&nbsp;is&nbsp;the<br>
+hash&nbsp;that&nbsp;should&nbsp;be&nbsp;used.&nbsp;By&nbsp;omitting&nbsp;default&nbsp;hps,&nbsp;hashes&nbsp;become&nbsp;more<br>
+robust&nbsp;to&nbsp;future&nbsp;updates&nbsp;to&nbsp;an&nbsp;algorithm--if&nbsp;new&nbsp;hps&nbsp;are&nbsp;introduced,<br>
+and&nbsp;their&nbsp;default&nbsp;values&nbsp;are&nbsp;chosen&nbsp;to&nbsp;reproduce&nbsp;before-update<br>
+behavior,&nbsp;before-update&nbsp;and&nbsp;after-update&nbsp;hashes&nbsp;will&nbsp;be&nbsp;compatible.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;string&nbsp;containing&nbsp;the&nbsp;hyperparameters&nbsp;hash.</tt></dd>
+</dl>
+<dl><dt><strong>hps_to_hash</strong></dt>
+</dl>
+<hr>
+Data and other attributes defined here:<br>
+<dl><dt><strong>__dict__</strong> = dict_proxy({'restore': &lt;staticmethod object at 0...e_yaml': &lt;function save_yaml at 0x7f3c8bfaaf50&gt;})</dl>
+
+</td></tr></table></td></tr></table><p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#eeaa77">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Functions</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#eeaa77"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><dl><dt><a name="-test"><strong>test</strong></a>()</dt><dd><tt>Test&nbsp;suite&nbsp;for&nbsp;some&nbsp;(but&nbsp;not&nbsp;yet&nbsp;all)&nbsp;of&nbsp;<a href="#Hyperparameters">Hyperparameters</a>'<br>
+functionality.</tt></dd></dl>
+</td></tr></table><p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#55aa55">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Data</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#55aa55"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><strong>absolute_import</strong> = _Feature((2, 5, 0, 'alpha', 1), (3, 0, 0, 'alpha', 0), 16384)<br>
+<strong>division</strong> = _Feature((2, 2, 0, 'alpha', 2), (3, 0, 0, 'alpha', 0), 8192)<br>
+<strong>print_function</strong> = _Feature((2, 6, 0, 'alpha', 2), (3, 0, 0, 'alpha', 0), 65536)</td></tr></table>
+</body></html>

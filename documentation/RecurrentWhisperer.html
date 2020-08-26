@@ -1,0 +1,680 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<html><head><title>Python: module RecurrentWhisperer</title>
+<meta charset="utf-8">
+</head><body bgcolor="#f0f0f8">
+
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="heading">
+<tr bgcolor="#7799ee">
+<td valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial">&nbsp;<br><big><big><strong>RecurrentWhisperer</strong></big></big></font></td
+><td align=right valign=bottom
+><font color="#ffffff" face="helvetica, arial"><a href=".">index</a><br><a href="file:/home/matt/github/recurrent-whisperer/RecurrentWhisperer.py">/home/matt/github/recurrent-whisperer/RecurrentWhisperer.py</a></font></td></tr></table>
+    <p><tt><a href="#RecurrentWhisperer">RecurrentWhisperer</a>.py<br>
+Written&nbsp;using&nbsp;Python&nbsp;2.7.12&nbsp;and&nbsp;TensorFlow&nbsp;1.10<br>
+@&nbsp;Matt&nbsp;Golub,&nbsp;August&nbsp;2018.<br>
+Please&nbsp;direct&nbsp;correspondence&nbsp;to&nbsp;mgolub@stanford.edu.</tt></p>
+<p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#aa55cc">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Modules</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#aa55cc"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><table width="100%" summary="list"><tr><td width="25%" valign=top><a href="cPickle.html">cPickle</a><br>
+<a href="logging.html">logging</a><br>
+<a href="numpy.html">numpy</a><br>
+</td><td width="25%" valign=top><a href="numpy.random.html">numpy.random</a><br>
+<a href="ntpath.html">ntpath</a><br>
+<a href="os.html">os</a><br>
+</td><td width="25%" valign=top><a href="pdb.html">pdb</a><br>
+<a href="matplotlib.pyplot.html">matplotlib.pyplot</a><br>
+<a href="shutil.html">shutil</a><br>
+</td><td width="25%" valign=top><a href="scipy.io.html">scipy.io</a><br>
+<a href="sys.html">sys</a><br>
+<a href="tensorflow.html">tensorflow</a><br>
+</td></tr></table></td></tr></table><p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#ee77aa">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Classes</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#ee77aa"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><dl>
+<dt><font face="helvetica, arial"><a href="__builtin__.html#object">__builtin__.object</a>
+</font></dt><dd>
+<dl>
+<dt><font face="helvetica, arial"><a href="RecurrentWhisperer.html#RecurrentWhisperer">RecurrentWhisperer</a>
+</font></dt></dl>
+</dd>
+</dl>
+ <p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#ffc8d8">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#000000" face="helvetica, arial"><a name="RecurrentWhisperer">class <strong>RecurrentWhisperer</strong></a>(<a href="__builtin__.html#object">__builtin__.object</a>)</font></td></tr>
+    
+<tr bgcolor="#ffc8d8"><td rowspan=2><tt>&nbsp;&nbsp;&nbsp;</tt></td>
+<td colspan=2><tt>A&nbsp;general&nbsp;class&nbsp;template&nbsp;for&nbsp;training&nbsp;recurrent&nbsp;neural&nbsp;networks&nbsp;using<br>
+TensorFlow.&nbsp;This&nbsp;class&nbsp;provides&nbsp;functionality&nbsp;for:<br>
+&nbsp;<br>
+1)&nbsp;Training&nbsp;a&nbsp;recurrent&nbsp;neural&nbsp;network&nbsp;using&nbsp;modern&nbsp;techniques&nbsp;for<br>
+encouraging&nbsp;stable&nbsp;training,&nbsp;such&nbsp;as&nbsp;adaptive&nbsp;learning&nbsp;rates&nbsp;and&nbsp;adaptive<br>
+gradient&nbsp;norm&nbsp;clipping.&nbsp;This&nbsp;class&nbsp;handles&nbsp;common&nbsp;tasks&nbsp;like&nbsp;splitting<br>
+training&nbsp;data&nbsp;into&nbsp;batches,&nbsp;making&nbsp;gradient&nbsp;steps&nbsp;based&nbsp;on&nbsp;individual<br>
+batches&nbsp;of&nbsp;training&nbsp;data,&nbsp;periodically&nbsp;evaluating&nbsp;validation&nbsp;data,&nbsp;and<br>
+periodically&nbsp;saving&nbsp;model&nbsp;checkpoints.<br>
+&nbsp;<br>
+2)&nbsp;Managing&nbsp;Tensorboard&nbsp;visualizations&nbsp;of&nbsp;training&nbsp;progress.<br>
+&nbsp;<br>
+3)&nbsp;Managing&nbsp;a&nbsp;directory&nbsp;structure&nbsp;for&nbsp;maintaining&nbsp;many&nbsp;different&nbsp;variants<br>
+of&nbsp;a&nbsp;model&nbsp;(i.e.,&nbsp;with&nbsp;different&nbsp;hyperparameter&nbsp;settings).&nbsp;Previously<br>
+saved&nbsp;models&nbsp;can&nbsp;be&nbsp;readily&nbsp;restored&nbsp;from&nbsp;checkpoints,&nbsp;and&nbsp;training&nbsp;runs<br>
+can&nbsp;be&nbsp;readily&nbsp;resumed&nbsp;if&nbsp;their&nbsp;execution&nbsp;was&nbsp;interrupted&nbsp;or&nbsp;preempted.<br>
+&nbsp;<br>
+Subclasses&nbsp;inheriting&nbsp;from&nbsp;<a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;must&nbsp;implement&nbsp;the&nbsp;following<br>
+functions&nbsp;(see&nbsp;definitions&nbsp;at&nbsp;the&nbsp;end&nbsp;of&nbsp;this&nbsp;file&nbsp;for&nbsp;call&nbsp;signatures):<br>
+&nbsp;<br>
+_default_hash_hyperparameters()<br>
+_default_non_hash_hyperparameters()<br>
+_setup_model(...)<br>
+_setup_training(...)<br>
+_train_batch(...)<br>
+_predict_batch(...)<br>
+_get_batch_size(...)<br>
+_split_data_into_batches(...)<br>
+_subselect_batch(...)<br>
+_combine_prediction_batches(...)<br>
+_update_valid_tensorboard_summaries<br>
+_update_visualization(...)<br>&nbsp;</tt></td></tr>
+<tr><td>&nbsp;</td>
+<td width="100%">Methods defined here:<br>
+<dl><dt><a name="RecurrentWhisperer-__init__"><strong>__init__</strong></a>(self, **kwargs)</dt><dd><tt>Creates&nbsp;a&nbsp;<a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;<a href="__builtin__.html#object">object</a>.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;A&nbsp;set&nbsp;of&nbsp;optional&nbsp;keyword&nbsp;arguments&nbsp;for&nbsp;overriding&nbsp;default<br>
+&nbsp;&nbsp;&nbsp;&nbsp;hyperparameter&nbsp;values.&nbsp;Hyperparameters&nbsp;are&nbsp;grouped&nbsp;into&nbsp;2<br>
+&nbsp;&nbsp;&nbsp;&nbsp;categories--those&nbsp;that&nbsp;affect&nbsp;the&nbsp;trajectory&nbsp;of&nbsp;training&nbsp;(e.g.,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;learning&nbsp;rate),&nbsp;and&nbsp;those&nbsp;that&nbsp;do&nbsp;not&nbsp;(e.g.,&nbsp;logging&nbsp;preferences).<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Those&nbsp;in&nbsp;the&nbsp;former&nbsp;category&nbsp;are&nbsp;hashed&nbsp;to&nbsp;yield&nbsp;a&nbsp;unique&nbsp;run<br>
+&nbsp;&nbsp;&nbsp;&nbsp;directory&nbsp;for&nbsp;saving&nbsp;checkpoints,&nbsp;Tensorboard&nbsp;events,&nbsp;etc.&nbsp;Those<br>
+&nbsp;&nbsp;&nbsp;&nbsp;in&nbsp;the&nbsp;latter&nbsp;category&nbsp;are&nbsp;included&nbsp;in&nbsp;this&nbsp;hash&nbsp;so&nbsp;that&nbsp;one&nbsp;can<br>
+&nbsp;&nbsp;&nbsp;&nbsp;more&nbsp;readily&nbsp;interact&nbsp;with&nbsp;a&nbsp;training&nbsp;run&nbsp;without&nbsp;requiring&nbsp;a<br>
+&nbsp;&nbsp;&nbsp;&nbsp;complete&nbsp;restart&nbsp;(e.g.,&nbsp;change&nbsp;printing&nbsp;or&nbsp;visualization<br>
+&nbsp;&nbsp;&nbsp;&nbsp;preferences;&nbsp;change&nbsp;optimization&nbsp;termination&nbsp;criteria).<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;See&nbsp;also:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;_default_hash_hyperparameters<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;_default_non_hash_hyperparameters<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Hyperparameters&nbsp;included&nbsp;in&nbsp;the&nbsp;run&nbsp;directory&nbsp;hash&nbsp;(defined&nbsp;in<br>
+&nbsp;&nbsp;&nbsp;&nbsp;_default_hash_hyperparameters):<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;max_batch_size:&nbsp;int&nbsp;specifying&nbsp;the&nbsp;size&nbsp;of&nbsp;the&nbsp;largest&nbsp;batch<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;to&nbsp;create&nbsp;during&nbsp;training&nbsp;/&nbsp;prediction.&nbsp;Data&nbsp;are&nbsp;batched&nbsp;into<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;roughly&nbsp;equal&nbsp;sized&nbsp;batches,&nbsp;depending&nbsp;on&nbsp;whether&nbsp;the&nbsp;number<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;of&nbsp;trials&nbsp;divides&nbsp;evenly&nbsp;by&nbsp;this&nbsp;number.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;random_seed:&nbsp;int&nbsp;specifying&nbsp;the&nbsp;random&nbsp;seed&nbsp;for&nbsp;the&nbsp;numpy<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;random&nbsp;generator&nbsp;used&nbsp;for&nbsp;randomly&nbsp;batching&nbsp;data&nbsp;and<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;initializing&nbsp;model&nbsp;parameters.&nbsp;Default:&nbsp;0<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;dtype:&nbsp;string&nbsp;indicating&nbsp;the&nbsp;Tensorflow&nbsp;data&nbsp;type&nbsp;to&nbsp;use&nbsp;for<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;all&nbsp;Tensorflow&nbsp;objects.&nbsp;Default:&nbsp;'float32'&nbsp;--&gt;&nbsp;tf.float32.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;adam_hps:&nbsp;dict&nbsp;specifying&nbsp;hyperparameters&nbsp;for&nbsp;TF's<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;AdamOptimizer.&nbsp;Default:&nbsp;{'epsilon':&nbsp;0.01}.&nbsp;See<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;tf.AdamOptimizer.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;alr_hps:&nbsp;dict&nbsp;specifying&nbsp;hyperparameters&nbsp;for&nbsp;managing&nbsp;an<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;adaptive&nbsp;learning&nbsp;rate.&nbsp;Default:&nbsp;set&nbsp;by&nbsp;AdaptiveLearningRate.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;agnc_hps:&nbsp;dict&nbsp;specifying&nbsp;hyperparameters&nbsp;for&nbsp;managing<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;adaptive&nbsp;gradient&nbsp;norm&nbsp;clipping.&nbsp;Default:&nbsp;set&nbsp;by<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;AdaptiveGradNormClip.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Hyperparameters&nbsp;not&nbsp;included&nbsp;in&nbsp;the&nbsp;run&nbsp;directory&nbsp;hash&nbsp;(defined&nbsp;in<br>
+&nbsp;&nbsp;&nbsp;&nbsp;_default_non_hash_hyperparameters):<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;name:&nbsp;string&nbsp;describing&nbsp;this&nbsp;instance&nbsp;of&nbsp;<a href="#RecurrentWhisperer">RecurrentWhisperer</a>.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Used&nbsp;for&nbsp;scoping&nbsp;and&nbsp;uniquifying&nbsp;of&nbsp;TF&nbsp;variables.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Default:&nbsp;'rw'.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;mode:&nbsp;string&nbsp;identifying&nbsp;the&nbsp;mode&nbsp;in&nbsp;which&nbsp;the&nbsp;model&nbsp;will&nbsp;be<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;used.&nbsp;This&nbsp;is&nbsp;never&nbsp;used&nbsp;internally,&nbsp;and&nbsp;is&nbsp;only&nbsp;included&nbsp;for<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;optional&nbsp;use&nbsp;by&nbsp;external&nbsp;run&nbsp;scripts.&nbsp;This&nbsp;is&nbsp;included&nbsp;here<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;to&nbsp;simplify&nbsp;command-line&nbsp;argument&nbsp;parsing,&nbsp;which&nbsp;is&nbsp;already<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;nicely&nbsp;handled&nbsp;by&nbsp;Hyperparameters.py&nbsp;Default:&nbsp;'train'.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;max_n_epochs_without_lvl_improvement:&nbsp;int&nbsp;specifying<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;optimization&nbsp;termination&nbsp;criteria&nbsp;on&nbsp;the&nbsp;number&nbsp;of&nbsp;training<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;epochs&nbsp;performed&nbsp;without&nbsp;improvements&nbsp;to&nbsp;the&nbsp;lowest&nbsp;validation<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;loss.&nbsp;If&nbsp;the&nbsp;lowest&nbsp;validation&nbsp;error&nbsp;does&nbsp;not&nbsp;improve&nbsp;over&nbsp;a<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;block&nbsp;of&nbsp;this&nbsp;many&nbsp;epochs,&nbsp;training&nbsp;will&nbsp;terminate.&nbsp;If<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;validation&nbsp;data&nbsp;are&nbsp;not&nbsp;provided&nbsp;to&nbsp;<a href="#RecurrentWhisperer-train">train</a>(...),&nbsp;this<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;termination&nbsp;criteria&nbsp;is&nbsp;ignored.&nbsp;Default:&nbsp;200.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;min_loss:&nbsp;float&nbsp;specifying&nbsp;optimization&nbsp;termination&nbsp;criteria<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;on&nbsp;the&nbsp;loss&nbsp;function&nbsp;evaluated&nbsp;across&nbsp;the&nbsp;training&nbsp;data&nbsp;(the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;epoch&nbsp;training&nbsp;loss).&nbsp;If&nbsp;None,&nbsp;this&nbsp;termination&nbsp;criteria&nbsp;is<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;not&nbsp;applied.&nbsp;Default:&nbsp;None.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;max_train_time:&nbsp;float&nbsp;specifying&nbsp;the&nbsp;maximum&nbsp;amount&nbsp;of&nbsp;time<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;allowed&nbsp;for&nbsp;training,&nbsp;expressed&nbsp;in&nbsp;seconds.&nbsp;If&nbsp;None,&nbsp;this<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;termination&nbsp;criteria&nbsp;is&nbsp;not&nbsp;applied.&nbsp;Default:&nbsp;None.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_log_output:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;to&nbsp;direct&nbsp;to&nbsp;a&nbsp;log&nbsp;file<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;all&nbsp;stdout&nbsp;and&nbsp;stderr&nbsp;output&nbsp;(i.e.,&nbsp;everything&nbsp;that&nbsp;would<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;otherwise&nbsp;print&nbsp;to&nbsp;the&nbsp;terminal).&nbsp;Default:&nbsp;False.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_restart_run:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;to&nbsp;force&nbsp;a&nbsp;restart&nbsp;of<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;a&nbsp;training&nbsp;run&nbsp;(e.g.,&nbsp;if&nbsp;a&nbsp;previous&nbsp;run&nbsp;with&nbsp;the&nbsp;same<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;hyperparameters&nbsp;has&nbsp;saved&nbsp;checkpoints--the&nbsp;previous&nbsp;run&nbsp;will<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;be&nbsp;deleted&nbsp;and&nbsp;restarted&nbsp;rather&nbsp;than&nbsp;resumed).&nbsp;Default:&nbsp;False.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_save_tensorboard_summaries:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;or&nbsp;not<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;to&nbsp;save&nbsp;summaries&nbsp;to&nbsp;Tensorboard.&nbsp;Default:&nbsp;True.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_save_tensorboard_histograms:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;or&nbsp;not<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;to&nbsp;save&nbsp;histograms&nbsp;of&nbsp;each&nbsp;trained&nbsp;variable&nbsp;to&nbsp;Tensorboard<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;throughout&nbsp;training.&nbsp;Default:&nbsp;True.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_save_tensorboard_images:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;or&nbsp;not&nbsp;to<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;save&nbsp;visualizations&nbsp;to&nbsp;Tensorboard&nbsp;Images.&nbsp;Default:&nbsp;True.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_save_ckpt:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;or&nbsp;not&nbsp;to&nbsp;save&nbsp;model<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;checkpoints.&nbsp;Needed&nbsp;because&nbsp;setting&nbsp;max_ckpt_to_keep=0&nbsp;results<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;in&nbsp;TF&nbsp;never&nbsp;deleting&nbsp;checkpoints.&nbsp;Default:&nbsp;True.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_save_lvl_ckpt:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;or&nbsp;not&nbsp;to&nbsp;save&nbsp;model<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;checkpoints&nbsp;specifically&nbsp;when&nbsp;a&nbsp;new&nbsp;lowest&nbsp;validation&nbsp;loss&nbsp;is<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;achieved.&nbsp;Default:&nbsp;True.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_generate_training_visualizations:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;or<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;not&nbsp;to&nbsp;generate&nbsp;visualizations&nbsp;periodically&nbsp;throughout<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;training.&nbsp;Frequency&nbsp;is&nbsp;controlled&nbsp;by<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;n_epoochs_per_visualization_update.&nbsp;Default:&nbsp;True.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_save_training_visualizations:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;or&nbsp;not<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;to&nbsp;save&nbsp;the&nbsp;training&nbsp;visualizations&nbsp;to&nbsp;Tensorboard.&nbsp;Default:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;True.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_generate_lvl_visualizations:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;or&nbsp;not<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;to,&nbsp;after&nbsp;training&nbsp;is&nbsp;complete,&nbsp;load&nbsp;the&nbsp;LVL&nbsp;model&nbsp;and&nbsp;generate<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;visualization&nbsp;from&nbsp;it.&nbsp;Default:&nbsp;True.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_save_lvl_visualizations:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;or&nbsp;not&nbsp;to<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;save&nbsp;the&nbsp;LVL&nbsp;visualizations&nbsp;to&nbsp;Tensorboard.&nbsp;Default:&nbsp;True.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_save_lvl_train_predictions:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;to<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;maintain&nbsp;a&nbsp;.pkl&nbsp;file&nbsp;containing&nbsp;predictions&nbsp;over&nbsp;the&nbsp;training<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;data&nbsp;based&nbsp;on&nbsp;the&nbsp;lowest-validation-loss&nbsp;parameters.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_save_lvl_train_summaries:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;to<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;maintain&nbsp;a&nbsp;.pkl&nbsp;file&nbsp;containing&nbsp;summaries&nbsp;of&nbsp;the&nbsp;training<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;predictions&nbsp;based&nbsp;on&nbsp;the&nbsp;lowest-validation-loss&nbsp;parameters.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_save_lvl_valid_predictions:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;to<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;maintain&nbsp;a&nbsp;.pkl&nbsp;file&nbsp;containing&nbsp;predictions&nbsp;over&nbsp;the&nbsp;validation<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;data&nbsp;based&nbsp;on&nbsp;the&nbsp;lowest-validation-loss&nbsp;parameters.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_save_lvl_valid_summaries:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;to<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;maintain&nbsp;a&nbsp;.pkl&nbsp;file&nbsp;containing&nbsp;summaries&nbsp;of&nbsp;the&nbsp;validation<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;predictions&nbsp;based&nbsp;on&nbsp;the&nbsp;lowest-validation-loss&nbsp;parameters.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_save_lvl_mat_files:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;to&nbsp;save&nbsp;.mat<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;files&nbsp;containing&nbsp;predictions&nbsp;over&nbsp;the&nbsp;training&nbsp;and&nbsp;validation<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;data&nbsp;each&nbsp;time&nbsp;a&nbsp;new&nbsp;lowest&nbsp;validation&nbsp;loss&nbsp;is&nbsp;achieved.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Regardless&nbsp;of&nbsp;this&nbsp;setting,&nbsp;.pkl&nbsp;files&nbsp;are&nbsp;saved.&nbsp;Default:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;False.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;max_ckpt_to_keep:&nbsp;int&nbsp;specifying&nbsp;the&nbsp;maximum&nbsp;number&nbsp;of&nbsp;model<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;checkpoints&nbsp;to&nbsp;keep&nbsp;around.&nbsp;Default:&nbsp;1.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;max_lvl_ckpt_to_keep:&nbsp;int&nbsp;specifying&nbsp;the&nbsp;maximum&nbsp;number<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;of&nbsp;lowest&nbsp;validation&nbsp;loss&nbsp;(lvl)&nbsp;checkpoints&nbsp;to&nbsp;maintain.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Default:&nbsp;1.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;n_epochs_per_ckpt:&nbsp;int&nbsp;specifying&nbsp;the&nbsp;number&nbsp;of&nbsp;epochs&nbsp;between<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;checkpoint&nbsp;saves.&nbsp;Default:&nbsp;100.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;n_epochs_per_validation_update:&nbsp;int&nbsp;specifying&nbsp;the&nbsp;number&nbsp;of<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;epochs&nbsp;between&nbsp;evaluating&nbsp;predictions&nbsp;over&nbsp;the&nbsp;validation<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;data.&nbsp;Default:&nbsp;100.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;n_epochs_per_visualization_update:&nbsp;int&nbsp;specifying&nbsp;the&nbsp;number<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;of&nbsp;epochs&nbsp;between&nbsp;updates&nbsp;of&nbsp;any&nbsp;visualizations.&nbsp;Default:&nbsp;100.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;device:&nbsp;String&nbsp;specifying&nbsp;the&nbsp;hardware&nbsp;on&nbsp;which&nbsp;to&nbsp;place&nbsp;this<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;model.&nbsp;E.g.,&nbsp;"gpu:0"&nbsp;or&nbsp;"gpu:1".&nbsp;Default:&nbsp;"gpu:0".<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;per_process_gpu_memory_fraction:&nbsp;float&nbsp;specifying&nbsp;the&nbsp;maximum<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;fraction&nbsp;of&nbsp;GPU&nbsp;memory&nbsp;to&nbsp;allocate.&nbsp;Set&nbsp;to&nbsp;None&nbsp;to&nbsp;allow<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Tensorflow&nbsp;to&nbsp;manage&nbsp;GPU&nbsp;memory.&nbsp;See&nbsp;Tensorflow&nbsp;documentation<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;for&nbsp;interactions&nbsp;between&nbsp;device_count&nbsp;(accessed&nbsp;here&nbsp;via<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;disable_gpus),&nbsp;enable_gpu_growth,&nbsp;and<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;per_process_gpu_memory_fraction.&nbsp;Default:&nbsp;None.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;allow_gpu_growth:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;to&nbsp;dynamically<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;allocate&nbsp;GPU&nbsp;memory&nbsp;(True)&nbsp;or&nbsp;to&nbsp;monopolize&nbsp;the&nbsp;entire&nbsp;memory<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;capacity&nbsp;of&nbsp;a&nbsp;GPU&nbsp;(False).&nbsp;Default:&nbsp;True.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;disable_gpus:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;to&nbsp;disable&nbsp;access&nbsp;to&nbsp;any<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;GPUs.&nbsp;Default:&nbsp;False.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;log_dir:&nbsp;string&nbsp;specifying&nbsp;the&nbsp;top-level&nbsp;directory&nbsp;for&nbsp;saving<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;various&nbsp;training&nbsp;runs&nbsp;(where&nbsp;each&nbsp;training&nbsp;run&nbsp;is&nbsp;specified&nbsp;by<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;a&nbsp;different&nbsp;set&nbsp;of&nbsp;hyperparameter&nbsp;settings).&nbsp;When&nbsp;tuning<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;hyperparameters,&nbsp;log_dir&nbsp;is&nbsp;meant&nbsp;to&nbsp;be&nbsp;constant&nbsp;across<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;models.&nbsp;Default:&nbsp;'/tmp/rnn_logs/'.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-predict"><strong>predict</strong></a>(self, data, do_batch<font color="#909090">=False</font>)</dt><dd><tt>Runs&nbsp;a&nbsp;forward&nbsp;pass&nbsp;through&nbsp;the&nbsp;model&nbsp;using&nbsp;given&nbsp;input&nbsp;data.&nbsp;If<br>
+the&nbsp;input&nbsp;data&nbsp;are&nbsp;larger&nbsp;than&nbsp;the&nbsp;batch&nbsp;size,&nbsp;the&nbsp;data&nbsp;are&nbsp;processed<br>
+sequentially&nbsp;in&nbsp;multiple&nbsp;batches.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;data:&nbsp;dict&nbsp;containing&nbsp;requisite&nbsp;data&nbsp;for&nbsp;generating&nbsp;predictions.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Key/value&nbsp;pairs&nbsp;will&nbsp;be&nbsp;specific&nbsp;to&nbsp;the&nbsp;subclass&nbsp;implementation.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;predictions:&nbsp;dict&nbsp;containing&nbsp;model&nbsp;predictions&nbsp;based&nbsp;on&nbsp;data.&nbsp;Key/<br>
+&nbsp;&nbsp;&nbsp;&nbsp;value&nbsp;pairs&nbsp;will&nbsp;be&nbsp;specific&nbsp;to&nbsp;the&nbsp;subclass&nbsp;implementation.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;summary:&nbsp;dict&nbsp;containing&nbsp;high-level&nbsp;summaries&nbsp;of&nbsp;the&nbsp;predictions.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Key/value&nbsp;pairs&nbsp;will&nbsp;be&nbsp;specific&nbsp;to&nbsp;the&nbsp;subclass&nbsp;implementation.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Must&nbsp;contain&nbsp;key:&nbsp;'loss'&nbsp;whose&nbsp;value&nbsp;is&nbsp;a&nbsp;scalar&nbsp;indicating&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;evaluation&nbsp;of&nbsp;the&nbsp;overall&nbsp;objective&nbsp;function&nbsp;being&nbsp;minimized<br>
+&nbsp;&nbsp;&nbsp;&nbsp;during&nbsp;training.<br>
+&nbsp;<br>
+If/when&nbsp;saving&nbsp;checkpoints,&nbsp;predictions&nbsp;and&nbsp;summary&nbsp;are&nbsp;saved&nbsp;into<br>
+separate&nbsp;files.&nbsp;By&nbsp;placing&nbsp;lightweight&nbsp;objects&nbsp;as&nbsp;values&nbsp;in&nbsp;summary<br>
+(e.g.,&nbsp;scalars),&nbsp;the&nbsp;summary&nbsp;file&nbsp;can&nbsp;be&nbsp;loaded&nbsp;faster&nbsp;for&nbsp;post-<br>
+training&nbsp;analyses&nbsp;that&nbsp;do&nbsp;not&nbsp;require&nbsp;loading&nbsp;the&nbsp;potentially&nbsp;bulky<br>
+predictions.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-print_trainable_variables"><strong>print_trainable_variables</strong></a>(self)</dt><dd><tt>Prints&nbsp;the&nbsp;current&nbsp;set&nbsp;of&nbsp;trainable&nbsp;variables.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-refresh_lvl_files"><strong>refresh_lvl_files</strong></a>(self, data, train_or_valid_str)</dt><dd><tt>Saves&nbsp;model&nbsp;predictions&nbsp;over&nbsp;the&nbsp;training&nbsp;or&nbsp;validation&nbsp;data.<br>
+&nbsp;<br>
+If&nbsp;prediction&nbsp;summaries&nbsp;are&nbsp;generated,&nbsp;those&nbsp;summaries&nbsp;are&nbsp;saved&nbsp;in<br>
+separate&nbsp;.pkl&nbsp;files&nbsp;(and&nbsp;optional&nbsp;.mat&nbsp;files).&nbsp;See&nbsp;docstring&nbsp;for<br>
+<a href="#RecurrentWhisperer-predict">predict</a>()&nbsp;for&nbsp;additional&nbsp;detail.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;data:&nbsp;dict&nbsp;containing&nbsp;either&nbsp;the&nbsp;training&nbsp;or&nbsp;validation&nbsp;data.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;train_or_valid_str:&nbsp;either&nbsp;'train'&nbsp;or&nbsp;'valid',&nbsp;indicating&nbsp;whether<br>
+&nbsp;&nbsp;&nbsp;&nbsp;data&nbsp;contains&nbsp;training&nbsp;data&nbsp;or&nbsp;validation&nbsp;data,&nbsp;respectively.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-restore_from_lvl_checkpoint"><strong>restore_from_lvl_checkpoint</strong></a>(self, model_checkpoint_path<font color="#909090">=None</font>)</dt><dd><tt>Restores&nbsp;a&nbsp;model&nbsp;from&nbsp;a&nbsp;previously&nbsp;saved&nbsp;lowest-validation-loss<br>
+checkpoint.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;model_checkpoint_path&nbsp;(optional):&nbsp;string&nbsp;containing&nbsp;a&nbsp;path&nbsp;to<br>
+&nbsp;&nbsp;&nbsp;&nbsp;a&nbsp;model&nbsp;checkpoint.&nbsp;Use&nbsp;this&nbsp;as&nbsp;an&nbsp;override&nbsp;if&nbsp;needed&nbsp;for<br>
+&nbsp;&nbsp;&nbsp;&nbsp;loading&nbsp;models&nbsp;that&nbsp;were&nbsp;saved&nbsp;under&nbsp;a&nbsp;different&nbsp;directory<br>
+&nbsp;&nbsp;&nbsp;&nbsp;structure&nbsp;(e.g.,&nbsp;on&nbsp;another&nbsp;machine).<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.<br>
+&nbsp;<br>
+Raises:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;FileNotFoundError&nbsp;(if&nbsp;no&nbsp;lowest-validation-loss&nbsp;checkpoint&nbsp;exists).</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-save_visualizations"><strong>save_visualizations</strong></a>(self, format<font color="#909090">='eps'</font>, dpi<font color="#909090">=600</font>)</dt><dd><tt>Saves&nbsp;individual&nbsp;figures&nbsp;to&nbsp;this&nbsp;run's&nbsp;figure&nbsp;directory.&nbsp;This&nbsp;is<br>
+independent&nbsp;of&nbsp;Tensorboard&nbsp;Images.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;format:&nbsp;(optional)&nbsp;string&nbsp;indicating&nbsp;the&nbsp;saved&nbsp;figure&nbsp;type&nbsp;(i.e.,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;file&nbsp;extension).&nbsp;See&nbsp;matplotlib.pyplot.figure.savefig().&nbsp;Default:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;'eps'.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;dpi:&nbsp;(optional)&nbsp;dots&nbsp;per&nbsp;inch&nbsp;for&nbsp;saved&nbsp;figures.&nbsp;Default:&nbsp;600.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-train"><strong>train</strong></a>(self, train_data<font color="#909090">=None</font>, valid_data<font color="#909090">=None</font>)</dt><dd><tt>Trains&nbsp;the&nbsp;model,&nbsp;managing&nbsp;the&nbsp;following&nbsp;core&nbsp;tasks:<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;-randomly&nbsp;batching&nbsp;or&nbsp;generating&nbsp;training&nbsp;data<br>
+&nbsp;&nbsp;&nbsp;&nbsp;-updating&nbsp;model&nbsp;parameters&nbsp;via&nbsp;gradients&nbsp;over&nbsp;each&nbsp;data&nbsp;batch<br>
+&nbsp;&nbsp;&nbsp;&nbsp;-periodically&nbsp;evaluating&nbsp;the&nbsp;validation&nbsp;data<br>
+&nbsp;&nbsp;&nbsp;&nbsp;-periodically&nbsp;updating&nbsp;visualization<br>
+&nbsp;&nbsp;&nbsp;&nbsp;-periodically&nbsp;saving&nbsp;model&nbsp;checkpoints<br>
+&nbsp;<br>
+By&nbsp;convention,&nbsp;this&nbsp;call&nbsp;is&nbsp;the&nbsp;first&nbsp;time&nbsp;this&nbsp;<a href="__builtin__.html#object">object</a>&nbsp;sees&nbsp;any&nbsp;data<br>
+(train&nbsp;and&nbsp;valid,&nbsp;or&nbsp;as&nbsp;generated&nbsp;batch-by-batch&nbsp;by<br>
+_get_data_batches(...)).<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;train_data&nbsp;(optional):&nbsp;dict&nbsp;containing&nbsp;the&nbsp;training&nbsp;data.&nbsp;If&nbsp;not<br>
+&nbsp;&nbsp;&nbsp;&nbsp;provided&nbsp;(i.e.,&nbsp;train_data=None),&nbsp;the&nbsp;subclass&nbsp;implementation&nbsp;of<br>
+&nbsp;&nbsp;&nbsp;&nbsp;_get_data_batches(...)&nbsp;must&nbsp;generate&nbsp;training&nbsp;data&nbsp;on&nbsp;the&nbsp;fly.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Default:&nbsp;None.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;valid_data&nbsp;(optional):&nbsp;dict&nbsp;containing&nbsp;the&nbsp;validation&nbsp;data.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Default:&nbsp;None.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-update_validation"><strong>update_validation</strong></a>(self, train_data, valid_data)</dt><dd><tt>Evaluates&nbsp;the&nbsp;validation&nbsp;data,&nbsp;updates&nbsp;the&nbsp;corresponding<br>
+Tensorboard&nbsp;summaries&nbsp;are&nbsp;updated,&nbsp;and&nbsp;if&nbsp;the&nbsp;validation&nbsp;loss<br>
+indicates&nbsp;a&nbsp;new&nbsp;minimum,&nbsp;a&nbsp;model&nbsp;checkpoint&nbsp;is&nbsp;saved.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;train_data:&nbsp;dict&nbsp;containing&nbsp;the&nbsp;training&nbsp;data.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;valid_data:&nbsp;dict&nbsp;containing&nbsp;the&nbsp;validation&nbsp;data.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-update_variables_optimized"><strong>update_variables_optimized</strong></a>(self, vars_to_train, do_reset_loss_history<font color="#909090">=True</font>, do_reset_learning_rate<font color="#909090">=True</font>, do_reset_gradient_clipping<font color="#909090">=True</font>)</dt><dd><tt>Updates&nbsp;the&nbsp;list&nbsp;of&nbsp;variables&nbsp;optimized&nbsp;during&nbsp;training.&nbsp;Note:&nbsp;this<br>
+does&nbsp;not&nbsp;update&nbsp;tf.<a href="#RecurrentWhisperer-trainable_variables">trainable_variables</a>(),&nbsp;but&nbsp;simply&nbsp;updates&nbsp;the&nbsp;set<br>
+of&nbsp;gradients&nbsp;that&nbsp;are&nbsp;computed&nbsp;and&nbsp;applied.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;vars_to_train&nbsp;(optional):&nbsp;list&nbsp;of&nbsp;TF&nbsp;variables&nbsp;to&nbsp;be&nbsp;optimized.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Each&nbsp;variable&nbsp;must&nbsp;be&nbsp;in&nbsp;tf.<a href="#RecurrentWhisperer-trainable_variables">trainable_variables</a>().<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;do_reset_loss_history&nbsp;(optional):&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;to&nbsp;reset<br>
+&nbsp;&nbsp;&nbsp;&nbsp;records&nbsp;of&nbsp;the&nbsp;lowest&nbsp;training&nbsp;and&nbsp;validation&nbsp;losses&nbsp;(so&nbsp;that<br>
+&nbsp;&nbsp;&nbsp;&nbsp;rescaling&nbsp;terms&nbsp;in&nbsp;the&nbsp;loss&nbsp;function&nbsp;does&nbsp;not&nbsp;upset&nbsp;saving&nbsp;model<br>
+&nbsp;&nbsp;&nbsp;&nbsp;checkpoints.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;do_reset_learning_rate&nbsp;(optional):&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;to<br>
+&nbsp;&nbsp;&nbsp;&nbsp;reset&nbsp;the&nbsp;adaptive&nbsp;learning&nbsp;rate.&nbsp;Default:&nbsp;True.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;do_reset_gradient_clipping&nbsp;(optional):&nbsp;bool&nbsp;indicating&nbsp;whether<br>
+&nbsp;&nbsp;&nbsp;&nbsp;to&nbsp;reset&nbsp;the&nbsp;adaptive&nbsp;gradient&nbsp;clipping.&nbsp;Default:&nbsp;True.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-update_visualizations"><strong>update_visualizations</strong></a>(self, train_data, valid_data<font color="#909090">=None</font>, is_final<font color="#909090">=False</font>, is_lvl<font color="#909090">=False</font>)</dt><dd><tt>Updates&nbsp;visualizations&nbsp;in&nbsp;self.<strong>figs</strong>.&nbsp;Only&nbsp;called&nbsp;if<br>
+&nbsp;&nbsp;&nbsp;&nbsp;do_generate_training_visualizations&nbsp;OR<br>
+&nbsp;&nbsp;&nbsp;&nbsp;do_generate_lvl_visualizations.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;train_data:&nbsp;dict&nbsp;containing&nbsp;the&nbsp;training&nbsp;data.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;valid_data:&nbsp;dict&nbsp;containing&nbsp;the&nbsp;validation&nbsp;data.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;is_final:&nbsp;bool&nbsp;indicating&nbsp;if&nbsp;this&nbsp;call&nbsp;is&nbsp;made&nbsp;when&nbsp;the&nbsp;model&nbsp;is<br>
+&nbsp;&nbsp;&nbsp;&nbsp;in&nbsp;its&nbsp;final&nbsp;state&nbsp;after&nbsp;training&nbsp;has&nbsp;terminated.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;is_lvl:&nbsp;bool&nbsp;indicating&nbsp;if&nbsp;this&nbsp;call&nbsp;is&nbsp;made&nbsp;when&nbsp;the&nbsp;model&nbsp;is&nbsp;in<br>
+&nbsp;&nbsp;&nbsp;&nbsp;its&nbsp;lowest-validation-loss&nbsp;state.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;two&nbsp;flags&nbsp;above&nbsp;can&nbsp;be&nbsp;used&nbsp;to&nbsp;signal&nbsp;generating&nbsp;a&nbsp;more<br>
+&nbsp;&nbsp;&nbsp;&nbsp;comprehensive&nbsp;set&nbsp;of&nbsp;visualizations&nbsp;and&nbsp;/&nbsp;or&nbsp;analyses&nbsp;than&nbsp;those<br>
+&nbsp;&nbsp;&nbsp;&nbsp;that&nbsp;are&nbsp;periodically&nbsp;generated&nbsp;throughout&nbsp;training.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
+
+<hr>
+Static methods defined here:<br>
+<dl><dt><a name="RecurrentWhisperer-default_hash_hyperparameters"><strong>default_hash_hyperparameters</strong></a>(subclass)</dt><dd><tt>Returns&nbsp;the&nbsp;dict&nbsp;of&nbsp;ALL&nbsp;(<a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;+&nbsp;subclass)<br>
+hyperparameters&nbsp;that&nbsp;are&nbsp;included&nbsp;in&nbsp;the&nbsp;run&nbsp;hash.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;subclass:&nbsp;the&nbsp;__class__&nbsp;of&nbsp;the&nbsp;<a href="__builtin__.html#object">object</a>&nbsp;that&nbsp;inherits&nbsp;from<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<a href="#RecurrentWhisperer">RecurrentWhisperer</a>.&nbsp;This&nbsp;provides&nbsp;static&nbsp;access&nbsp;to&nbsp;that&nbsp;subclass'<br>
+&nbsp;&nbsp;&nbsp;&nbsp;default&nbsp;hyperparameters.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;of&nbsp;hyperparameters.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-default_hyperparameters"><strong>default_hyperparameters</strong></a>(subclass)</dt><dd><tt>Returns&nbsp;the&nbsp;dict&nbsp;of&nbsp;ALL&nbsp;(<a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;+&nbsp;subclass)<br>
+hyperparameters&nbsp;(both&nbsp;hash&nbsp;and&nbsp;non-hash).&nbsp;This&nbsp;is&nbsp;needed&nbsp;for<br>
+command-line&nbsp;argument&nbsp;parsing.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;subclass:&nbsp;the&nbsp;__class__&nbsp;of&nbsp;the&nbsp;<a href="__builtin__.html#object">object</a>&nbsp;that&nbsp;inherits&nbsp;from<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<a href="#RecurrentWhisperer">RecurrentWhisperer</a>.&nbsp;This&nbsp;provides&nbsp;static&nbsp;access&nbsp;to&nbsp;that&nbsp;subclass'<br>
+&nbsp;&nbsp;&nbsp;&nbsp;default&nbsp;hyperparameters.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;of&nbsp;hyperparameters.<br>
+&nbsp;<br>
+To&nbsp;Do:&nbsp;Convert&nbsp;this&nbsp;and&nbsp;related&nbsp;functions&nbsp;to&nbsp;@classmethod.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-default_non_hash_hyperparameters"><strong>default_non_hash_hyperparameters</strong></a>(subclass)</dt><dd><tt>Returns&nbsp;the&nbsp;dict&nbsp;of&nbsp;ALL&nbsp;(<a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;+&nbsp;subclass)<br>
+hyperparameters&nbsp;that&nbsp;are&nbsp;NOT&nbsp;included&nbsp;in&nbsp;the&nbsp;run&nbsp;hash.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;subclass:&nbsp;the&nbsp;__class__&nbsp;of&nbsp;the&nbsp;<a href="__builtin__.html#object">object</a>&nbsp;that&nbsp;inherits&nbsp;from<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<a href="#RecurrentWhisperer">RecurrentWhisperer</a>.&nbsp;This&nbsp;provides&nbsp;static&nbsp;access&nbsp;to&nbsp;that&nbsp;subclass'<br>
+&nbsp;&nbsp;&nbsp;&nbsp;default&nbsp;hyperparameters.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;of&nbsp;hyperparameters.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-execute_command_line_call"><strong>execute_command_line_call</strong></a>(run_script, hp_dict<font color="#909090">={}</font>)</dt><dd><tt>Executes&nbsp;a&nbsp;command&nbsp;line&nbsp;call&nbsp;to&nbsp;a&nbsp;user-specified&nbsp;bash&nbsp;script&nbsp;with<br>
+<a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;hyperparameters&nbsp;passed&nbsp;in&nbsp;as&nbsp;command-line&nbsp;arguments.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;run_script:&nbsp;string&nbsp;specifying&nbsp;the&nbsp;bash&nbsp;script&nbsp;call,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;e.g.,&nbsp;'location/of/your/run_script.sh'<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;hp_dict:&nbsp;(optional)&nbsp;dict&nbsp;containing&nbsp;any&nbsp;hps&nbsp;to&nbsp;override&nbsp;defaults.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Default:&nbsp;{}<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-exists_lvl_train_predictions"><strong>exists_lvl_train_predictions</strong></a>(run_dir)</dt></dl>
+
+<dl><dt><a name="RecurrentWhisperer-exists_lvl_train_summary"><strong>exists_lvl_train_summary</strong></a>(run_dir)</dt></dl>
+
+<dl><dt><a name="RecurrentWhisperer-exists_lvl_valid_predictions"><strong>exists_lvl_valid_predictions</strong></a>(run_dir)</dt></dl>
+
+<dl><dt><a name="RecurrentWhisperer-exists_lvl_valid_summary"><strong>exists_lvl_valid_summary</strong></a>(run_dir)</dt></dl>
+
+<dl><dt><a name="RecurrentWhisperer-get_command_line_call"><strong>get_command_line_call</strong></a>(run_script, hp_dict<font color="#909090">={}</font>, do_format_for_bash<font color="#909090">=False</font>)</dt><dd><tt>Generates&nbsp;a&nbsp;command&nbsp;line&nbsp;call&nbsp;to&nbsp;a&nbsp;user-specified&nbsp;bash&nbsp;script&nbsp;with<br>
+<a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;hyperparameters&nbsp;passed&nbsp;in&nbsp;as&nbsp;command-line&nbsp;arguments.<br>
+Can&nbsp;be&nbsp;formatted&nbsp;for&nbsp;execution&nbsp;within&nbsp;Python&nbsp;&nbsp;or&nbsp;from&nbsp;a&nbsp;terminal&nbsp;/<br>
+bash&nbsp;script.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;run_script:&nbsp;string&nbsp;specifying&nbsp;the&nbsp;bash&nbsp;script&nbsp;call,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;e.g.,&nbsp;'location/of/your/run_script.sh'<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;hp_dict:&nbsp;(optional)&nbsp;dict&nbsp;containing&nbsp;any&nbsp;hps&nbsp;to&nbsp;override&nbsp;defaults.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Default:&nbsp;{}<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;do_format_for_bash:&nbsp;(optional)&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;to&nbsp;return<br>
+&nbsp;&nbsp;&nbsp;&nbsp;the&nbsp;command-line&nbsp;call&nbsp;as&nbsp;a&nbsp;string&nbsp;(for&nbsp;writing&nbsp;into&nbsp;a&nbsp;higher-level<br>
+&nbsp;&nbsp;&nbsp;&nbsp;bash&nbsp;script;&nbsp;for&nbsp;copying&nbsp;into&nbsp;a&nbsp;terminal).&nbsp;Default:&nbsp;False&nbsp;(see<br>
+&nbsp;&nbsp;&nbsp;&nbsp;below).<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Default:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;cmd_list:&nbsp;a&nbsp;list&nbsp;that&nbsp;is&nbsp;interpretable&nbsp;by&nbsp;subprocess.call:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;subprocess.call(cmd_list)<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;do_format_for_bash&nbsp;==&nbsp;True:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;cmd_str:&nbsp;a&nbsp;string&nbsp;(suitable&nbsp;for&nbsp;placing&nbsp;in&nbsp;a&nbsp;bash&nbsp;script&nbsp;or<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;copying&nbsp;into&nbsp;a&nbsp;terminal&nbsp;.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-get_hash_dir"><strong>get_hash_dir</strong></a>(log_dir, run_hash)</dt><dd><tt>Returns&nbsp;a&nbsp;path&nbsp;to&nbsp;the&nbsp;run_hash&nbsp;in&nbsp;the&nbsp;log_dir.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;log_dir:&nbsp;string&nbsp;containing&nbsp;the&nbsp;path&nbsp;to&nbsp;the&nbsp;directory&nbsp;where&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;model&nbsp;run&nbsp;was&nbsp;saved.&nbsp;See&nbsp;definition&nbsp;in&nbsp;<a href="#RecurrentWhisperer-__init__">__init__</a>()<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;run_hash:&nbsp;string&nbsp;containing&nbsp;the&nbsp;hyperparameters&nbsp;hash&nbsp;used&nbsp;to<br>
+&nbsp;&nbsp;&nbsp;&nbsp;establish&nbsp;the&nbsp;run&nbsp;directory.&nbsp;Returned&nbsp;by<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Hyperparameters.run_hash.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Path&nbsp;to&nbsp;the&nbsp;hash&nbsp;directory.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-get_paths"><strong>get_paths</strong></a>(run_dir)</dt><dd><tt>Generates&nbsp;all&nbsp;paths&nbsp;relevant&nbsp;for&nbsp;saving&nbsp;and&nbsp;loading&nbsp;model&nbsp;data.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;run_dir:&nbsp;string&nbsp;containing&nbsp;the&nbsp;path&nbsp;to&nbsp;the&nbsp;directory&nbsp;where&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;model&nbsp;run&nbsp;was&nbsp;saved.&nbsp;See&nbsp;definition&nbsp;in&nbsp;<a href="#RecurrentWhisperer-__init__">__init__</a>()<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;containing&nbsp;all&nbsp;paths&nbsp;relevant&nbsp;for&nbsp;saving&nbsp;and&nbsp;loading&nbsp;model<br>
+&nbsp;&nbsp;&nbsp;&nbsp;data.&nbsp;Keys&nbsp;are&nbsp;strings,&nbsp;with&nbsp;suffixes&nbsp;'_dir'&nbsp;and&nbsp;'_path'&nbsp;referring<br>
+&nbsp;&nbsp;&nbsp;&nbsp;to&nbsp;directories&nbsp;and&nbsp;filenames,&nbsp;respectively.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-get_run_dir"><strong>get_run_dir</strong></a>(log_dir, run_hash, n_folds<font color="#909090">=None</font>, fold_idx<font color="#909090">=None</font>)</dt><dd><tt>Returns&nbsp;a&nbsp;path&nbsp;to&nbsp;the&nbsp;directory&nbsp;containing&nbsp;all&nbsp;files&nbsp;related&nbsp;to&nbsp;a<br>
+given&nbsp;run.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;log_dir:&nbsp;string&nbsp;containing&nbsp;the&nbsp;path&nbsp;to&nbsp;the&nbsp;directory&nbsp;where&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;model&nbsp;run&nbsp;was&nbsp;saved.&nbsp;See&nbsp;definition&nbsp;in&nbsp;<a href="#RecurrentWhisperer-__init__">__init__</a>()<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;run_hash:&nbsp;string&nbsp;containing&nbsp;the&nbsp;hyperparameters&nbsp;hash&nbsp;used&nbsp;to<br>
+&nbsp;&nbsp;&nbsp;&nbsp;establish&nbsp;the&nbsp;run&nbsp;directory.&nbsp;Returned&nbsp;by<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Hyperparameters.run_hash.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;n_folds:&nbsp;(optional)&nbsp;Non-negative&nbsp;integer&nbsp;specifying&nbsp;the&nbsp;number&nbsp;of<br>
+&nbsp;&nbsp;&nbsp;&nbsp;cross-validation&nbsp;folds&nbsp;in&nbsp;the&nbsp;run.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;fold_idx:&nbsp;(optional)&nbsp;Index&nbsp;specifying&nbsp;the&nbsp;cross-validation&nbsp;fold&nbsp;for<br>
+&nbsp;&nbsp;&nbsp;&nbsp;this&nbsp;run.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Path&nbsp;to&nbsp;the&nbsp;run&nbsp;directory.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-get_run_info"><strong>get_run_info</strong></a>(run_dir)</dt><dd><tt>Advanced&nbsp;functionality&nbsp;for&nbsp;models&nbsp;invoking&nbsp;K-fold&nbsp;cross-validation.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;run_dir:&nbsp;string&nbsp;containing&nbsp;the&nbsp;path&nbsp;to&nbsp;the&nbsp;directory&nbsp;where&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;model&nbsp;run&nbsp;was&nbsp;saved.&nbsp;See&nbsp;definition&nbsp;in&nbsp;<a href="#RecurrentWhisperer-__init__">__init__</a>()<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;with&nbsp;each&nbsp;key&nbsp;being&nbsp;a&nbsp;dataset&nbsp;name&nbsp;and&nbsp;each&nbsp;value&nbsp;is&nbsp;the&nbsp;corresponding&nbsp;set&nbsp;of&nbsp;cross-validation&nbsp;runs&nbsp;performed&nbsp;on&nbsp;that&nbsp;dataset.&nbsp;Jointly,&nbsp;these&nbsp;key,&nbsp;val&nbsp;pairs&nbsp;can&nbsp;reconstruct&nbsp;all&nbsp;of&nbsp;the&nbsp;"leaves"&nbsp;of&nbsp;the&nbsp;cross&nbsp;validation&nbsp;runs&nbsp;by&nbsp;using&nbsp;<a href="#RecurrentWhisperer-get_run_dir">get_run_dir</a>(...).</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-is_done"><strong>is_done</strong></a>(run_dir)</dt><dd><tt>Determines&nbsp;whether&nbsp;a&nbsp;run&nbsp;exists&nbsp;in&nbsp;the&nbsp;filesystem&nbsp;and&nbsp;has&nbsp;run&nbsp;to<br>
+completion.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;run_dir:&nbsp;string&nbsp;containing&nbsp;the&nbsp;path&nbsp;to&nbsp;the&nbsp;directory&nbsp;where&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;model&nbsp;run&nbsp;was&nbsp;saved.&nbsp;See&nbsp;definition&nbsp;in&nbsp;<a href="#RecurrentWhisperer-__init__">__init__</a>().<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;the&nbsp;run&nbsp;is&nbsp;"done".</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-is_run_dir"><strong>is_run_dir</strong></a>(run_dir)</dt><dd><tt>Determines&nbsp;whether&nbsp;a&nbsp;run&nbsp;exists&nbsp;in&nbsp;the&nbsp;filesystem.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;run_dir:&nbsp;string&nbsp;containing&nbsp;the&nbsp;path&nbsp;to&nbsp;the&nbsp;directory&nbsp;where&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;model&nbsp;run&nbsp;was&nbsp;saved.&nbsp;See&nbsp;definition&nbsp;in&nbsp;<a href="#RecurrentWhisperer-__init__">__init__</a>().<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;a&nbsp;run&nbsp;exists.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-load_hyperparameters"><strong>load_hyperparameters</strong></a>(run_dir)</dt><dd><tt>Load&nbsp;previously&nbsp;saved&nbsp;Hyperparameters.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;run_dir:&nbsp;string&nbsp;containing&nbsp;the&nbsp;path&nbsp;to&nbsp;the&nbsp;directory&nbsp;where&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;model&nbsp;run&nbsp;was&nbsp;saved.&nbsp;See&nbsp;definition&nbsp;in&nbsp;<a href="#RecurrentWhisperer-__init__">__init__</a>()<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;containing&nbsp;the&nbsp;loaded&nbsp;hyperparameters.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-load_lvl_train_predictions"><strong>load_lvl_train_predictions</strong></a>(run_dir)</dt><dd><tt>Loads&nbsp;all&nbsp;model&nbsp;predictions&nbsp;made&nbsp;over&nbsp;the&nbsp;training&nbsp;data&nbsp;by&nbsp;the&nbsp;lvl<br>
+model.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;run_dir:&nbsp;string&nbsp;containing&nbsp;the&nbsp;path&nbsp;to&nbsp;the&nbsp;directory&nbsp;where&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;model&nbsp;run&nbsp;was&nbsp;saved.&nbsp;See&nbsp;definition&nbsp;in&nbsp;<a href="#RecurrentWhisperer-__init__">__init__</a>()<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;containing&nbsp;saved&nbsp;predictions.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-load_lvl_train_summary"><strong>load_lvl_train_summary</strong></a>(run_dir)</dt><dd><tt>Loads&nbsp;summary&nbsp;of&nbsp;the&nbsp;model&nbsp;predictions&nbsp;made&nbsp;over&nbsp;the&nbsp;training&nbsp;data<br>
+by&nbsp;the&nbsp;lvl&nbsp;model.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;run_dir:&nbsp;string&nbsp;containing&nbsp;the&nbsp;path&nbsp;to&nbsp;the&nbsp;directory&nbsp;where&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;model&nbsp;run&nbsp;was&nbsp;saved.&nbsp;See&nbsp;definition&nbsp;in&nbsp;<a href="#RecurrentWhisperer-__init__">__init__</a>()<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;containing&nbsp;saved&nbsp;summaries.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-load_lvl_valid_predictions"><strong>load_lvl_valid_predictions</strong></a>(run_dir)</dt><dd><tt>Loads&nbsp;all&nbsp;model&nbsp;predictions&nbsp;from&nbsp;train_predictions.pkl.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;run_dir:&nbsp;string&nbsp;containing&nbsp;the&nbsp;path&nbsp;to&nbsp;the&nbsp;directory&nbsp;where&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;model&nbsp;run&nbsp;was&nbsp;saved.&nbsp;See&nbsp;definition&nbsp;in&nbsp;<a href="#RecurrentWhisperer-__init__">__init__</a>()<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;train_predictions:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;containing&nbsp;saved&nbsp;predictions&nbsp;on&nbsp;the&nbsp;training&nbsp;data&nbsp;by&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;lvl&nbsp;model.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-load_lvl_valid_summary"><strong>load_lvl_valid_summary</strong></a>(run_dir)</dt><dd><tt>Loads&nbsp;summary&nbsp;of&nbsp;the&nbsp;model&nbsp;predictions&nbsp;made&nbsp;over&nbsp;the&nbsp;validation<br>
+&nbsp;data&nbsp;by&nbsp;the&nbsp;lvl&nbsp;model.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;run_dir:&nbsp;string&nbsp;containing&nbsp;the&nbsp;path&nbsp;to&nbsp;the&nbsp;directory&nbsp;where&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;model&nbsp;run&nbsp;was&nbsp;saved.&nbsp;See&nbsp;definition&nbsp;in&nbsp;<a href="#RecurrentWhisperer-__init__">__init__</a>()<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;containing&nbsp;saved&nbsp;summaries.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-refresh_figs"><strong>refresh_figs</strong></a>()</dt><dd><tt>Refreshes&nbsp;all&nbsp;matplotlib&nbsp;figures.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-setup_hps"><strong>setup_hps</strong></a>(hps_dict, subclass)</dt></dl>
+
+<hr>
+Data descriptors defined here:<br>
+<dl><dt><strong>__dict__</strong></dt>
+<dd><tt>dictionary&nbsp;for&nbsp;instance&nbsp;variables&nbsp;(if&nbsp;defined)</tt></dd>
+</dl>
+<dl><dt><strong>__weakref__</strong></dt>
+<dd><tt>list&nbsp;of&nbsp;weak&nbsp;references&nbsp;to&nbsp;the&nbsp;object&nbsp;(if&nbsp;defined)</tt></dd>
+</dl>
+<dl><dt><strong>n_params</strong></dt>
+<dd><tt>Counts&nbsp;the&nbsp;number&nbsp;of&nbsp;trainable&nbsp;parameters&nbsp;in&nbsp;a&nbsp;Tensorflow&nbsp;model<br>
+(or&nbsp;scope&nbsp;within&nbsp;a&nbsp;model).<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;integer&nbsp;specifying&nbsp;the&nbsp;number&nbsp;of&nbsp;trainable&nbsp;parameters.</tt></dd>
+</dl>
+<dl><dt><strong>trainable_variables</strong></dt>
+<dd><tt>Returns&nbsp;a&nbsp;list&nbsp;of&nbsp;TF&nbsp;Variables&nbsp;that&nbsp;are&nbsp;updated&nbsp;during&nbsp;each&nbsp;call&nbsp;to<br>
+_train_batch(...).<br>
+&nbsp;<br>
+Args:&nbsp;None<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;A&nbsp;list&nbsp;of&nbsp;TF&nbsp;Variables.</tt></dd>
+</dl>
+</td></tr></table></td></tr></table><p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#55aa55">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Data</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#55aa55"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><strong>absolute_import</strong> = _Feature((2, 5, 0, 'alpha', 1), (3, 0, 0, 'alpha', 0), 16384)<br>
+<strong>division</strong> = _Feature((2, 2, 0, 'alpha', 2), (3, 0, 0, 'alpha', 0), 8192)<br>
+<strong>print_function</strong> = _Feature((2, 6, 0, 'alpha', 2), (3, 0, 0, 'alpha', 0), 65536)</td></tr></table>
+</body></html>
