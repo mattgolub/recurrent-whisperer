@@ -2664,6 +2664,45 @@ class RecurrentWhisperer(object):
         return RecurrentWhisperer._load_lvl_helper(
             run_dir, 'valid', 'summary')
 
+    @classmethod
+    def load_lvl_model(cls, run_dir, new_base_path=None):
+        ''' Load an LVL model given only the run directory, properly handling
+        subclassing.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            The desired model with restored LVL parameters.
+        '''
+
+        hps_dict = cls.load_hyperparameters(run_dir)
+
+        if new_base_path is not None:
+            # Handle loading a model that was saved on another system.
+            # This functionality is still under development.
+            raise NotImplementedError()
+
+            local_log_dir = cls.update_dir_to_local_system(
+                hps_dict['log_dir'], new_base_path)
+            hps_dict['log_dir'] = local_log_dir
+
+        hps_dict['do_custom_restore'] = True
+        hps_dict['do_log_output'] = False
+        model = cls(**hps_dict)
+
+        lvl_ckpt = tf.train.get_checkpoint_state(model.lvl_dir)
+        lvl_ckpt_path = lvl_ckpt.model_checkpoint_path
+
+        if new_base_path is not None:
+            lvl_ckpt_path = model.update_dir_to_local_system(
+                lvl_ckpt_path, new_base_path)
+
+        model.restore_from_lvl_checkpoint(model_checkpoint_path=lvl_ckpt_path)
+
+        return model
+
     @staticmethod
     def load_hyperparameters(run_dir):
         '''Load previously saved Hyperparameters.
