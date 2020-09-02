@@ -2478,7 +2478,7 @@ class RecurrentWhisperer(object):
 
                 print('\tSaving lvl predictions (%s).' % train_or_valid_str)
                 filename_no_extension = train_or_valid_str + '_predictions'
-                self._save_helper(predictions, filename_no_extension)
+                self._save_lvl_helper(predictions, filename_no_extension)
 
     def _maybe_save_lvl_summaries(self,
         summary, train_or_valid_str):
@@ -2487,7 +2487,7 @@ class RecurrentWhisperer(object):
             print('\t\tSaving lvl summary (%s).' % train_or_valid_str)
             # E.g., train_predictions or valid_summary
             filename_no_extension = train_or_valid_str + '_summary'
-            self._save_helper(summary, filename_no_extension)
+            self._save_lvl_helper(summary, filename_no_extension)
 
     def refresh_lvl_files(self, data, train_or_valid_str):
         '''Saves model predictions over the training or validation data.
@@ -2528,7 +2528,7 @@ class RecurrentWhisperer(object):
         file.write('')
         file.close()
 
-    def _save_helper(self, data_to_save, filename_no_extension):
+    def _save_lvl_helper(self, data_to_save, filename_no_extension):
         '''Pickle and save data as .pkl file. Optionally also save the data as
         a .mat file.
 
