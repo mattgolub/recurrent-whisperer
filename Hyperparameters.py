@@ -691,7 +691,11 @@ class Hyperparameters(object):
                 val = None
 
             # If value is not default, add it to the dict for hashing.
-            if val != flat_defaults[key]:
+            # Here string conversions are compared, rather than the values.
+            # This extra tolerance provides important invariance to hashes
+            # regardless of whether or not parse_command_line() was used
+            # (which parses values provided as strings)
+            if str(val) != str(flat_defaults[key]):
                 flat_hps_to_hash[key] = val
 
         hps_to_hash = Hyperparameters.unflatten(flat_hps_to_hash)
