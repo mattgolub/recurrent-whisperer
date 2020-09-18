@@ -256,8 +256,7 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        subclass = self.__class__
-        hps = self.setup_hps(kwargs, subclass)
+        hps = self.setup_hps(kwargs)
 
         self.hps = hps
         self.dtype = getattr(tf, hps.dtype)
@@ -515,12 +514,12 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    @staticmethod
-    def setup_hps(hps_dict, subclass):
+    @classmethod
+    def setup_hps(cls, hps_dict):
 
         return Hyperparameters(hps_dict,
-            subclass.default_hash_hyperparameters(subclass),
-            subclass.default_non_hash_hyperparameters(subclass))
+            cls.default_hash_hyperparameters(cls),
+            cls.default_non_hash_hyperparameters(cls))
 
     @staticmethod
     def get_hash_dir(log_dir, run_hash):
@@ -777,6 +776,7 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
+
         cmd_list = RecurrentWhisperer.get_command_line_call(
             run_script, hp_dict)
         print(cmd_list)
