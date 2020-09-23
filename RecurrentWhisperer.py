@@ -1507,11 +1507,6 @@ class RecurrentWhisperer(object):
             batch_sizes[batch_idx] = self._get_batch_size(batch_data)
 
         epoch_loss = self._compute_epoch_average(batch_losses, batch_sizes)
-
-        if self.prev_loss is None:
-            loss_improvement = np.nan
-        else:
-            loss_improvement = self.prev_loss - epoch_loss
         self.prev_loss = epoch_loss
 
         # Update lowest training loss (if applicable)
@@ -1525,13 +1520,30 @@ class RecurrentWhisperer(object):
         self.adaptive_grad_norm_clip.update(epoch_grad_norm)
 
         self._increment_epoch()
+        self._print_epoch_update(epoch_loss)
 
-        print('Run %s, Epoch %d:' % (self.run_hash, self._epoch))
+        return epoch_loss
+
+    def _print_epoch_update(self, epoch_loss):
+        ''' Prints an update describing the optimization's progress, to be called at the end of each epoch.
+
+        Args:
+            epoch loss:
+
+        Returns:
+            None.
+        '''
+
+        if self.prev_loss is None:
+            loss_improvement = np.nan
+        else:
+            loss_improvement = self.prev_loss - epoch_loss
+
+        print('Epoch %d:' % self._epoch)
         print('\tTraining loss: %.2e;' % epoch_loss)
         print('\tImprovement in training loss: %.2e;' % loss_improvement)
         print('\tLearning rate: %.2e;' %  self.adaptive_learning_rate())
-
-        return epoch_loss
+        print('\tLogging to: %s' % self.run_dir)
 
     def _train_batch(self, batch_data):
         '''Runs one training step. This function must evaluate the Tensorboard
