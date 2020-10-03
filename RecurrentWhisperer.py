@@ -917,7 +917,7 @@ class RecurrentWhisperer(object):
                 self.epoch, 1, name='increment_epoch')
 
             self.train_time = tf.Variable(
-                0, name='train_time', trainable=False, dtype=tf.float32)
+                0, name='train_time', trainable=False, dtype=self.dtype)
             self.train_time_placeholder = tf.placeholder(
                 self.dtype, name='train_time')
             self.train_time_update = tf.assign(
