@@ -1507,7 +1507,6 @@ class RecurrentWhisperer(object):
             batch_sizes[batch_idx] = self._get_batch_size(batch_data)
 
         epoch_loss = self._compute_epoch_average(batch_losses, batch_sizes)
-        self.prev_loss = epoch_loss
 
         # Update lowest training loss (if applicable)
         if epoch_loss < self._ltl:
@@ -1521,6 +1520,10 @@ class RecurrentWhisperer(object):
 
         self._increment_epoch()
         self._print_epoch_update(epoch_loss)
+
+        # This should remain the final line before the return
+        # (otherwise printing can provide misinformation, or worse)
+        self.prev_loss = epoch_loss
 
         return epoch_loss
 
