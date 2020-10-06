@@ -36,11 +36,19 @@ class Timer(object):
 		-->     Task 3: 6.00s (37.5%)
 	'''
 
-	def __init__(self, n_tasks=1, n_indent=0, name='Total'):
+	def __init__(self,
+		n_splits=10,
+		do_print_single_line=False,
+		n_indent=0,
+		name='Total'):
 		'''Builds a timer object.
 
 		Args:
-			n_tasks: int specifying the total number of tasks to be timed.
+			n_splits (optional): int specifying the total number of splits to
+			be timed. If provided, memory can be preallocated, which may
+			prevent unpredictable allocation artifacts during profiling.
+			Over-allocating (i.e., requesting more splits than ultimately are
+			invoked) will not impact profiling (though may have memory implications in extreme applications). Default: 10.
 
 			n_indent (optional): int specifying the number of indentation
 				to prefix into print statements. Useful when utilizing multiple
@@ -53,13 +61,13 @@ class Timer(object):
 			None.
 		'''
 
-		if n_tasks < 0:
-			raise ValueError('n_tasks must be >= 0, but was %d' % n_tasks)
+		if n_splits < 0:
+			raise ValueError('n_splits must be >= 0, but was %d' % n_splits)
 
 		if n_indent < 0:
 			raise ValueError('n_indent must be >= 0, but was %d' % n_indent)
 
-		self.n = n_tasks
+		self.n = n_splits
 
 		'''Pre-allocate to avoid having to call append after starting the timer
 		(which might incur non-uniform overhead, biasing timing splits).
@@ -67,11 +75,12 @@ class Timer(object):
 
 		Note that self.times has n+1 elements (to include a start value) while self.task_names has n elements
 		'''
-		self.times = [np.nan for idx in range(n_tasks + 1)]
-		self.task_names = [None for idx in range(n_tasks)]
+		self.times = [np.nan for idx in range(n_splits + 1)]
+		self.task_names = [None for idx in range(n_splits)]
 
 		self.print_prefix = '\t' * n_indent
 		self.name = name
+		self.do_print_single_line = do_print_single_line
 
 		self.idx = -1
 
@@ -122,7 +131,7 @@ class Timer(object):
 		else:
 			self._print('Timer cannot take a split until it has been started.')
 
-	def disp(self, print_on_single_line=False):
+	def disp(self):
 		'''Prints the profile of the tasks that have been timed thus far.
 
 		Args:
@@ -132,16 +141,18 @@ class Timer(object):
 			None.
 		'''
 
+		do_single_line = self.do_print_single_line
+
 		if not self.is_running():
 			self._print('Timer has not been started.')
 		elif self.idx == 0:
-			self._print('Timer has not yet taken any splits to time.')
+			self._print('Timer has not yet taken any splits to profile.')
 		else:
 			total_time = self.times[self.idx] - self.times[0]
 			split_times = np.diff(self.times)
 
 			print_data = (self.print_prefix, self.name, total_time)
-			if print_on_single_line:
+			if do_single_line:
 				print('%s%s time: %.2fs: ' % print_data, end='')
 			else:
 				print('%s%s time: %.2fs' % print_data)
@@ -153,7 +164,7 @@ class Timer(object):
 				else:
 					task_name = self.task_names[idx]
 
-				if print_on_single_line:
+				if do_single_line:
 					print(' %s: %.2fs (%.1f%%); ' %
 						(task_name,
 						split_times[idx],
@@ -166,7 +177,7 @@ class Timer(object):
 					   	split_times[idx],
 					   	100*split_times[idx]/total_time))
 
-			if print_on_single_line:
+			if do_single_line:
 				print('')
 
 	def _print(self, str):
