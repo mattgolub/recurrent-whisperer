@@ -435,7 +435,7 @@ class RecurrentWhisperer(object):
             'do_save_ckpt': True,
             'do_save_lvl_ckpt': True,
 
-            'do_print_visualizations_profiling': True,
+            'do_print_visualizations_profiling': False,
             'do_generate_training_visualizations': True,
             'do_save_training_visualizations': True,
 
@@ -1018,7 +1018,8 @@ class RecurrentWhisperer(object):
             None.
 
         Returns:
-            figs: dict with string figure names as keys and matplotlib.pyplot.figure objects as values. Typical usage will
+            figs: dict with string figure names as keys and
+            matplotlib.pyplot.figure objects as values. Typical usage will
             populate this dict upon the first call to update_visualizations().
         '''
         self.figs = dict()
@@ -1301,6 +1302,8 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
+        tmr = Timer(3, name='Tensorboard Images', n_indent=2)
+        tmr.start()
 
         figs = self.figs
 
@@ -1323,7 +1326,7 @@ class RecurrentWhisperer(object):
                 images = self.tensorboard['images']
                 break
 
-        self._visualizations_timer.split('Tensorboard: Images setup')
+        tmr.split('Images setup')
 
         # Convert figures into RGB arrays in a feed_dict for Tensorflow
         images_feed_dict = {}
@@ -1331,7 +1334,7 @@ class RecurrentWhisperer(object):
             key = images['placeholders'][fig_name]
             images_feed_dict[key] = self._fig2array(figs[fig_name])
 
-        self._visualizations_timer.split('Tensorboard: Building RGB arrays')
+        tmr.split('Building RGB arrays')
 
         ev_merged_image_summaries = self.session.run(
             images['merged_summaries'], feed_dict=images_feed_dict)
@@ -1339,7 +1342,10 @@ class RecurrentWhisperer(object):
         self.tensorboard['writer'].add_summary(
             ev_merged_image_summaries, self._step)
 
-        self._visualizations_timer.split('Tensorboard: run and add_summary')
+        tmr.split('run and add_summary')
+
+        if self.hps.do_print_visualizations_profiling:
+            tmr.disp()
 
     @staticmethod
     def _tensorboard_image_name(fig_name):
@@ -1955,7 +1961,6 @@ class RecurrentWhisperer(object):
 
         if self.hps.do_generate_final_visualizations:
 
-            self._reset_visualizations_profiler()
             self.update_visualizations(train_data, valid_data, is_final=True)
 
             if self.hps.do_save_tensorboard_images:
@@ -1964,14 +1969,12 @@ class RecurrentWhisperer(object):
             if self.hps.do_save_final_visualizations:
                 self.save_visualizations()
 
-            self._close_visualizations_timer()
-
         if self.hps.do_generate_lvl_visualizations:
             if self.hps.do_save_lvl_ckpt:
                 # Generate LVL visualizations
                 print('\tGenerating visualizations from restored LVL model...')
                 self.restore_from_lvl_checkpoint()
-                self._reset_visualizations_profiler()
+
                 self.update_visualizations(train_data, valid_data, is_lvl=True)
 
                 if self.hps.do_save_tensorboard_images:
@@ -1979,8 +1982,6 @@ class RecurrentWhisperer(object):
 
                 if self.hps.do_save_lvl_visualizations:
                     self.save_visualizations()
-
-                self._close_visualizations_timer()
 
             else:
                 raise Warning('Attempted to generate LVL visualizations, '
@@ -2017,13 +2018,10 @@ class RecurrentWhisperer(object):
         if hps.do_generate_training_visualizations and \
             np.mod(self._epoch, hps.n_epochs_per_visualization_update) == 0:
 
-            self._reset_visualizations_profiler()
             self.update_visualizations(train_data, valid_data, is_final=False)
 
             if hps.do_save_tensorboard_images:
                 self._update_tensorboard_images()
-
-            self._close_visualizations_timer()
 
     def update_visualizations(self, train_data, valid_data=None,
         is_final=False,
@@ -2067,6 +2065,9 @@ class RecurrentWhisperer(object):
         '''
 
         fig_dir = self.fig_dir
+        tmr = Timer(self.n_figs, name='Saving Figs', n_indent=2)
+        tmr.start()
+
         for fig_name, fig in self.figs.iteritems():
 
             figs_dir_i, file_name_no_ext = os.path.split(
@@ -2081,7 +2082,10 @@ class RecurrentWhisperer(object):
 
             fig.savefig(file_path, bbox_inches='tight', format=format, dpi=dpi)
 
-            self._visualizations_timer.split('Saving %s' % fig_name)
+            tmr.split('Saving: %s' % fig_name)
+
+        if self.hps.do_print_visualizations_profiling:
+            tmr.disp()
 
     def _get_fig(self, fig_name,
         width=6.4,
@@ -2105,8 +2109,6 @@ class RecurrentWhisperer(object):
             The requested matplotlib.pyplot figure.
         '''
 
-        self._visualizations_timer.split('Plotting %s' % fig_name)
-
         if fig_name not in self.figs:
             self.figs[fig_name] = plt.figure(
                 figsize=(width, height),
@@ -2116,34 +2118,6 @@ class RecurrentWhisperer(object):
         fig.clf()
 
         return fig
-
-    def _reset_visualizations_profiler(self):
-        ''' Setup profiling of figure generation, Tensorboarding, and saving.
-        This takes splits after generating each figure (via _get_fig()),
-        then again through transfer to Tensorboard, then again after
-        each save.'''
-
-        if hasattr(self, '_visualizations_timer'):
-            n_splits = self._visualizations_timer.n
-        else:
-            # On the first call to this function, n_figs is likely 0, since
-            # no figures have been plotted yet. In that case, arbitrarily
-            # set n_splits to be 100, mostly to prevent Timer from printing
-            # pesky "append" warnings.
-            n_splits = max(100, 3 + 2*self.n_figs)
-
-        self._visualizations_timer = Timer(
-            name='Visualizations',
-            n_splits=n_splits,
-            do_print_single_line=False,
-            n_indent=1)
-
-        self._visualizations_timer.start()
-
-    def _close_visualizations_timer(self):
-
-        if self.hps.do_print_visualizations_profiling:
-            self._visualizations_timer.disp()
 
     @staticmethod
     def refresh_figs():
