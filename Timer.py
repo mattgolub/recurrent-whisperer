@@ -108,13 +108,13 @@ class Timer(object):
 		return self.idx >= 0
 
 	def split(self, task_name=None):
-		'''Measures the time elapsed for the most recent task.
+		'''Records and returns the time elapsed for the most recent task.
 
 		Args:
 			task_name (optional): A string describing the most recent task.
 
 		Returns:
-			None.
+			float indicating the split time in seconds.
 		'''
 
 		if self.is_running():
@@ -130,6 +130,8 @@ class Timer(object):
 					'This may cause biased time profiling.')
 		else:
 			self._print('Timer cannot take a split until it has been started.')
+
+		return self.times[self.idx] - self.times[self.idx-1]
 
 	def disp(self):
 		'''Prints the profile of the tasks that have been timed thus far.
