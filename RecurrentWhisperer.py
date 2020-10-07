@@ -435,7 +435,7 @@ class RecurrentWhisperer(object):
             'do_save_ckpt': True,
             'do_save_lvl_ckpt': True,
 
-            'do_print_visualizations_profiling': False,
+            'do_print_visualizations_timing': False,
             'do_generate_training_visualizations': True,
             'do_save_training_visualizations': True,
 
@@ -907,7 +907,9 @@ class RecurrentWhisperer(object):
             '''Maintain state using TF framework for seamless saving and
             restoring of runs'''
 
-            self.train_timer = Timer(name='Training')
+            self.train_timer = Timer(
+                name='Total training',
+                do_retrospective=True)
 
             ''' Counter to track the current training epoch number. An epoch
             is defined as one complete pass through the training data (i.e.,
@@ -1302,8 +1304,8 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        tmr = Timer(3, name='Tensorboard Images', n_indent=2)
-        tmr.start()
+
+        self._visualizations_timer.split('Tensorboard setup')
 
         figs = self.figs
 
@@ -1317,6 +1319,8 @@ class RecurrentWhisperer(object):
 
         images = self.tensorboard['images']
 
+        self._visualizations_timer.split('Images setup')
+
         # Check to see whether any new figures have been added since the
         # tensorboard images were last setup. If so, efficiently redo that
         # setup. This orphans a TF op :-(. See _setup_tensorboard_images(...)
@@ -1326,7 +1330,7 @@ class RecurrentWhisperer(object):
                 images = self.tensorboard['images']
                 break
 
-        tmr.split('Images setup')
+        self._visualizations_timer.split('Building RGB arrays')
 
         # Convert figures into RGB arrays in a feed_dict for Tensorflow
         images_feed_dict = {}
@@ -1334,7 +1338,7 @@ class RecurrentWhisperer(object):
             key = images['placeholders'][fig_name]
             images_feed_dict[key] = self._fig2array(figs[fig_name])
 
-        tmr.split('Building RGB arrays')
+        self._visualizations_timer.split('Graph Ops')
 
         ev_merged_image_summaries = self.session.run(
             images['merged_summaries'], feed_dict=images_feed_dict)
@@ -1342,10 +1346,7 @@ class RecurrentWhisperer(object):
         self.tensorboard['writer'].add_summary(
             ev_merged_image_summaries, self._step)
 
-        tmr.split('run and add_summary')
-
-        if self.hps.do_print_visualizations_profiling:
-            tmr.disp()
+        self._visualizations_timer.split('Transition from Tensorboard')
 
     @staticmethod
     def _tensorboard_image_name(fig_name):
@@ -1438,7 +1439,11 @@ class RecurrentWhisperer(object):
         print('Entering training loop.')
         while True:
 
-            epoch_timer = Timer(N_EPOCH_SPLITS, n_indent=1, name='Epoch')
+            epoch_timer = Timer(N_EPOCH_SPLITS,
+                do_retrospective=True,
+                n_indent=1,
+                name='Epoch')
+
             epoch_timer.start()
 
             # *****************************************************************
@@ -1476,13 +1481,16 @@ class RecurrentWhisperer(object):
             if self._is_training_complete(epoch_loss, do_check_lvl):
                 break
 
-            epoch_timer.split('other')
+            epoch_timer.split('other', stop=True)
             epoch_timer.disp()
 
         self.train_timer.split('Training loop')
-        self.train_timer.disp()
+
         self._close_training(train_data, valid_data)
+
         self.train_timer.split('Closing training')
+
+        print('')
         self.train_timer.disp()
 
     def _setup_training(self, train_data, valid_data=None):
@@ -1961,6 +1969,8 @@ class RecurrentWhisperer(object):
 
         if self.hps.do_generate_final_visualizations:
 
+            self._setup_visualizations_timer()
+
             self.update_visualizations(train_data, valid_data, is_final=True)
 
             if self.hps.do_save_tensorboard_images:
@@ -1969,11 +1979,15 @@ class RecurrentWhisperer(object):
             if self.hps.do_save_final_visualizations:
                 self.save_visualizations()
 
+            self._maybe_print_visualizations_timing()
+
         if self.hps.do_generate_lvl_visualizations:
             if self.hps.do_save_lvl_ckpt:
                 # Generate LVL visualizations
                 print('\tGenerating visualizations from restored LVL model...')
                 self.restore_from_lvl_checkpoint()
+
+                self._setup_visualizations_timer()
 
                 self.update_visualizations(train_data, valid_data, is_lvl=True)
 
@@ -1982,6 +1996,8 @@ class RecurrentWhisperer(object):
 
                 if self.hps.do_save_lvl_visualizations:
                     self.save_visualizations()
+
+                self._maybe_print_visualizations_timing()
 
             else:
                 raise Warning('Attempted to generate LVL visualizations, '
@@ -2018,10 +2034,17 @@ class RecurrentWhisperer(object):
         if hps.do_generate_training_visualizations and \
             np.mod(self._epoch, hps.n_epochs_per_visualization_update) == 0:
 
+            self._setup_visualizations_timer()
+
             self.update_visualizations(train_data, valid_data, is_final=False)
 
             if hps.do_save_tensorboard_images:
                 self._update_tensorboard_images()
+
+            if self.hps.do_save_training_visualizations:
+                self.save_visualizations()
+
+            self._maybe_print_visualizations_timing()
 
     def update_visualizations(self, train_data, valid_data=None,
         is_final=False,
@@ -2065,10 +2088,10 @@ class RecurrentWhisperer(object):
         '''
 
         fig_dir = self.fig_dir
-        tmr = Timer(self.n_figs, name='Saving Figs', n_indent=2)
-        tmr.start()
 
         for fig_name, fig in self.figs.iteritems():
+
+            self._visualizations_timer.split('Saving: %s' % fig_name)
 
             figs_dir_i, file_name_no_ext = os.path.split(
                 os.path.join(fig_dir, fig_name))
@@ -2082,10 +2105,8 @@ class RecurrentWhisperer(object):
 
             fig.savefig(file_path, bbox_inches='tight', format=format, dpi=dpi)
 
-            tmr.split('Saving: %s' % fig_name)
-
-        if self.hps.do_print_visualizations_profiling:
-            tmr.disp()
+        # Make sure whatever happens next doesn't affect timing of last save.
+        self._visualizations_timer.split('Transition from saving.')
 
     def _get_fig(self, fig_name,
         width=6.4,
@@ -2108,6 +2129,8 @@ class RecurrentWhisperer(object):
         Returns:
             The requested matplotlib.pyplot figure.
         '''
+
+        self._visualizations_timer.split('Plotting: %s' % fig_name)
 
         if fig_name not in self.figs:
             self.figs[fig_name] = plt.figure(
@@ -2140,6 +2163,23 @@ class RecurrentWhisperer(object):
     @property
     def n_figs(self):
         return len(self.figs)
+
+    def _setup_visualizations_timer(self):
+
+        # Future work: this could be made more conservative.
+        n_splits = max(100, 4 + 2 * self.n_figs)
+
+        self._visualizations_timer = Timer(n_splits,
+            name='Visualizations',
+            do_retrospective=False,
+            n_indent=2)
+
+        self._visualizations_timer.split('Initial prep')
+
+    def _maybe_print_visualizations_timing(self):
+
+        if self.hps.do_print_visualizations_timing:
+            self._visualizations_timer.disp()
 
     # *************************************************************************
     # Scalar access and updates ***********************************************
