@@ -11,7 +11,7 @@ from __future__ import print_function
 
 import argparse
 import pdb
-from copy import copy, deepcopy
+from copy import deepcopy
 import hashlib
 import cPickle
 from numpy import sort
@@ -70,18 +70,24 @@ class Hyperparameters(object):
             default_non_hash_hps is not specified.
         '''
 
-        self._validate_args(hps, default_hash_hps, default_non_hash_hps)
+        # Use deepcopy to make sure that no future interactions affect the
+        # source of these defaults. This may be a bit overkill, since deepcopy
+        # is also used in integrate_hps(), but better safe than sorry.
+        self.update_hps = deepcopy(hps)
+        self.default_hash_hps = deepcopy(default_hash_hps)
+        self.default_non_hash_hps = deepcopy(default_non_hash_hps)
 
-        self.default_hash_hps = default_hash_hps
-        self.default_non_hash_hps = default_non_hash_hps
+        self._validate_args(
+            self.update_hps, self.default_hash_hps, self.default_non_hash_hps)
 
         self.default_hps = {}
-        self.default_hps.update(default_hash_hps)
-        self.default_hps.update(default_non_hash_hps)
+        self.default_hps.update(self.default_hash_hps)
+        self.default_hps.update(self.default_non_hash_hps)
 
         # dict containing all hyperparameters set to defaults, except as
         # overridden by values in hps.
-        self.integrated_hps = self.integrate_hps(self.default_hps, hps)
+        self.integrated_hps = self.integrate_hps(
+            self.default_hps, self.update_hps)
 
         self._hash_len = hash_len
         self._verbose = verbose
