@@ -1521,20 +1521,14 @@ class RecurrentWhisperer(object):
             training batches.
         '''
         n_batches = len(data_batches)
+        batch_summaries = []
 
-        batch_losses = np.zeros(n_batches)
-        batch_grad_norms = np.zeros(n_batches)
-        batch_sizes = np.zeros(n_batches)
-
-        for batch_idx in range(n_batches):
-            batch_data = data_batches[batch_idx]
+        for batch_data in data_batches:
             batch_summary = self._train_batch(batch_data)
+            batch_summary['batch_size'] = self._get_batch_size(batch_data)
+            batch_summaries.append(batch_summary)
 
-            batch_losses[batch_idx] = batch_summary['loss']
-            batch_grad_norms[batch_idx] = batch_summary['grad_global_norm']
-            batch_sizes[batch_idx] = self._get_batch_size(batch_data)
-
-        epoch_loss = self._compute_epoch_average(batch_losses, batch_sizes)
+        epoch_loss = self._compute_epoch_average(batch_summaries, 'loss')
 
         # Update lowest training loss (if applicable)
         if epoch_loss < self._ltl:
@@ -1543,11 +1537,11 @@ class RecurrentWhisperer(object):
         self.adaptive_learning_rate.update(epoch_loss)
 
         epoch_grad_norm = self._compute_epoch_average(
-            batch_grad_norms, batch_sizes)
+            batch_summaries, 'grad_global_norm')
         self.adaptive_grad_norm_clip.update(epoch_grad_norm)
 
         self._increment_epoch()
-        self._print_epoch_update(epoch_loss)
+        self._print_epoch_update(batch_summaries)
 
         # This should remain the final line before the return
         # (otherwise printing can provide misinformation, or worse)
@@ -1555,15 +1549,21 @@ class RecurrentWhisperer(object):
 
         return epoch_loss
 
-    def _print_epoch_update(self, epoch_loss):
-        ''' Prints an update describing the optimization's progress, to be called at the end of each epoch.
+    def _print_epoch_update(self, batch_summaries):
+        ''' Prints an update describing the optimization's progress, to be
+        called at the end of each epoch.
 
         Args:
-            epoch loss:
+            batch_summaries: list with elements being the dicts returned by
+            _train_batch across an epoch of batches.
 
         Returns:
             None.
         '''
+
+        # This call is redundant with the call in _train_epoch, but involves
+        # minimal compute for the benefit of readable and modular code.
+        epoch_loss = self._compute_epoch_average(batch_summaries, 'loss')
 
         if self.prev_loss is None:
             loss_improvement = np.nan
@@ -1852,23 +1852,49 @@ class RecurrentWhisperer(object):
             summary['loss'], train_data, valid_data)
 
     @staticmethod
-    def _compute_epoch_average(batch_vals, batch_sizes):
+    def _compute_epoch_average(batch_summaries, key):
         '''Computes a weighted average of evaluations of a summary
         statistic across an epoch of data batches. This is all done in
         numpy (no Tensorflow).
 
         Args:
-            batch_vals: list of floats containing the summary statistic
-            evaluated on each batch.
+            batch_summaries: list of dicts, with each dict as returned by
+            _train_batch() and updated to include 'batch_size' (done
+            automatically in _train_epoch).
 
-            batch_sizes: list of ints containing the number of data
-            examples per data batch.
+            key: string name of the statistic in each batch summary dict, whose
+            values are to be averaged.
 
         Returns:
-            avg: float indicating the weighted average.
+            avg: float indicating the batch-size-weighted average of the
+            batch_summaries[i][key] values.
         '''
+
+        BATCH_SIZE_KEY = 'batch_size'
+        batch_vals = []
+        batch_sizes = []
+
+        assert isinstance(batch_summaries, list),\
+            ('batch_summaries must be a list, '
+             'but has type: %s' % str(type(batch_summaries)))
+
+        assert len(batch_summaries)>=0,\
+            'Cannot compute epoch averages because batch_summaries is empty.'
+
+        for batch_summary in batch_summaries:
+
+            assert key in batch_summary,\
+                ('Did not find key (%s) in batch_summary.' % key)
+
+            assert BATCH_SIZE_KEY in batch_summary,\
+                ('Did not find key (%s) in batch_summary.' % BATCH_SIZE_KEY)
+
+            batch_vals.append(batch_summary[key])
+            batch_sizes.append(batch_summary[BATCH_SIZE_KEY])
+
         weights = np.true_divide(batch_sizes, np.sum(batch_sizes))
         avg = np.dot(weights, batch_vals)
+
         return avg
 
     def _is_training_complete(self, loss, do_check_lvl=True):
