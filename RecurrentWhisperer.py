@@ -308,73 +308,64 @@ class RecurrentWhisperer(object):
     # Static access ***********************************************************
     # *************************************************************************
 
-    @staticmethod
-    def default_hyperparameters(subclass):
+    @classmethod
+    def default_hyperparameters(cls):
         ''' Returns the dict of ALL (RecurrentWhisperer + subclass)
         hyperparameters (both hash and non-hash). This is needed for
         command-line argument parsing.
 
         Args:
-            subclass: the __class__ of the object that inherits from
-            RecurrentWhisperer. This provides static access to that subclass'
-            default hyperparameters.
+            None.
 
         Returns:
             dict of hyperparameters.
 
-        To Do: Convert this and related functions to @classmethod.
         '''
 
-        hps = \
-            RecurrentWhisperer.default_hash_hyperparameters(subclass)
-        non_hash_hps = \
-            RecurrentWhisperer.default_non_hash_hyperparameters(subclass)
+        hps = cls.default_hash_hyperparameters()
+        non_hash_hps = cls.default_non_hash_hyperparameters()
 
         hps.update(non_hash_hps)
 
         return hps
 
-    @staticmethod
-    def default_hash_hyperparameters(subclass):
+    @classmethod
+    def default_hash_hyperparameters(cls):
         ''' Returns the dict of ALL (RecurrentWhisperer + subclass)
         hyperparameters that are included in the run hash.
 
         Args:
-            subclass: the __class__ of the object that inherits from
-            RecurrentWhisperer. This provides static access to that subclass'
-            default hyperparameters.
+            None.
 
         Returns:
             dict of hyperparameters.
         '''
 
         hash_hps = Hyperparameters.integrate_hps(
-            RecurrentWhisperer._default_super_hash_hyperparameters(),
-            subclass._default_hash_hyperparameters())
+            RecurrentWhisperer._default_rw_hash_hyperparameters(),
+            cls._default_hash_hyperparameters())
 
         return hash_hps
 
-    @staticmethod
-    def default_non_hash_hyperparameters(subclass):
+    @classmethod
+    def default_non_hash_hyperparameters(cls):
         ''' Returns the dict of ALL (RecurrentWhisperer + subclass)
         hyperparameters that are NOT included in the run hash.
 
         Args:
-            subclass: the __class__ of the object that inherits from
-            RecurrentWhisperer. This provides static access to that subclass'
-            default hyperparameters.
+            None.
 
         Returns:
             dict of hyperparameters.
         '''
 
         non_hash_hps = Hyperparameters.integrate_hps(
-            RecurrentWhisperer._default_super_non_hash_hyperparameters(),
-            subclass._default_non_hash_hyperparameters())
+            RecurrentWhisperer._default_rw_non_hash_hyperparameters(),
+            cls._default_non_hash_hyperparameters())
         return non_hash_hps
 
     @staticmethod
-    def _default_super_hash_hyperparameters():
+    def _default_rw_hash_hyperparameters():
         ''' Returns the dict of RecurrentWhisperer hyperparameters that are
         included in the run hash.
 
@@ -405,7 +396,7 @@ class RecurrentWhisperer(object):
             }
 
     @staticmethod
-    def _default_super_non_hash_hyperparameters():
+    def _default_rw_non_hash_hyperparameters():
         ''' Returns the dict of RecurrentWhisperer hyperparameters that are
         NOT included in the run hash.
 
@@ -519,8 +510,8 @@ class RecurrentWhisperer(object):
     def setup_hps(cls, hps_dict):
 
         return Hyperparameters(hps_dict,
-            cls.default_hash_hyperparameters(cls),
-            cls.default_non_hash_hyperparameters(cls))
+            cls.default_hash_hyperparameters(),
+            cls.default_non_hash_hyperparameters())
 
     @staticmethod
     def get_hash_dir(log_dir, run_hash):
