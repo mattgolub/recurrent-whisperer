@@ -272,6 +272,7 @@ class RecurrentWhisperer(object):
         restoring a run.'''
 
         self.prev_loss = None
+        self.epoch_loss = None
         self.adaptive_learning_rate = AdaptiveLearningRate(**hps.alr_hps)
         self.adaptive_grad_norm_clip = AdaptiveGradNormClip(**hps.agnc_hps)
 
@@ -282,27 +283,43 @@ class RecurrentWhisperer(object):
                 % str(os.environ['CUDA_VISIBLE_DEVICES']))
         print('Building TF model on %s\n' % hps.device)
 
+        self.timer = Timer(
+            name='Total run time',
+            do_retrospective=True)
+        self.timer.start()
+
         with tf.device(hps.device):
 
             with tf.variable_scope(hps.name, reuse=tf.AUTO_REUSE):
 
                 self._setup_records()
-                self._setup_model()
-                self._setup_optimizer()
+                self.timer.split('_setup_records')
 
-                self._maybe_setup_visualizations()
+                self._setup_model()
+                self.timer.split('_setup_model')
+
+                self._setup_optimizer()
+                self.timer.split('_setup_optimizer')
+
+                self._setup_visualizations()
+                self.timer.split('_setup_visualizations')
 
                 # Each of these will create run_dir if it doesn't exist
                 # (do not move above the os.path.isdir check that is in
                 # _setup_run_dir)
                 self._maybe_setup_tensorboard_summaries()
+                self.timer.split('_setup_tensorboard')
+
                 self._setup_savers()
+                self.timer.split('_setup_savers')
 
                 self._setup_session()
+                self.timer.split('_setup_session')
 
                 if not hps.do_custom_restore:
                     self._initialize_or_restore()
                     self.print_trainable_variables()
+                    self.timer.split('_initialize_or_restore')
 
     # *************************************************************************
     # Static access ***********************************************************
@@ -898,10 +915,6 @@ class RecurrentWhisperer(object):
             '''Maintain state using TF framework for seamless saving and
             restoring of runs'''
 
-            self.train_timer = Timer(
-                name='Total training',
-                do_retrospective=True)
-
             ''' Counter to track the current training epoch number. An epoch
             is defined as one complete pass through the training data (i.e.,
             multiple batches).'''
@@ -994,14 +1007,6 @@ class RecurrentWhisperer(object):
             self.train_op = self.optimizer.apply_gradients(
                 zipped_grads, global_step=self.global_step)
 
-    def _maybe_setup_visualizations(self):
-
-        if self.hps.do_generate_training_visualizations or \
-            self.hps.do_generate_lvl_visualizations or \
-            self.hps.do_generate_final_visualizations:
-
-            self._setup_visualizations()
-
     def _setup_visualizations(self):
         '''Sets up visualizations. Only called if
             do_generate_training_visualizations or
@@ -1016,6 +1021,11 @@ class RecurrentWhisperer(object):
             populate this dict upon the first call to update_visualizations().
         '''
         self.figs = dict()
+
+        # This timer is rebuilt each time visualizations are generated,
+        # but is required here in case visualization functions are
+        # called manually.
+        self._setup_visualizations_timer()
 
     def _setup_savers(self):
         '''Sets up Tensorflow checkpoint saving.
@@ -1417,72 +1427,69 @@ class RecurrentWhisperer(object):
         N_EPOCH_SPLITS = 6 # Number of segments to time for profiling
         do_check_lvl = valid_data is not None
 
-        self._setup_training(train_data, valid_data)
-
         if self._is_training_complete(self._ltl, do_check_lvl):
             # If restoring from a completed run, do not enter training loop
             # and do not save a new checkpoint.
             return
 
-        self.train_timer.start()
+        self._setup_training(train_data, valid_data)
+        self.timer.split('_setup_training')
 
         # Training loop
         print('Entering training loop.')
-        while True:
+        done = False
+        while not done:
 
             epoch_timer = Timer(N_EPOCH_SPLITS,
+                name='Epoch',
                 do_retrospective=True,
-                n_indent=1,
-                name='Epoch')
-
+                do_print_single_line=True,
+                n_indent=1)
             epoch_timer.start()
 
             # *****************************************************************
 
             data_batches = self._get_data_batches(train_data)
-
             epoch_timer.split('data')
 
             # *****************************************************************
 
-            epoch_loss = self._train_epoch(data_batches)
-
+            batch_summaries = self._train_epoch(data_batches)
+            self._update_learning_rate(batch_summaries)
+            self._update_grad_clipping(batch_summaries)
+            self._increment_epoch()
             epoch_timer.split('train')
 
             # *****************************************************************
 
             self._maybe_update_validation(train_data, valid_data)
-
             epoch_timer.split('validation')
 
             # *****************************************************************
 
             self._maybe_update_training_visualizations(train_data, valid_data)
-
             epoch_timer.split('visualize')
 
             # *****************************************************************
 
             self._maybe_save_checkpoint()
-
             epoch_timer.split('save')
 
             # *****************************************************************
 
-            if self._is_training_complete(epoch_loss, do_check_lvl):
-                break
-
+            done = self._is_training_complete(self.epoch_loss, do_check_lvl)
             epoch_timer.split('other', stop=True)
-            epoch_timer.disp()
 
-        self.train_timer.split('Training loop')
+            # *****************************************************************
+
+            self._print_epoch_summary(batch_summaries, timer=epoch_timer)
+
+        self.timer.split('train')
 
         self._close_training(train_data, valid_data)
+        self.timer.split('_close_training')
 
-        self.train_timer.split('Closing training')
-
-        print('')
-        self.train_timer.disp()
+        self._print_run_summary()
 
     def _setup_training(self, train_data, valid_data=None):
         '''Performs any tasks that must be completed before entering the
@@ -1519,53 +1526,66 @@ class RecurrentWhisperer(object):
             batch_summary['batch_size'] = self._get_batch_size(batch_data)
             batch_summaries.append(batch_summary)
 
-        epoch_loss = self._compute_epoch_average(batch_summaries, 'loss')
+        self.prev_loss = self.epoch_loss
+        self.epoch_loss = self._compute_epoch_average(batch_summaries, 'loss')
+
+        return batch_summaries
+
+    def _update_learning_rate(self, batch_summaries):
 
         # Update lowest training loss (if applicable)
-        if epoch_loss < self._ltl:
-            self._update_ltl(epoch_loss)
+        if self.epoch_loss < self._ltl:
+            self._update_ltl(self.epoch_loss)
 
-        self.adaptive_learning_rate.update(epoch_loss)
+        self.adaptive_learning_rate.update(self.epoch_loss)
+
+    def _update_grad_clipping(self, batch_summaries):
 
         epoch_grad_norm = self._compute_epoch_average(
             batch_summaries, 'grad_global_norm')
+
         self.adaptive_grad_norm_clip.update(epoch_grad_norm)
 
-        self._increment_epoch()
-        self._print_epoch_update(batch_summaries)
-
-        # This should remain the final line before the return
-        # (otherwise printing can provide misinformation, or worse)
-        self.prev_loss = epoch_loss
-
-        return epoch_loss
-
-    def _print_epoch_update(self, batch_summaries):
-        ''' Prints an update describing the optimization's progress, to be
-        called at the end of each epoch.
+    def _print_epoch_summary(self, batch_summaries, timer=None):
+        ''' Prints an summary describing one epoch of training.
 
         Args:
             batch_summaries: list with elements being the dicts returned by
             _train_batch across an epoch of batches.
 
+            timer (optional): a Timer object containing timed splits for the
+            various functions executed during one epoch of training.
+
         Returns:
             None.
         '''
 
-        # This call is redundant with the call in _train_epoch, but involves
-        # minimal compute for the benefit of readable and modular code.
-        epoch_loss = self._compute_epoch_average(batch_summaries, 'loss')
-
         if self.prev_loss is None:
             loss_improvement = np.nan
         else:
-            loss_improvement = self.prev_loss - epoch_loss
+            loss_improvement = self.prev_loss - self.epoch_loss
 
         print('Epoch %d:' % self._epoch)
-        print('\tTraining loss: %.2e;' % epoch_loss)
+        print('\tTraining loss: %.2e;' % self.epoch_loss)
         print('\tImprovement in training loss: %.2e;' % loss_improvement)
         print('\tLearning rate: %.2e;' %  self.adaptive_learning_rate())
         print('\tLogging to: %s' % self.run_dir)
+
+        timer.print()
+
+    def _print_run_summary(self):
+        ''' Prints a final summary of the complete optimization.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+
+        print('')
+        self.timer.print()
+        print('')
 
     def _train_batch(self, batch_data):
         '''Runs one training step. This function must evaluate the Tensorboard
@@ -1888,7 +1908,7 @@ class RecurrentWhisperer(object):
 
         return avg
 
-    def _is_training_complete(self, loss, do_check_lvl=True):
+    def _is_training_complete(self, epoch_loss, do_check_lvl=True):
         '''Determines whether the training optimization procedure should
         terminate. Termination criteria, governed by hyperparameters, are
         thresholds on the following:
@@ -1900,8 +1920,7 @@ class RecurrentWhisperer(object):
                validation loss improved (only if do_check_lvl == True).
 
         Args:
-            loss: float indicating the most recent loss evaluation across the
-            training data.
+            epoch_summaries:
 
         Returns:
             bool indicating whether any of the termination criteria have been
@@ -1913,15 +1932,15 @@ class RecurrentWhisperer(object):
             print('Stopping optimization: found .done file.')
             return True
 
-        if loss is np.inf:
+        if epoch_loss is np.inf:
             print('\nStopping optimization: loss is Inf!')
             return True
 
-        if np.isnan(loss):
+        if np.isnan(epoch_loss):
             print('\nStopping optimization: loss is NaN!')
             return True
 
-        if hps.min_loss is not None and loss <= hps.min_loss:
+        if hps.min_loss is not None and epoch_loss <= hps.min_loss:
             print ('\nStopping optimization: loss meets convergence criteria.')
             return True
 
@@ -2196,7 +2215,7 @@ class RecurrentWhisperer(object):
     def _maybe_print_visualizations_timing(self):
 
         if self.hps.do_print_visualizations_timing:
-            self._visualizations_timer.disp()
+            self._visualizations_timer.print()
 
     # *************************************************************************
     # Scalar access and updates ***********************************************
@@ -2329,7 +2348,7 @@ class RecurrentWhisperer(object):
         Returns:
             float indicating time elapsed during training..
         '''
-        return self.train_time_offset + self.train_timer()
+        return self.train_time_offset + self.timer()
 
     def _update_train_time(self):
         '''Runs the TF op that updates the time elapsed during training.
