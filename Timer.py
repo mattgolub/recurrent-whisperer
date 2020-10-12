@@ -342,7 +342,7 @@ class Timer(object):
 		if n_indent is None:
 			prefix = self._print_prefix
 		else:
-			prefix = _generate_print_prefix(n_indent)
+			prefix = self._generate_print_prefix(n_indent)
 
 		if do_single_line is None:
 			do_single_line = self._do_print_single_line
@@ -379,7 +379,7 @@ class Timer(object):
 		if n_indent is None:
 			prefix = self._print_prefix
 		else:
-			prefix = _generate_print_prefix(n_indent)
+			prefix = self._generate_print_prefix(n_indent)
 
 		if do_single_line is None:
 			do_single_line = self._do_print_single_line
@@ -405,7 +405,7 @@ class Timer(object):
 		if n_indent is None:
 			prefix = self._print_prefix
 		else:
-			prefix = _generate_print_prefix(n_indent)
+			prefix = self._generate_print_prefix(n_indent)
 
 		print('%s%s' % (print_prefix, str))
 
