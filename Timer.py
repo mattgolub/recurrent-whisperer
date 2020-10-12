@@ -265,7 +265,7 @@ class Timer(object):
 		if self.do_retrospective and name is not None:
 			self._split_names[idx] = name
 
-	def disp(self, n_indent=None):
+	def print(self, n_indent=None):
 		'''Prints the profile of the tasks that have been timed thus far.
 
 		Args:
@@ -340,9 +340,9 @@ class Timer(object):
 			do_single_line = self._do_print_single_line
 
 		if do_single_line:
-			print('%s' % prefix, end='')
 			prefix = ' '
 			end = ''
+			print('[', end=end)
 		else:
 			end = '\n'
 			prefix = prefix + '\t'
@@ -363,7 +363,7 @@ class Timer(object):
 			idx += 1
 
 		if self._do_print_single_line:
-			print('')
+			print(' ]', end='\n')
 
 	def _print_total_time(self, n_indent=None, do_single_line=None):
 		# Print total time
