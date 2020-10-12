@@ -129,7 +129,7 @@ class Timer(object):
 		self._split_stops = [self._empty_split_val for idx in range(n_splits)]
 		self._split_names = ['Task %d' % (idx+1) for idx in range(n_splits)]
 
-		self._print_prefix = '\t' * n_indent
+		self._print_prefix = self._generate_print_prefix(n_indent)
 		self._do_print_single_line = do_print_single_line
 
 		self._is_started = False
@@ -188,7 +188,7 @@ class Timer(object):
 		'''Records and returns the time elapsed for the most recent task.
 
 		Args:
-			task_name (optional): A string describing the most recent task.
+			name (optional): A string describing the most recent task.
 
 		Returns:
 			float indicating the split time in seconds.
@@ -233,6 +233,20 @@ class Timer(object):
 
 			return None
 
+	def get_split(self, name):
+		''' Retrieves a previously recorded split time.
+
+		Args:
+			name: the string name used to record the split, as previously
+			provided in the call: split(name).
+
+		Returns:
+			float indicating the split time in seconds.
+		'''
+
+		idx = self.split_names.index(name)
+		return self._get_split_time(idx)
+
 	def _start_split(self, name=None):
 
 		idx = self._prepare_next_split()
@@ -251,7 +265,7 @@ class Timer(object):
 		if self.do_retrospective and name is not None:
 			self._split_names[idx] = name
 
-	def disp(self):
+	def disp(self, n_indent=None):
 		'''Prints the profile of the tasks that have been timed thus far.
 
 		Args:
@@ -262,8 +276,8 @@ class Timer(object):
 		'''
 
 		if self._is_started:
-			total_time = self._print_total_time()
-			self._print_split_times(total_time)
+			total_time = self._print_total_time(n_indent=n_indent)
+			self._print_split_times(total_time, n_indent=n_indent)
 		else:
 			self._print('Timer has not been started.')
 
@@ -312,8 +326,26 @@ class Timer(object):
 
 		return self._idx
 
-	def _print_split_times(self, total_time):
+	def _print_split_times(self, total_time,
+		n_indent=None,
+		do_single_line=None):
 		# Print split times for all completed splits
+
+		if n_indent is None:
+			prefix = self._print_prefix
+		else:
+			prefix = _generate_print_prefix(n_indent)
+
+		if do_single_line is None:
+			do_single_line = self._do_print_single_line
+
+		if do_single_line:
+			print('%s' % prefix, end='')
+			prefix = ' '
+			end = ''
+		else:
+			end = '\n'
+			prefix = prefix + '\t'
 
 		idx = 0
 		while self._is_split_complete(idx):
@@ -321,41 +353,37 @@ class Timer(object):
 			split_name = self._split_names[idx]
 			split_time = self._get_split_time(idx)
 
-			if self._do_print_single_line:
-
-				print(' %s: %.2fs (%.1f%%); ' %
-					(split_name,
-					split_time,
-					100*split_time/total_time),
-					end='')
-			else:
-
-				print('\t%s%s: %.2fs (%.1f%%)' %
-					(self._print_prefix,
-				   	split_name,
-				   	split_time,
-				   	100.*split_time/total_time))
+			print('%s%s: %.2fs (%.1f%%)' %
+				(prefix,
+				split_name,
+				split_time,
+				100.*split_time/total_time),
+				end=end)
 
 			idx += 1
 
 		if self._do_print_single_line:
 			print('')
 
-	def _print_total_time(self):
+	def _print_total_time(self, n_indent=None, do_single_line=None):
 		# Print total time
 
-		do_single_line = self._do_print_single_line
+		if n_indent is None:
+			prefix = self._print_prefix
+		else:
+			prefix = _generate_print_prefix(n_indent)
+
+		if do_single_line is None:
+			do_single_line = self._do_print_single_line
 
 		total_time = self.__call__()
-		print_data = (self._print_prefix, self.name, total_time)
-		if do_single_line:
-			print('%s%s time: %.2fs: ' % print_data, end='')
-		else:
-			print('%s%s time: %.2fs' % print_data)
+		print_data = (prefix, self.name, total_time)
+		end = '' if do_single_line else '\n'
+		print('%s%s time: %.2fs: ' % print_data, end=end)
 
 		return total_time
 
-	def _print(self, str):
+	def _print(self, str, n_indent=None):
 		'''Prints string after prefixing with the desired number of
 		indentations.
 
@@ -366,4 +394,13 @@ class Timer(object):
 			None.
 		'''
 
-		print('%s%s' % (self._print_prefix, str))
+		if n_indent is None:
+			prefix = self._print_prefix
+		else:
+			prefix = _generate_print_prefix(n_indent)
+
+		print('%s%s' % (print_prefix, str))
+
+	def _generate_print_prefix(self, n_indent):
+
+		return '\t' * n_indent
