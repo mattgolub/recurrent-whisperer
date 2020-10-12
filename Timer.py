@@ -265,6 +265,14 @@ class Timer(object):
 		if self.do_retrospective and name is not None:
 			self._split_names[idx] = name
 
+	def disp(self, *args, **kwargs):
+
+		Print('Timer.disp() is deprecated and '
+		      'will be removed in a future version of Timer.py. '
+		      'Use Timer.print(...) instead.')
+
+		self.print(*args, **kwargs)
+
 	def print(self, n_indent=None):
 		'''Prints the profile of the tasks that have been timed thus far.
 
