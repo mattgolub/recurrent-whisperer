@@ -1065,6 +1065,8 @@ class RecurrentWhisperer(object):
 
         config.gpu_options.allow_growth = hps.allow_gpu_growth
         config.allow_soft_placement = True
+        config.log_device_placement = True
+
         if hps.per_process_gpu_memory_fraction is not None:
             config.gpu_options.per_process_gpu_memory_fraction = \
                 hps.per_process_gpu_memory_fraction
