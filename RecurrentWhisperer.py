@@ -470,6 +470,7 @@ class RecurrentWhisperer(object):
             'per_process_gpu_memory_fraction': 1.0,
             'allow_gpu_growth': True,
             'disable_gpus': False,
+            'do_log_device_placement': False,
 
             'log_dir': '/tmp/rnn_logs/',
             'dataset_name': None,
@@ -911,45 +912,84 @@ class RecurrentWhisperer(object):
             None.
         '''
 
+        ops = {} # Each value is a tf.Variable
+        placeholders = {}
+        update_ops ={}
+        increment_ops = {}
+
         with tf.variable_scope('records', reuse=False):
             '''Maintain state using TF framework for seamless saving and
             restoring of runs'''
 
+            # These are all begging for a simple class to reduce the code
+            # copying.
+
             ''' Counter to track the current training epoch number. An epoch
             is defined as one complete pass through the training data (i.e.,
             multiple batches).'''
-            self.epoch = tf.Variable(
-                0, name='epoch', trainable=False, dtype=tf.int32)
-            self.increment_epoch = tf.assign_add(
-                self.epoch, 1, name='increment_epoch')
+            ops['epoch'] = tf.Variable(0,
+                name='epoch',
+                trainable=False,
+                dtype=tf.int32)
+            increment_ops['epoch'] = tf.assign_add(ops['epoch'], 1,
+                name='increment_epoch')
 
             ''' Timing TF variable to maintain timing information across
             potentially multiple training sessions. Allows for previous
             training time to be recalled upon restoring an existing model. '''
-            self.train_time = tf.Variable(
-                0, name='train_time', trainable=False, dtype=self.dtype)
-            self.train_time_placeholder = tf.placeholder(
-                self.dtype, name='train_time')
-            self.train_time_update = tf.assign(
-                self.train_time, self.train_time_placeholder)
+            ops['train_time'] = tf.Variable(0,
+                name='train_time',
+                trainable=False,
+                dtype=self.dtype)
+            placeholders['train_time'] = tf.placeholder(self.dtype,
+                name='train_time')
+            update_ops['train_time'] = tf.assign(
+                ops['train_time'], placeholders['train_time'],
+                name='update_train_time')
 
-            self.global_step = tf.Variable(
-                0, name='global_step', trainable=False, dtype=tf.int32)
+            ops['global_step'] = tf.Variable(0,
+                name='global_step',
+                trainable=False,
+                dtype=tf.int32)
 
             # lowest validation loss
-            self.lvl = tf.Variable(
-                np.inf, name='lvl', trainable=False, dtype=self.dtype)
-            self.lvl_placeholder = tf.placeholder(
-                self.dtype, name='lowest_validation_loss')
-            self.lvl_update = tf.assign(self.lvl, self.lvl_placeholder)
-            self.epoch_last_lvl_improvement = 0
+            ops['lvl'] = tf.Variable(np.inf,
+                name='lvl',
+                trainable=False,
+                dtype=self.dtype)
+            placeholders['lvl'] = tf.placeholder(self.dtype,
+                name='lvl')
+            update_ops['lvl'] = tf.assign(ops['lvl'], placeholders['lvl'],
+                name='update_lvl')
+
+            ops['epoch_last_lvl_improvement'] = tf.Variable(0,
+                name='epoch_last_lvl_improvement',
+                trainable=False,
+                dtype=tf.int32)
+            placeholders['epoch_last_lvl_improvement'] = tf.placeholder(
+                tf.int32,
+                name='epoch_last_lvl_improvement')
+            update_ops['epoch_last_lvl_improvement'] = tf.assign(
+                ops['epoch_last_lvl_improvement'],
+                placeholders['epoch_last_lvl_improvement'],
+                name='update_epoch_last_lvl_improvement')
 
             # lowest training loss
-            self.ltl = tf.Variable(
-                np.inf, name='ltl', trainable=False, dtype=self.dtype)
-            self.ltl_placeholder = tf.placeholder(
+            ops['ltl'] = tf.Variable(np.inf,
+                name='ltl',
+                trainable=False,
+                dtype=self.dtype)
+            placeholders['ltl'] = tf.placeholder(
                 self.dtype, name='lowest_training_loss')
-            self.ltl_update = tf.assign(self.ltl, self.ltl_placeholder)
+            update_ops['ltl'] = tf.assign(ops['ltl'], placeholders['ltl'],
+                name='update_ltl')
+
+        self.records = {
+            'ops': ops,
+            'placeholders': placeholders,
+            'update_ops': update_ops,
+            'increment_ops': increment_ops
+            }
 
     def _setup_model(self):
         '''Defines the Tensorflow model including:
@@ -1005,7 +1045,7 @@ class RecurrentWhisperer(object):
                 learning_rate=self.learning_rate, **self.hps.adam_hps)
 
             self.train_op = self.optimizer.apply_gradients(
-                zipped_grads, global_step=self.global_step)
+                zipped_grads, global_step=self.records['ops']['global_step'])
 
     def _setup_visualizations(self):
         '''Sets up visualizations. Only called if
@@ -1189,7 +1229,7 @@ class RecurrentWhisperer(object):
                 scope='tb-optimizer',
                 ops_dict={
                     'loss': self.loss,
-                    'lvl': self.lvl,
+                    'lvl': self.records['ops']['lvl'],
                     'learning_rate': self.learning_rate,
                     'grad_global_norm': self.grad_global_norm,
                     'grad_norm_clip_val': self.grad_norm_clip_val,
@@ -1967,12 +2007,14 @@ class RecurrentWhisperer(object):
             # initialized to np.inf), and if so, check whether that value has
             # improved recently.
             if not np.isinf(self._lvl) and \
-                self._epoch - self.epoch_last_lvl_improvement >= \
+                self._epoch - self._epoch_last_lvl_improvement >= \
                     hps.max_n_epochs_without_lvl_improvement:
 
                 print('\nStopping optimization:'
                       ' reached maximum number of training epochs'
                       ' without improvement to the lowest validation loss.')
+
+                pdb.set_trace()
 
                 return True
 
@@ -2253,10 +2295,27 @@ class RecurrentWhisperer(object):
         Returns:
             epoch: int specifying the current epoch number.
         '''
-        return self.session.run(self.epoch)
+
+        # TO DO: remove "_" from definition
+        return self.session.run(self.records['ops']['epoch'])
 
     def _increment_epoch(self):
-        self.session.run(self.increment_epoch)
+        self.session.run(self.records['increment_ops']['epoch'])
+
+    @property
+    def _epoch_last_lvl_improvement(self):
+        '''Returns the epoch of the most recent improvement to the lowest
+        validation loss.
+
+        Args:
+            None.
+
+        Returns:
+            int specifying the epoch number.
+        '''
+
+        return self.session.run(
+            self.records['ops']['epoch_last_lvl_improvement'])
 
     @property
     def _step(self):
@@ -2270,7 +2329,9 @@ class RecurrentWhisperer(object):
         Returns:
             step: int specifying the current training step number.
         '''
-        return self.session.run(self.global_step)
+
+        # TO DO: remove "_" from definition
+        return self.session.run(self.records['ops']['global_step'])
 
     @property
     def _lvl(self):
@@ -2283,7 +2344,9 @@ class RecurrentWhisperer(object):
         Returns:
             lvl: float specifying the lowest validation loss.
         '''
-        return self.session.run(self.lvl)
+
+        # TO DO: remove "_" from definition
+        return self.session.run(self.records['ops']['lvl'])
 
     def _update_lvl(self, lvl, epoch=None):
         ''' Updates the lowest validation loss and the epoch of this
@@ -2304,12 +2367,16 @@ class RecurrentWhisperer(object):
         if epoch is None:
             epoch = self._epoch
 
-        # Not Tensorflow
-        self.epoch_last_lvl_improvement = epoch
-
         # Tensorflow
-        self.session.run(
-            self.lvl_update, feed_dict={self.lvl_placeholder: lvl})
+        feed_dict = {
+            self.records['placeholders']['lvl']: lvl,
+            self.records['placeholders']['epoch_last_lvl_improvement']: epoch
+            }
+        ops = [
+            self.records['update_ops']['lvl'],
+            self.records['update_ops']['epoch_last_lvl_improvement']]
+
+        self.session.run(ops, feed_dict=feed_dict)
 
     @property
     def _ltl(self):
@@ -2322,7 +2389,9 @@ class RecurrentWhisperer(object):
         Returns:
             ltl: float specifying the lowest training loss.
         '''
-        return self.session.run(self.ltl)
+
+        # TO DO: remove "_" from definition
+        return self.session.run(self.records['ops']['ltl'])
 
     def _update_ltl(self, ltl):
         ''' Updates the lowest training loss.
@@ -2336,8 +2405,8 @@ class RecurrentWhisperer(object):
         '''
 
         self.session.run(
-            self.ltl_update,
-            feed_dict={self.ltl_placeholder: ltl})
+            self.records['update_ops']['ltl'],
+            feed_dict={self.records['placeholders']['ltl']: ltl})
 
     @property
     def _train_time(self):
@@ -2350,6 +2419,8 @@ class RecurrentWhisperer(object):
         Returns:
             float indicating time elapsed during training..
         '''
+
+        # TO DO: remove "_" from definition
         return self.train_time_offset + self.timer()
 
     def _update_train_time(self):
@@ -2363,8 +2434,8 @@ class RecurrentWhisperer(object):
         '''
         time_val = self._train_time
         self.session.run(
-            self.train_time_update,
-            feed_dict={self.train_time_placeholder: time_val})
+            self.records['update_ops']['train_time'],
+            feed_dict={self.records['placeholders']['train_time']: time_val})
 
     # *************************************************************************
     # TF Variables access and updates *****************************************
@@ -2463,7 +2534,7 @@ class RecurrentWhisperer(object):
         zipped_grads = zip(clipped_grads, vars_to_train)
 
         self.train_op = self.optimizer.apply_gradients(
-            zipped_grads, global_step=self.global_step)
+            zipped_grads, global_step=self.records['ops']['global_step'])
 
     def print_trainable_variables(self):
         '''Prints the current set of trainable variables.
@@ -2575,7 +2646,8 @@ class RecurrentWhisperer(object):
             None.
         '''
         self._update_train_time()
-        saver.save(self.session, ckpt_path, global_step=self._step)
+        saver.save(self.session, ckpt_path,
+            global_step=self.records['ops']['global_step'])
 
         ckpt_dir, ckpt_fname = os.path.split(ckpt_path)
         self.adaptive_learning_rate.save(ckpt_dir)
@@ -2860,7 +2932,7 @@ class RecurrentWhisperer(object):
         self.adaptive_grad_norm_clip.restore(ckpt_dir)
 
         # Resume training timer from value at last save.
-        self.train_time_offset = self.session.run(self.train_time)
+        self.train_time_offset = self.session.run(self.records['ops']['train_time'])
 
     def restore_from_lvl_checkpoint(self, model_checkpoint_path=None):
         '''Restores a model from a previously saved lowest-validation-loss
