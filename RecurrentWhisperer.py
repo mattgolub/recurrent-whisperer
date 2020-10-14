@@ -2266,9 +2266,8 @@ class RecurrentWhisperer(object):
     # *************************************************************************
     #
     # Convention: properties beginning with _ return numpy or python numeric
-    # types (e.g., _epoch, _lvl). Their non-underscored counterparts
-    # (e.g., epoch, lvl) are (or return) TF types, and most of these are setup
-    # in _setup_records().
+    # types (e.g., _epoch, _lvl). The corresponding TF Variables are in
+    # self.records. See _setup_records().
 
     @property
     def trainable_variables(self):
