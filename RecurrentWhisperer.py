@@ -2015,8 +2015,6 @@ class RecurrentWhisperer(object):
                       ' reached maximum number of training epochs'
                       ' without improvement to the lowest validation loss.')
 
-                pdb.set_trace()
-
                 return True
 
         return False
