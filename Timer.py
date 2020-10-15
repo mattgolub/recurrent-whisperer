@@ -348,12 +348,7 @@ class Timer(object):
 			do_single_line = self._do_print_single_line
 
 		if do_single_line:
-			prefix = ' '
-			end = ''
-			print('[', end=end)
-		else:
-			end = '\n'
-			prefix = prefix + '\t'
+			print('[', end='')
 
 		idx = 0
 		while self._is_split_complete(idx):
@@ -361,12 +356,19 @@ class Timer(object):
 			split_name = self._split_names[idx]
 			split_time = self._get_split_time(idx)
 
-			print('%s%s: %.2fs (%.1f%%)' %
-				(prefix,
-				split_name,
-				split_time,
-				100.*split_time/total_time),
-				end=end)
+			if do_single_line:
+				print(' %s: %.2fs (%.1f%%);' %
+					(split_name,
+					split_time,
+					100.*split_time/total_time),
+					end='')
+			else:
+				print('%s\t%.2fs (%.1f%%): %s' %
+					(prefix,
+					split_time,
+					100.*split_time/total_time,
+					split_name),
+					end='\n')
 
 			idx += 1
 
