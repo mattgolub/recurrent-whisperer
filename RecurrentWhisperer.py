@@ -281,7 +281,7 @@ class RecurrentWhisperer(object):
         if 'CUDA_VISIBLE_DEVICES' in os.environ:
             print('\n\nCUDA_VISIBLE_DEVICES: %s'
                 % str(os.environ['CUDA_VISIBLE_DEVICES']))
-        print('Building TF model on %s\n' % hps.device)
+        print('Attempting to build TF model on %s\n' % hps.device)
 
         self.timer = Timer(
             name='Total run time',
@@ -468,9 +468,10 @@ class RecurrentWhisperer(object):
 
             'device': 'gpu:0',
             'per_process_gpu_memory_fraction': 1.0,
-            'allow_gpu_growth': True,
             'disable_gpus': False,
-            'do_log_device_placement': False,
+            'allow_gpu_growth': True,
+            'allow_soft_placement': True,
+            'log_device_placement': False,
 
             'log_dir': '/tmp/rnn_logs/',
             'dataset_name': None,
@@ -1104,8 +1105,8 @@ class RecurrentWhisperer(object):
             config = tf.ConfigProto()
 
         config.gpu_options.allow_growth = hps.allow_gpu_growth
-        config.allow_soft_placement = True
-        config.log_device_placement = True
+        config.allow_soft_placement = hps.allow_soft_placement
+        config.log_device_placement = hps.log_device_placement
 
         if hps.per_process_gpu_memory_fraction is not None:
             config.gpu_options.per_process_gpu_memory_fraction = \
