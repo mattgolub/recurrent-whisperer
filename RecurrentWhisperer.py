@@ -1103,8 +1103,8 @@ class RecurrentWhisperer(object):
             config = tf.ConfigProto(device_count={'GPU': 0})
         else:
             config = tf.ConfigProto()
+            config.gpu_options.allow_growth = hps.allow_gpu_growth
 
-        config.gpu_options.allow_growth = hps.allow_gpu_growth
         config.allow_soft_placement = hps.allow_soft_placement
         config.log_device_placement = hps.log_device_placement
 
@@ -1277,7 +1277,8 @@ class RecurrentWhisperer(object):
 
     def _setup_tensorboard_images(self):
         '''Sets up Tensorboard Images. Called within first call to
-        _update_tensorboard_images(). Requires the following have already been called:
+        _update_tensorboard_images(). Requires the following have already been
+        called:
             _maybe_setup_tensorboard(...)
             _maybe_setup_visualizations(...)
 
@@ -1288,6 +1289,7 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
+        hps = self.hps
         figs = self.figs
 
         if len(figs) == 0:
@@ -1315,17 +1317,18 @@ class RecurrentWhisperer(object):
                 continue
 
             (fig_width, fig_height) = fig.canvas.get_width_height()
-
-            images['placeholders'][fig_name] = \
-                tf.placeholder(tf.uint8, (1, fig_height, fig_width, 3))
-
             tb_fig_name = self._tensorboard_image_name(fig_name)
 
-            images['summaries'].append(
-                tf.summary.image(
-                    tb_fig_name,
-                    images['placeholders'][fig_name],
-                    max_outputs=1))
+            with tf.device(hps.device):
+
+                images['placeholders'][fig_name] = tf.placeholder(
+                    tf.uint8, (1, fig_height, fig_width, 3))
+
+                images['summaries'].append(
+                    tf.summary.image(
+                        tb_fig_name,
+                        images['placeholders'][fig_name],
+                        max_outputs=1))
 
         '''
         If this is a repeat call to the function, this will orphan an existing
