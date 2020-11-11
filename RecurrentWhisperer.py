@@ -427,7 +427,7 @@ class RecurrentWhisperer(object):
         # See comment in _default_super_hash_hyperparameters()
         return {
             'name': 'RecurrentWhisperer',
-            'mode': 'train',
+
             'max_n_epochs_without_lvl_improvement': 200,
             'min_loss': None,
             'max_train_time': None,
@@ -474,9 +474,7 @@ class RecurrentWhisperer(object):
             'log_device_placement': False,
 
             'log_dir': '/tmp/rnn_logs/',
-            'dataset_name': None,
-            'n_folds': None,
-            'fold_idx': None,}
+}
 
     @staticmethod
     def _default_hash_hyperparameters():
@@ -593,7 +591,7 @@ class RecurrentWhisperer(object):
             model run was saved. See definition in __init__()
 
         Returns:
-            dict with each key being a dataset name and each value is the corresponding set of cross-validation runs performed on that dataset. Jointly, these key, val pairs can reconstruct all of the "leaves" of the cross validation runs by using get_run_dir(...).
+            list of cross-validation runs (folder names) found in run_dir.
 
         '''
 
@@ -601,7 +599,7 @@ class RecurrentWhisperer(object):
             return [name for name in os.listdir(path_str) \
                 if os.path.isdir(os.path.join(path_str, name)) ]
 
-        run_info = {}
+        run_info = []
         if RecurrentWhisperer.is_run_dir(run_dir):
             pass
         else:
@@ -733,7 +731,7 @@ class RecurrentWhisperer(object):
         '''
 
         def raise_error():
-        	# This should not be reachable--Hyperparameters.flatted converts to
+        	# This should not be reachable--Hyperparameters.flatten converts to
         	# a colon delimited format.
         	raise ValueError('HPs that are themselves dicts are not supported')
 
@@ -1470,7 +1468,7 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        N_EPOCH_SPLITS = 6 # Number of segments to time for profiling
+        N_EPOCH_SPLITS = 7 # Number of segments to time for profiling
         do_check_lvl = valid_data is not None
 
         if self._is_training_complete(self._ltl, do_check_lvl):
@@ -1480,6 +1478,10 @@ class RecurrentWhisperer(object):
 
         self._setup_training(train_data, valid_data)
         self.timer.split('_setup_training')
+
+        # Visualizations generated from untrained network
+        self._maybe_update_training_visualizations(train_data, valid_data)
+        self.timer.split('_init_visualizations')
 
         # Training loop
         print('Entering training loop.')
@@ -2933,7 +2935,8 @@ class RecurrentWhisperer(object):
         self.adaptive_grad_norm_clip.restore(ckpt_dir)
 
         # Resume training timer from value at last save.
-        self.train_time_offset = self.session.run(self.records['ops']['train_time'])
+        self.train_time_offset = self.session.run(
+            self.records['ops']['train_time'])
 
     def restore_from_lvl_checkpoint(self, model_checkpoint_path=None):
         '''Restores a model from a previously saved lowest-validation-loss
