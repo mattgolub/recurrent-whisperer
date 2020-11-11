@@ -450,6 +450,23 @@ class Hyperparameters(object):
 
         return D_unflattened
 
+    @staticmethod
+    def remove_list_hps(hps):
+        # Recursive
+        keys_to_del = []
+        for key, val in hps.iteritems():
+            if isinstance(val, list):
+                # Base case
+                print('\nDetected list in HPs (%s)--ignoring this HP.' % key)
+                print('This will throw an error if the HP gets a command-line value.\n')
+                keys_to_del.append(key)
+            elif isinstance(val, dict):
+                # Recursion
+                Hyperparameters.remove_list_hps(val)
+
+        for key in keys_to_del:
+            del hps[key]
+
     # ************************************************************************
     # General class access and manipulation **********************************
     # ************************************************************************
