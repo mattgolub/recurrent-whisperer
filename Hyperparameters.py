@@ -132,7 +132,7 @@ class Hyperparameters(object):
             else:
                 raise argparse.ArgumentTypeError('Boolean value expected.')
 
-        def parse_helper(D, str_prefix=''):
+        def parse_helper(parser, D, str_prefix=''):
             '''
             Validates value types and recurses appropriately when encountering
             colon delimiters in keys.
@@ -166,15 +166,16 @@ class Hyperparameters(object):
 
                 elif isinstance(val, dict):
                     # Recursion
-                    parse_helper(val, str_prefix=str_prefix + str(key) + ':')
+                    parse_helper(parser, val,
+                        str_prefix=str_prefix + str(key) + ':')
 
                 else:
                     raise argparse.ArgumentTypeError('Default value must be '
-                        'bool, int, float, str, dict, or None, but was %s. ' %
-                        type(val))
+                        'bool, int, float, str, dict, or None, but was %s '
+                        '(key=%s).' % (type(val), key))
 
         parser = argparse.ArgumentParser(description=description)
-        parse_helper(default_hps)
+        parse_helper(parser, default_hps)
 
         args = parser.parse_args()
 
