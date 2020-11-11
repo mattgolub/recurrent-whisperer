@@ -474,7 +474,10 @@ class RecurrentWhisperer(object):
             'log_device_placement': False,
 
             'log_dir': '/tmp/rnn_logs/',
-}
+            'run_script': None,
+            'n_folds': None,
+            'fold_idx': None,
+        }
 
     @staticmethod
     def _default_hash_hyperparameters():
@@ -636,6 +639,7 @@ class RecurrentWhisperer(object):
 
         return {
             'run_dir': run_dir,
+            'run_script_path': os.path.join(run_dir, 'run.sh'),
 
             'hps_dir': hps_dir,
             'hps_path': os.path.join(hps_dir, 'hyperparameters.pkl'),
@@ -701,23 +705,23 @@ class RecurrentWhisperer(object):
     @staticmethod
     def get_command_line_call(run_script,
                               hp_dict={},
-                              do_format_for_bash=False):
+                              do_shell_format=False,
+                              shell_delimiter=' \\\n'):
 
-        ''' Generates a command line call to a user-specified bash script with
+        ''' Generates a command line call to a user-specified shell script with
         RecurrentWhisperer hyperparameters passed in as command-line arguments.
-        Can be formatted for execution within Python  or from a terminal /
-        bash script.
+        Can be formatted for execution within Python or from a shell script.
 
         Args:
-            run_script: string specifying the bash script call,
+            run_script: string specifying the shell script call,
             e.g., 'location/of/your/run_script.sh'
 
             hp_dict: (optional) dict containing any hps to override defaults.
             Default: {}
 
-            do_format_for_bash: (optional) bool indicating whether to return
+            do_format_for_shell: (optional) bool indicating whether to return
             the command-line call as a string (for writing into a higher-level
-            bash script; for copying into a terminal). Default: False (see
+            shell script; for copying into a terminal). Default: False (see
             below).
 
         Returns:
@@ -725,8 +729,8 @@ class RecurrentWhisperer(object):
                 cmd_list: a list that is interpretable by subprocess.call:
                     subprocess.call(cmd_list)
 
-            do_format_for_bash == True:
-                cmd_str: a string (suitable for placing in a bash script or
+            do_shell_format == True:
+                cmd_str: a string (suitable for placing in a shell script or
                 copying into a terminal .
         '''
 
@@ -739,15 +743,16 @@ class RecurrentWhisperer(object):
         hp_names = flat_hps.keys()
         hp_names.sort()
 
-        if do_format_for_bash:
+        if do_shell_format:
 
-            cmd_str = 'python ' + run_script
+            cmd_str = 'python %s' % run_script
             for hp_name in hp_names:
                 val = flat_hps[hp_name]
                 if isinstance(val, dict):
                     omit_dict_hp(hp_name)
                 else:
-                    cmd_str += str(' --%s=%s' % (hp_name, str(val)))
+                    cmd_str += str(
+                        '%s--%s=%s' % (shell_delimiter, hp_name, str(val)))
 
             return cmd_str
 
@@ -770,13 +775,13 @@ class RecurrentWhisperer(object):
 
             return cmd_list
 
-    @staticmethod
-    def execute_command_line_call(run_script, hp_dict={}):
-        ''' Executes a command line call to a user-specified bash script with
+    @classmethod
+    def execute_command_line_call(cls, run_script, hp_dict={}):
+        ''' Executes a command line call to a user-specified shell script with
         RecurrentWhisperer hyperparameters passed in as command-line arguments.
 
         Args:
-            run_script: string specifying the bash script call,
+            run_script: string specifying the shell script call,
             e.g., 'location/of/your/run_script.sh'
 
             hp_dict: (optional) dict containing any hps to override defaults.
@@ -786,10 +791,17 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        cmd_list = RecurrentWhisperer.get_command_line_call(
-            run_script, hp_dict)
+        cmd_list = cls.get_command_line_call(run_script, hp_dict)
         print(cmd_list)
         call(cmd_list)
+
+    @classmethod
+    def write_shell_script(cls, save_path, run_script, hp_dict):
+        file = open(save_path, 'w')
+        shell_str = cls.get_command_line_call(
+            run_script, hp_dict, do_shell_format=True)
+        file.write(shell_str)
+        file.close()
 
     # *************************************************************************
     # Setup *******************************************************************
@@ -817,6 +829,7 @@ class RecurrentWhisperer(object):
 
         self.run_hash = run_hash
         self.run_dir = paths['run_dir']
+        self.run_script_path = paths['run_script_path']
         self.hps_dir = paths['hps_dir']
         self.hps_path = paths['hps_path']
         self.hps_yaml_path = paths['hps_yaml_path']
@@ -1175,6 +1188,12 @@ class RecurrentWhisperer(object):
             self.hps.save_yaml(self.hps_yaml_path) # For visual inspection
             self.hps.save(self.hps_path) # For restoring a run via its run_dir
             # (i.e., without needing to manually specify hps)
+
+            if self.hps.run_script is not None:
+                self.write_shell_script(
+                    self.run_script_path,
+                    self.hps.run_script,
+                    self.hps.integrated_hps)
 
             # Start training timer from scratch
             self.train_time_offset = 0.0
