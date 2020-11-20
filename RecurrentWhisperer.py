@@ -279,8 +279,10 @@ class RecurrentWhisperer(object):
         self._setup_run_dir()
 
         if 'CUDA_VISIBLE_DEVICES' in os.environ:
-            print('\n\nCUDA_VISIBLE_DEVICES: %s'
-                % str(os.environ['CUDA_VISIBLE_DEVICES']))
+            cuda_devices = os.environ['CUDA_VISIBLE_DEVICES']
+        else:
+            cuda_devices = ''
+        print('\n\nCUDA_VISIBLE_DEVICES: %s' % cuda_devices)
         print('Attempting to build TF model on %s\n' % hps.device)
 
         self.timer = Timer(
@@ -445,6 +447,7 @@ class RecurrentWhisperer(object):
 
             'do_print_visualizations_timing': False,
             'do_generate_training_visualizations': True,
+            'do_generate_pretraining_visualizations': False,
             'do_save_training_visualizations': True,
 
             'do_generate_final_visualizations': True,
@@ -2134,8 +2137,17 @@ class RecurrentWhisperer(object):
         '''
 
         hps = self.hps
-        if hps.do_generate_training_visualizations and \
-            np.mod(self._epoch, hps.n_epochs_per_visualization_update) == 0:
+
+        def do_pretraining(hps, epoch):
+            return epoch == 0 and hps.do_generate_pretraining_visualizations
+
+        def do_training(hps, epoch):
+            return epoch > 0 and \
+                np.mod(epoch, hps.n_epochs_per_visualization_update) == 0 and \
+                hps.do_generate_training_visualizations
+                
+
+        if do_pretraining(hps, self._epoch) or do_training(hps, self._epoch):
 
             self._setup_visualizations_timer()
 
