@@ -56,12 +56,12 @@ class RecurrentWhisperer(object):
     can be readily resumed if their execution was interrupted or preempted.
 
     Subclasses inheriting from RecurrentWhisperer must implement the following
-    functions (see definitions at the end of this file for call signatures):
+    functions (see docstrings in the corresponding function prototypes 
+    throughout this file):
 
     _default_hash_hyperparameters()
     _default_non_hash_hyperparameters()
     _setup_model(...)
-    _setup_training(...)
     _train_batch(...)
     _predict_batch(...)
     _get_batch_size(...)
@@ -70,6 +70,10 @@ class RecurrentWhisperer(object):
     _combine_prediction_batches(...)
     _update_valid_tensorboard_summaries
     _update_visualization(...)
+
+    Subclasses can optionally reimplement the following functions:
+    _setup_training(...)
+
     '''
 
     def __init__(self, **kwargs):
@@ -173,6 +177,12 @@ class RecurrentWhisperer(object):
                 do_save_lvl_ckpt: bool indicating whether or not to save model
                 checkpoints specifically when a new lowest validation loss is
                 achieved. Default: True.
+
+                fig_format: string indicating the saved figure type (i.e.,
+                file extension). See matplotlib.pyplot.figure.savefig(). 
+                Default: 'pdf'.
+
+                fig_dpi: dots per inch for saved figures. Default: 600.
 
                 do_generate_training_visualizations: bool indicating whether or
                 not to generate visualizations periodically throughout
@@ -444,6 +454,9 @@ class RecurrentWhisperer(object):
 
             'do_save_ckpt': True,
             'do_save_lvl_ckpt': True,
+
+            'fig_format': 'pdf',
+            'fig_dpi': 600,
 
             'do_print_visualizations_timing': False,
             'do_generate_training_visualizations': True,
@@ -1573,9 +1586,7 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        raise StandardError(
-            '%s must be implemented by RecurrentWhisperer subclass'
-             % sys._getframe().f_code.co_name)
+        pass
 
     def _train_epoch(self, data_batches):
         '''Performs training steps across an epoch of training data batches.
@@ -2190,18 +2201,17 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def save_visualizations(self, format='eps', dpi=600):
+    def save_visualizations(self):
         '''Saves individual figures to this run's figure directory. This is
         independent of Tensorboard Images.
 
         Args:
-            format: (optional) string indicating the saved figure type (i.e.,
-            file extension). See matplotlib.pyplot.figure.savefig(). Default:
-            'eps'.
+            None.
 
-            dpi: (optional) dots per inch for saved figures. Default: 600.
+        Returns:
+            None.
         '''
-
+        hps = self.hps
         fig_dir = self.fig_dir
 
         for fig_name, fig in self.figs.iteritems():
@@ -2210,7 +2220,7 @@ class RecurrentWhisperer(object):
 
             figs_dir_i, file_name_no_ext = os.path.split(
                 os.path.join(fig_dir, fig_name))
-            file_name = file_name_no_ext + '.' + format
+            file_name = file_name_no_ext + '.' + hps.fig_format
             file_path = os.path.join(figs_dir_i, file_name)
 
             # This fig's dir may have additional directory structure beyond
@@ -2218,7 +2228,10 @@ class RecurrentWhisperer(object):
             if not os.path.isdir(figs_dir_i):
                 os.makedirs(figs_dir_i)
 
-            fig.savefig(file_path, bbox_inches='tight', format=format, dpi=dpi)
+            fig.savefig(file_path, 
+                bbox_inches='tight', 
+                format=hps.fig_format, 
+                dpi=hps.fig_dpi)
 
         # Make sure whatever happens next doesn't affect timing of last save.
         self._visualizations_timer.split('Transition from saving.')
