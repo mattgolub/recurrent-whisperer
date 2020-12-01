@@ -65,14 +65,15 @@ class RecurrentWhisperer(object):
     _train_batch(...)
     _predict_batch(...)
     _get_batch_size(...)
-    _split_data_into_batches(...)
     _subselect_batch(...)
-    _combine_prediction_batches(...)
-    _update_valid_tensorboard_summaries
-    _update_visualization(...)
 
-    Subclasses can optionally reimplement the following functions:
+    Required only if calling predict(data, do_batch=True):
+    _combine_prediction_batches(...) 
+
+    Not required, but helpful in some cases:
     _setup_training(...)
+    _update_valid_tensorboard_summaries
+    update_visualizations(...)
 
     '''
 
@@ -459,8 +460,8 @@ class RecurrentWhisperer(object):
             'fig_dpi': 600,
 
             'do_print_visualizations_timing': False,
-            'do_generate_training_visualizations': True,
             'do_generate_pretraining_visualizations': False,
+            'do_generate_training_visualizations': True,
             'do_save_training_visualizations': True,
 
             'do_generate_final_visualizations': True,
@@ -1304,9 +1305,7 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        raise StandardError(
-            '%s must be implemented by RecurrentWhisperer subclass'
-             % sys._getframe().f_code.co_name)
+        pass
 
     def _setup_tensorboard_images(self):
         '''Sets up Tensorboard Images. Called within first call to
@@ -1702,6 +1701,11 @@ class RecurrentWhisperer(object):
         Args:
             data: dict containing requisite data for generating predictions.
             Key/value pairs will be specific to the subclass implementation.
+
+            do_batch: bool indicating whether to split data into batches and 
+            then sequentially process those batches. This can be important for
+            large models and/or large datasets relative to memory resources.
+            Default: False.
 
         Returns:
             predictions: dict containing model predictions based on data. Key/
@@ -2197,9 +2201,7 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        raise StandardError(
-            '%s must be implemented by RecurrentWhisperer subclass'
-             % sys._getframe().f_code.co_name)
+        pass
 
     def save_visualizations(self):
         '''Saves individual figures to this run's figure directory. This is
