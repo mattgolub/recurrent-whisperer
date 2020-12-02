@@ -240,8 +240,12 @@ class RecurrentWhisperer(object):
                 n_epochs_per_visualization_update: int specifying the number
                 of epochs between updates of any visualizations. Default: 100.
 
-                device: String specifying the hardware on which to place this
-                model. E.g., "gpu:0" or "gpu:1". Default: "gpu:0".
+                device_type: Either 'cpu' or 'gpu', indicating the type of 
+                hardware device that will support this model. Default: 'gpu'.
+
+                device_id: Nonnegative integer specifying the CPU core ID
+                (for device_type: 'cpu') or GPU ID (for device_type: 'gpu') of 
+                the specific local hardware device to be used for this model.
 
                 per_process_gpu_memory_fraction: float specifying the maximum
                 fraction of GPU memory to allocate. Set to None to allow
@@ -289,19 +293,13 @@ class RecurrentWhisperer(object):
 
         self._setup_run_dir()
 
-        if 'CUDA_VISIBLE_DEVICES' in os.environ:
-            cuda_devices = os.environ['CUDA_VISIBLE_DEVICES']
-        else:
-            cuda_devices = ''
-        print('\n\nCUDA_VISIBLE_DEVICES: %s' % cuda_devices)
-        print('Attempting to build TF model on %s\n' % hps.device)
-
         self.timer = Timer(
             name='Total run time',
             do_retrospective=True)
         self.timer.start()
 
-        with tf.device(hps.device):
+        self._setup_device()
+        with tf.device(self.device):
 
             with tf.variable_scope(hps.name, reuse=tf.AUTO_REUSE):
 
@@ -483,7 +481,8 @@ class RecurrentWhisperer(object):
             'n_epochs_per_validation_update': 100,
             'n_epochs_per_visualization_update': 100,
 
-            'device': 'gpu:0',
+            'device_type': 'gpu',
+            'device_id': 0,
             'per_process_gpu_memory_fraction': 1.0,
             'disable_gpus': False,
             'allow_gpu_growth': True,
@@ -823,6 +822,34 @@ class RecurrentWhisperer(object):
     # *************************************************************************
     # Setup *******************************************************************
     # *************************************************************************
+
+    def _setup_device(self):
+        ''' Select the hardware device to use for this model.
+
+        This creates attribute: device, e.g., : 'gpu:0'
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+
+        device_type = self.hps.device_type
+        device_id = self.hps.device_id
+
+        assert device_type in ['cpu', 'gpu'], \
+            'Unsupported device_type: %s' % str(device_type)
+
+        if device_type == 'gpu':
+            if 'CUDA_VISIBLE_DEVICES' in os.environ:
+                cuda_devices = os.environ['CUDA_VISIBLE_DEVICES']
+            else:
+                cuda_devices = ''
+            print('\n\nCUDA_VISIBLE_DEVICES: %s' % cuda_devices)
+
+        self.device = '%s:%d' % (device_type, self.hps.device_id)
+        print('Attempting to build TF model on %s\n' % self.device)
 
     def _setup_run_dir(self):
         '''Sets up a directory for this training run. The directory name is
@@ -1351,7 +1378,7 @@ class RecurrentWhisperer(object):
             (fig_width, fig_height) = fig.canvas.get_width_height()
             tb_fig_name = self._tensorboard_image_name(fig_name)
 
-            with tf.device(hps.device):
+            with tf.device(self.device):
 
                 images['placeholders'][fig_name] = tf.placeholder(
                     tf.uint8, (1, fig_height, fig_width, 3))
@@ -2077,9 +2104,10 @@ class RecurrentWhisperer(object):
             Warning if attempting to generate LVL visualizations when no LVL
             checkpoint was saved.
         '''
+        hps = self.hps
 
         # Save checkpoint upon completing training
-        if self.hps.do_save_ckpt:
+        if hps.do_save_ckpt:
             self._save_seso_checkpoint()
 
         # Save .done file. Critically placed after saving final checkpoint,
@@ -2088,22 +2116,22 @@ class RecurrentWhisperer(object):
         # indicating safe to interpret checkpoint model as final.
         self._save_done_file()
 
-        if self.hps.do_generate_final_visualizations:
+        if hps.do_generate_final_visualizations:
 
             self._setup_visualizations_timer()
 
             self.update_visualizations(train_data, valid_data, is_final=True)
 
-            if self.hps.do_save_tensorboard_images:
+            if hps.do_save_tensorboard_images:
                 self._update_tensorboard_images()
 
-            if self.hps.do_save_final_visualizations:
+            if hps.do_save_final_visualizations:
                 self.save_visualizations()
 
             self._maybe_print_visualizations_timing()
 
-        if self.hps.do_generate_lvl_visualizations:
-            if self.hps.do_save_lvl_ckpt:
+        if hps.do_generate_lvl_visualizations and hps.do_save_lvl_ckpt:
+            if self.has_lvl_ckpt:
                 # Generate LVL visualizations
                 print('\tGenerating visualizations from restored LVL model...')
                 self.restore_from_lvl_checkpoint()
@@ -2112,19 +2140,19 @@ class RecurrentWhisperer(object):
 
                 self.update_visualizations(train_data, valid_data, is_lvl=True)
 
-                if self.hps.do_save_tensorboard_images:
+                if hps.do_save_tensorboard_images:
                     self._update_tensorboard_images()
 
-                if self.hps.do_save_lvl_visualizations:
+                if hps.do_save_lvl_visualizations:
                     self.save_visualizations()
 
                 self._maybe_print_visualizations_timing()
 
             else:
                 raise Warning('Attempted to generate LVL visualizations, '
-                    'but cannot because no LVL model checkpoint was saved.')
+                    'but cannot because LVL model could not be found.')
 
-        if self.hps.do_log_output:
+        if hps.do_log_output:
             self._log_file.close()
 
             # Redirect all printing, errors, and warnings back to defaults
@@ -2315,9 +2343,9 @@ class RecurrentWhisperer(object):
     # Scalar access and updates ***********************************************
     # *************************************************************************
     #
-    # Convention: properties beginning with _ return numpy or python numeric
-    # types (e.g., _epoch, _lvl). The corresponding TF Variables are in
-    # self.records. See _setup_records().
+    # Convention: properties beginning with an underscore return numpy or 
+    # python numeric types (e.g., _epoch, _lvl). The corresponding TF 
+    # Variables are in self.records. See _setup_records().
 
     @property
     def trainable_variables(self):
@@ -2600,7 +2628,34 @@ class RecurrentWhisperer(object):
         print('')
 
     # *************************************************************************
-    # Saving ******************************************************************
+    # Loading hyperparameters *************************************************
+    # *************************************************************************
+    
+    @classmethod
+    def load_hyperparameters(cls, run_dir):
+        '''Load previously saved Hyperparameters.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            dict containing the loaded hyperparameters.
+        '''
+
+        paths = cls.get_paths(run_dir)
+
+        hps_path = paths['hps_path']
+
+        if os.path.exists(hps_path):
+            hps_dict = Hyperparameters.restore(hps_path)
+        else:
+            raise IOError('%s not found.' % hps_path)
+
+        return hps_dict
+
+    # *************************************************************************
+    # Saving: model checkpoints ***********************************************
     # *************************************************************************
 
     def _maybe_save_checkpoint(self):
@@ -2701,6 +2756,126 @@ class RecurrentWhisperer(object):
         ckpt_dir, ckpt_fname = os.path.split(ckpt_path)
         self.adaptive_learning_rate.save(ckpt_dir)
         self.adaptive_grad_norm_clip.save(ckpt_dir)
+
+    # *************************************************************************
+    # Loading and Restoring: model checkpoints ********************************
+    # *************************************************************************
+
+    @classmethod
+    def load_lvl_model(cls, run_dir, new_base_path=None):
+        ''' Load an LVL model given only the run directory, properly handling
+        subclassing.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            The desired model with restored LVL parameters.
+        '''
+
+        hps_dict = cls.load_hyperparameters(run_dir)
+
+        if new_base_path is not None:
+            # Handle loading a model that was saved on another system.
+            # This functionality is paused under development.
+            raise NotImplementedError()
+
+            local_log_dir = cls.update_dir_to_local_system(
+                hps_dict['log_dir'], new_base_path)
+            hps_dict['log_dir'] = local_log_dir
+
+        # Build model but don't initialize any parameters, 
+        # and don't restore from standard checkpoints.
+        hps_dict['do_custom_restore'] = True
+        hps_dict['do_log_output'] = False
+        model = cls(**hps_dict)
+
+        # Find and resotre parameters from lvl checkpoint
+        lvl_ckpt = tf.train.get_checkpoint_state(model.lvl_dir)
+        lvl_ckpt_path = lvl_ckpt.model_checkpoint_path
+
+        if new_base_path is not None:
+            lvl_ckpt_path = model.update_dir_to_local_system(
+                lvl_ckpt_path, new_base_path)
+
+        model.restore_from_lvl_checkpoint(model_checkpoint_path=lvl_ckpt_path)
+
+        return model
+
+    @classmethod
+    def exists_lvl_checkpoint(cls, run_dir):
+        paths = cls.get_paths(run_dir)
+        lvl_dir = paths['lvl_dir']
+        lvl_ckpt = tf.train.get_checkpoint_state(lvl_dir)
+        return lvl_ckpt is not None
+
+    def restore_from_lvl_checkpoint(self, model_checkpoint_path=None):
+        '''Restores a model from a previously saved lowest-validation-loss
+        checkpoint.
+
+        Args:
+            model_checkpoint_path (optional): string containing a path to
+            a model checkpoint. Use this as an override if needed for
+            loading models that were saved under a different directory
+            structure (e.g., on another machine).
+
+        Returns:
+            None.
+
+        Raises:
+            AssertionError if no lowest-validation-loss checkpoint exists.
+        '''
+        self._restore_from_checkpoint(self.savers['lvl'], self.lvl_dir, 
+            model_checkpoint_path=model_checkpoint_path)
+
+    def _restore_from_checkpoint(self, saver, ckpt_dir, 
+        model_checkpoint_path=None):
+        ''' Restores a model and relevant support structures from the most
+        advanced previously saved checkpoint. This includes restoring TF model
+        parameters, as well as adaptive learning rate (and history) and 
+        adaptive gradient clipping (and history).
+
+        Args:
+            saver: Tensorflow saver to use, generated via tf.train.Saver(...).
+
+            ckpt_dir: string containing the path to the directory containing
+            the checkpoint to be restored.
+
+            model_checkpoint_path (optional): string containing a path to
+            a model checkpoint. Use this as an override if needed for
+            loading models that were saved under a different directory
+            structure (e.g., on another machine). Default: automatically
+            find checkpoint path based on standard directory conventions.
+
+        Returns:
+            None.
+
+        Raises:
+            AssertionError if no checkpoint exists.
+        '''
+        if model_checkpoint_path is None:
+            ckpt = tf.train.get_checkpoint_state(ckpt_dir) # None if no ckpt
+            assert ckpt is not None, ('No checkpoint found in: %s' % ckpt_dir)
+            return self._restore_from_checkpoint(saver, ckpt_dir, 
+                model_checkpoint_path=ckpt.model_checkpoint_path)
+        else:
+            assert tf.train.checkpoint_exists(model_checkpoint_path),\
+                ('Checkpoint does not exist: %s' % model_checkpoint_path)
+            # This is what we came here for. 
+            print('Loading checkpoint: %s.'
+              % ntpath.basename(model_checkpoint_path))
+            saver.restore(self.session, model_checkpoint_path)
+            self.adaptive_learning_rate.restore(ckpt_dir)
+            self.adaptive_grad_norm_clip.restore(ckpt_dir)
+
+            # Resume training timer from value at last save.
+            self.train_time_offset = self.session.run(
+                self.records['ops']['train_time'])                  
+
+    # *************************************************************************
+    # Saving: predictions and summaries ***************************************
+    # *************************************************************************
 
     def _maybe_save_lvl_predictions(self, predictions, train_or_valid_str):
         '''Saves all model predictions in .pkl files (and optionally in .mat
@@ -2829,15 +3004,15 @@ class RecurrentWhisperer(object):
         spio.savemat(save_path, data_to_save)
 
     # *************************************************************************
-    # Loading and Restoring ***************************************************
+    # Loading and Restoring: predictions and summaries ************************
     # *************************************************************************
 
-    @staticmethod
-    def exists_lvl_train_predictions(run_dir):
-        return RecurrentWhisperer._exists_lvl(run_dir, 'train', 'predictions')
+    @classmethod
+    def exists_lvl_train_predictions(cls, run_dir):
+        return cls._exists_lvl(run_dir, 'train', 'predictions')
 
-    @staticmethod
-    def load_lvl_train_predictions(run_dir):
+    @classmethod
+    def load_lvl_train_predictions(cls, run_dir):
         '''Loads all model predictions made over the training data by the lvl
         model.
 
@@ -2848,15 +3023,15 @@ class RecurrentWhisperer(object):
         Returns:
             dict containing saved predictions.
         '''
-        return RecurrentWhisperer._load_lvl_helper(
+        return cls._load_lvl_helper(
             run_dir, 'train', 'predictions')
 
-    @staticmethod
-    def exists_lvl_train_summary(run_dir):
-        return RecurrentWhisperer._exists_lvl(run_dir, 'train', 'summary')
+    @classmethod
+    def exists_lvl_train_summary(cls, run_dir):
+        return cls._exists_lvl(run_dir, 'train', 'summary')
 
-    @staticmethod
-    def load_lvl_train_summary(run_dir):
+    @classmethod
+    def load_lvl_train_summary(cls, run_dir):
         '''Loads summary of the model predictions made over the training data
         by the lvl model.
 
@@ -2867,15 +3042,14 @@ class RecurrentWhisperer(object):
         Returns:
             dict containing saved summaries.
         '''
-        return RecurrentWhisperer._load_lvl_helper(
-            run_dir, 'train', 'summary')
+        return cls._load_lvl_helper(run_dir, 'train', 'summary')
 
-    @staticmethod
-    def exists_lvl_valid_predictions(run_dir):
-        return RecurrentWhisperer._exists_lvl(run_dir, 'valid', 'predictions')
+    @classmethod
+    def exists_lvl_valid_predictions(cls, run_dir):
+        return cls._exists_lvl(run_dir, 'valid', 'predictions')
 
-    @staticmethod
-    def load_lvl_valid_predictions(run_dir):
+    @classmethod
+    def load_lvl_valid_predictions(cls, run_dir):
         '''Loads all model predictions from train_predictions.pkl.
 
         Args:
@@ -2888,15 +3062,14 @@ class RecurrentWhisperer(object):
                 lvl model.
         '''
 
-        return RecurrentWhisperer._load_lvl_helper(
-            run_dir, 'valid', 'predictions')
+        return cls._load_lvl_helper(run_dir, 'valid', 'predictions')
 
-    @staticmethod
-    def exists_lvl_valid_summary(run_dir):
-        return RecurrentWhisperer._exists_lvl(run_dir, 'valid', 'summary')
+    @classmethod
+    def exists_lvl_valid_summary(cls, run_dir):
+        return cls._exists_lvl(run_dir, 'valid', 'summary')
 
-    @staticmethod
-    def load_lvl_valid_summary(run_dir):
+    @classmethod
+    def load_lvl_valid_summary(cls, run_dir):
         '''Loads summary of the model predictions made over the validation
          data by the lvl model.
 
@@ -2907,144 +3080,13 @@ class RecurrentWhisperer(object):
         Returns:
             dict containing saved summaries.
         '''
-        return RecurrentWhisperer._load_lvl_helper(
-            run_dir, 'valid', 'summary')
+        return cls._load_lvl_helper(run_dir, 'valid', 'summary')
 
     @classmethod
-    def load_lvl_model(cls, run_dir, new_base_path=None):
-        ''' Load an LVL model given only the run directory, properly handling
-        subclassing.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-        Returns:
-            The desired model with restored LVL parameters.
-        '''
-
-        hps_dict = cls.load_hyperparameters(run_dir)
-
-        if new_base_path is not None:
-            # Handle loading a model that was saved on another system.
-            # This functionality is still under development.
-            raise NotImplementedError()
-
-            local_log_dir = cls.update_dir_to_local_system(
-                hps_dict['log_dir'], new_base_path)
-            hps_dict['log_dir'] = local_log_dir
-
-        hps_dict['do_custom_restore'] = True
-        hps_dict['do_log_output'] = False
-        model = cls(**hps_dict)
-
-        lvl_ckpt = tf.train.get_checkpoint_state(model.lvl_dir)
-        lvl_ckpt_path = lvl_ckpt.model_checkpoint_path
-
-        if new_base_path is not None:
-            lvl_ckpt_path = model.update_dir_to_local_system(
-                lvl_ckpt_path, new_base_path)
-
-        model.restore_from_lvl_checkpoint(model_checkpoint_path=lvl_ckpt_path)
-
-        return model
-
-    @staticmethod
-    def load_hyperparameters(run_dir):
-        '''Load previously saved Hyperparameters.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-        Returns:
-            dict containing the loaded hyperparameters.
-        '''
-
-        paths = RecurrentWhisperer.get_paths(run_dir)
-
-        hps_path = paths['hps_path']
-
-        if os.path.exists(hps_path):
-            hps_dict = Hyperparameters.restore(hps_path)
-        else:
-            raise IOError('%s not found.' % hps_path)
-
-        return hps_dict
-
-    def _restore(self, saver, ckpt_dir, model_checkpoint_path):
-        '''
-        COMMENTS NEED UPDATING
-        '''
-        saver.restore(self.session, model_checkpoint_path)
-        self.adaptive_learning_rate.restore(ckpt_dir)
-        self.adaptive_grad_norm_clip.restore(ckpt_dir)
-
-        # Resume training timer from value at last save.
-        self.train_time_offset = self.session.run(
-            self.records['ops']['train_time'])
-
-    def restore_from_lvl_checkpoint(self, model_checkpoint_path=None):
-        '''Restores a model from a previously saved lowest-validation-loss
-        checkpoint.
-
-        Args:
-            model_checkpoint_path (optional): string containing a path to
-            a model checkpoint. Use this as an override if needed for
-            loading models that were saved under a different directory
-            structure (e.g., on another machine).
-
-        Returns:
-            None.
-
-        Raises:
-            FileNotFoundError (if no lowest-validation-loss checkpoint exists).
-        '''
-
-        if model_checkpoint_path is None:
-            lvl_ckpt = tf.train.get_checkpoint_state(self.lvl_dir)
-            model_checkpoint_path = lvl_ckpt.model_checkpoint_path
-
-        if not(tf.train.checkpoint_exists(model_checkpoint_path)):
-            raise FileNotFoundError('Checkpoint does not exist: %s'
-                                    % model_checkpoint_path)
-
-        # Restore previous session
-        print('\tLoading lvl checkpoint: %s.'
-              % ntpath.basename(model_checkpoint_path))
-        self._restore(self.savers['lvl'], self.lvl_dir, model_checkpoint_path)
-
-    def _restore_from_checkpoint(self, saver, ckpt_dir):
-        '''Restores a model from the most advanced previously saved model
-        checkpoint.
-
-        Note that the hyperparameters files are not updated from their original
-        form. This can become relevant if restoring a model and resuming
-        training using updated values of non-hash hyperparameters.
-
-        Args:
-            saver: Tensorflow saver to use, generated via tf.train.Saver(...).
-
-            ckpt_dir: string containing the path to the directory containing
-            the checkpoint to be restored.
-
-        Returns:
-            None.
-        '''
-        ckpt = tf.train.get_checkpoint_state(ckpt_dir)
-        if not(tf.train.checkpoint_exists(ckpt.model_checkpoint_path)):
-            raise FileNotFoundError('Checkpoint does not exist: %s'
-                                    % ckpt.model_checkpoint_path)
-
-        # Restore previous session
-        print('Previous checkpoints found.')
-        print('Loading latest checkpoint: %s.'
-              % ntpath.basename(ckpt.model_checkpoint_path))
-        self._restore(
-            saver, ckpt_dir, ckpt.model_checkpoint_path)
-
-    @staticmethod
-    def _get_lvl_path(run_dir, train_or_valid_str, predictions_or_summary_str):
+    def _get_lvl_path(cls, 
+        run_dir, 
+        train_or_valid_str, 
+        predictions_or_summary_str):
         ''' Builds paths to the various files saved when the model achieves a
         new lowest validation loss (lvl).
 
@@ -3064,15 +3106,15 @@ class RecurrentWhisperer(object):
             string containing the path to the desired file.
         '''
 
-        paths = RecurrentWhisperer.get_paths(run_dir)
+        paths = cls.get_paths(run_dir)
         filename = train_or_valid_str + '_' + \
             predictions_or_summary_str + '.pkl'
         path_to_file = os.path.join(paths['lvl_dir'], filename)
 
         return path_to_file
 
-    @staticmethod
-    def _load_lvl_helper(
+    @classmethod
+    def _load_lvl_helper(cls,
         run_dir,
         train_or_valid_str,
         predictions_or_summary_str):
@@ -3094,13 +3136,13 @@ class RecurrentWhisperer(object):
             dict containing saved data.
         '''
 
-        path_to_file = RecurrentWhisperer._get_lvl_path(
+        path_to_file = cls._get_lvl_path(
             run_dir, train_or_valid_str, predictions_or_summary_str)
 
-        return RecurrentWhisperer._load_pkl(path_to_file)
+        return cls._load_pkl(path_to_file)
 
-    @staticmethod
-    def _exists_lvl(
+    @classmethod
+    def _exists_lvl(cls,
         run_dir,
         train_or_valid_str,
         predictions_or_summary_str):
@@ -3122,7 +3164,7 @@ class RecurrentWhisperer(object):
             True if the lvl file exists.
         '''
 
-        path_to_file = RecurrentWhisperer._get_lvl_path(
+        path_to_file = cls._get_lvl_path(
             run_dir, train_or_valid_str, predictions_or_summary_str)
 
         return os.path.exists(path_to_file)
