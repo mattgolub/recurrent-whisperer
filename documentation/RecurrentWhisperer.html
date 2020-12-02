@@ -73,20 +73,24 @@ saved&nbsp;models&nbsp;can&nbsp;be&nbsp;readily&nbsp;restored&nbsp;from&nbsp;che
 can&nbsp;be&nbsp;readily&nbsp;resumed&nbsp;if&nbsp;their&nbsp;execution&nbsp;was&nbsp;interrupted&nbsp;or&nbsp;preempted.<br>
 &nbsp;<br>
 Subclasses&nbsp;inheriting&nbsp;from&nbsp;<a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;must&nbsp;implement&nbsp;the&nbsp;following<br>
-functions&nbsp;(see&nbsp;definitions&nbsp;at&nbsp;the&nbsp;end&nbsp;of&nbsp;this&nbsp;file&nbsp;for&nbsp;call&nbsp;signatures):<br>
+functions&nbsp;(see&nbsp;docstrings&nbsp;in&nbsp;the&nbsp;corresponding&nbsp;function&nbsp;prototypes&nbsp;<br>
+throughout&nbsp;this&nbsp;file):<br>
 &nbsp;<br>
 _default_hash_hyperparameters()<br>
 _default_non_hash_hyperparameters()<br>
 _setup_model(...)<br>
-_setup_training(...)<br>
 _train_batch(...)<br>
 _predict_batch(...)<br>
 _get_batch_size(...)<br>
-_split_data_into_batches(...)<br>
 _subselect_batch(...)<br>
-_combine_prediction_batches(...)<br>
+&nbsp;<br>
+Required&nbsp;only&nbsp;if&nbsp;calling&nbsp;<a href="#RecurrentWhisperer-predict">predict</a>(data,&nbsp;do_batch=True):<br>
+_combine_prediction_batches(...)&nbsp;<br>
+&nbsp;<br>
+Not&nbsp;required,&nbsp;but&nbsp;helpful&nbsp;in&nbsp;some&nbsp;cases:<br>
+_setup_training(...)<br>
 _update_valid_tensorboard_summaries<br>
-_update_visualization(...)<br>&nbsp;</tt></td></tr>
+<a href="#RecurrentWhisperer-update_visualizations">update_visualizations</a>(...)<br>&nbsp;</tt></td></tr>
 <tr><td>&nbsp;</td>
 <td width="100%">Methods defined here:<br>
 <dl><dt><a name="RecurrentWhisperer-__init__"><strong>__init__</strong></a>(self, **kwargs)</dt><dd><tt>Creates&nbsp;a&nbsp;<a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;<a href="__builtin__.html#object">object</a>.<br>
@@ -190,6 +194,12 @@ Args:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;checkpoints&nbsp;specifically&nbsp;when&nbsp;a&nbsp;new&nbsp;lowest&nbsp;validation&nbsp;loss&nbsp;is<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;achieved.&nbsp;Default:&nbsp;True.<br>
 &nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;fig_format:&nbsp;string&nbsp;indicating&nbsp;the&nbsp;saved&nbsp;figure&nbsp;type&nbsp;(i.e.,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;file&nbsp;extension).&nbsp;See&nbsp;matplotlib.pyplot.figure.savefig().&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Default:&nbsp;'pdf'.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;fig_dpi:&nbsp;dots&nbsp;per&nbsp;inch&nbsp;for&nbsp;saved&nbsp;figures.&nbsp;Default:&nbsp;600.<br>
+&nbsp;<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_generate_training_visualizations:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;or<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;not&nbsp;to&nbsp;generate&nbsp;visualizations&nbsp;periodically&nbsp;throughout<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;training.&nbsp;Frequency&nbsp;is&nbsp;controlled&nbsp;by<br>
@@ -279,6 +289,11 @@ Args:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;data:&nbsp;dict&nbsp;containing&nbsp;requisite&nbsp;data&nbsp;for&nbsp;generating&nbsp;predictions.<br>
 &nbsp;&nbsp;&nbsp;&nbsp;Key/value&nbsp;pairs&nbsp;will&nbsp;be&nbsp;specific&nbsp;to&nbsp;the&nbsp;subclass&nbsp;implementation.<br>
 &nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;do_batch:&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;to&nbsp;split&nbsp;data&nbsp;into&nbsp;batches&nbsp;and&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;then&nbsp;sequentially&nbsp;process&nbsp;those&nbsp;batches.&nbsp;This&nbsp;can&nbsp;be&nbsp;important&nbsp;for<br>
+&nbsp;&nbsp;&nbsp;&nbsp;large&nbsp;models&nbsp;and/or&nbsp;large&nbsp;datasets&nbsp;relative&nbsp;to&nbsp;memory&nbsp;resources.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Default:&nbsp;False.<br>
+&nbsp;<br>
 Returns:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;predictions:&nbsp;dict&nbsp;containing&nbsp;model&nbsp;predictions&nbsp;based&nbsp;on&nbsp;data.&nbsp;Key/<br>
 &nbsp;&nbsp;&nbsp;&nbsp;value&nbsp;pairs&nbsp;will&nbsp;be&nbsp;specific&nbsp;to&nbsp;the&nbsp;subclass&nbsp;implementation.<br>
@@ -333,15 +348,14 @@ Returns:<br>
 Raises:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;FileNotFoundError&nbsp;(if&nbsp;no&nbsp;lowest-validation-loss&nbsp;checkpoint&nbsp;exists).</tt></dd></dl>
 
-<dl><dt><a name="RecurrentWhisperer-save_visualizations"><strong>save_visualizations</strong></a>(self, format<font color="#909090">='eps'</font>, dpi<font color="#909090">=600</font>)</dt><dd><tt>Saves&nbsp;individual&nbsp;figures&nbsp;to&nbsp;this&nbsp;run's&nbsp;figure&nbsp;directory.&nbsp;This&nbsp;is<br>
+<dl><dt><a name="RecurrentWhisperer-save_visualizations"><strong>save_visualizations</strong></a>(self)</dt><dd><tt>Saves&nbsp;individual&nbsp;figures&nbsp;to&nbsp;this&nbsp;run's&nbsp;figure&nbsp;directory.&nbsp;This&nbsp;is<br>
 independent&nbsp;of&nbsp;Tensorboard&nbsp;Images.<br>
 &nbsp;<br>
 Args:<br>
-&nbsp;&nbsp;&nbsp;&nbsp;format:&nbsp;(optional)&nbsp;string&nbsp;indicating&nbsp;the&nbsp;saved&nbsp;figure&nbsp;type&nbsp;(i.e.,<br>
-&nbsp;&nbsp;&nbsp;&nbsp;file&nbsp;extension).&nbsp;See&nbsp;matplotlib.pyplot.figure.savefig().&nbsp;Default:<br>
-&nbsp;&nbsp;&nbsp;&nbsp;'eps'.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.<br>
 &nbsp;<br>
-&nbsp;&nbsp;&nbsp;&nbsp;dpi:&nbsp;(optional)&nbsp;dots&nbsp;per&nbsp;inch&nbsp;for&nbsp;saved&nbsp;figures.&nbsp;Default:&nbsp;600.</tt></dd></dl>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
 
 <dl><dt><a name="RecurrentWhisperer-train"><strong>train</strong></a>(self, train_data<font color="#909090">=None</font>, valid_data<font color="#909090">=None</font>)</dt><dd><tt>Trains&nbsp;the&nbsp;model,&nbsp;managing&nbsp;the&nbsp;following&nbsp;core&nbsp;tasks:<br>
 &nbsp;<br>
@@ -424,48 +438,40 @@ Returns:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
 
 <hr>
-Static methods defined here:<br>
-<dl><dt><a name="RecurrentWhisperer-default_hash_hyperparameters"><strong>default_hash_hyperparameters</strong></a>(subclass)</dt><dd><tt>Returns&nbsp;the&nbsp;dict&nbsp;of&nbsp;ALL&nbsp;(<a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;+&nbsp;subclass)<br>
+Class methods defined here:<br>
+<dl><dt><a name="RecurrentWhisperer-default_hash_hyperparameters"><strong>default_hash_hyperparameters</strong></a>(cls)<font color="#909090"><font face="helvetica, arial"> from <a href="__builtin__.html#type">__builtin__.type</a></font></font></dt><dd><tt>Returns&nbsp;the&nbsp;dict&nbsp;of&nbsp;ALL&nbsp;(<a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;+&nbsp;subclass)<br>
 hyperparameters&nbsp;that&nbsp;are&nbsp;included&nbsp;in&nbsp;the&nbsp;run&nbsp;hash.<br>
 &nbsp;<br>
 Args:<br>
-&nbsp;&nbsp;&nbsp;&nbsp;subclass:&nbsp;the&nbsp;__class__&nbsp;of&nbsp;the&nbsp;<a href="__builtin__.html#object">object</a>&nbsp;that&nbsp;inherits&nbsp;from<br>
-&nbsp;&nbsp;&nbsp;&nbsp;<a href="#RecurrentWhisperer">RecurrentWhisperer</a>.&nbsp;This&nbsp;provides&nbsp;static&nbsp;access&nbsp;to&nbsp;that&nbsp;subclass'<br>
-&nbsp;&nbsp;&nbsp;&nbsp;default&nbsp;hyperparameters.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.<br>
 &nbsp;<br>
 Returns:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;of&nbsp;hyperparameters.</tt></dd></dl>
 
-<dl><dt><a name="RecurrentWhisperer-default_hyperparameters"><strong>default_hyperparameters</strong></a>(subclass)</dt><dd><tt>Returns&nbsp;the&nbsp;dict&nbsp;of&nbsp;ALL&nbsp;(<a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;+&nbsp;subclass)<br>
+<dl><dt><a name="RecurrentWhisperer-default_hyperparameters"><strong>default_hyperparameters</strong></a>(cls)<font color="#909090"><font face="helvetica, arial"> from <a href="__builtin__.html#type">__builtin__.type</a></font></font></dt><dd><tt>Returns&nbsp;the&nbsp;dict&nbsp;of&nbsp;ALL&nbsp;(<a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;+&nbsp;subclass)<br>
 hyperparameters&nbsp;(both&nbsp;hash&nbsp;and&nbsp;non-hash).&nbsp;This&nbsp;is&nbsp;needed&nbsp;for<br>
 command-line&nbsp;argument&nbsp;parsing.<br>
 &nbsp;<br>
 Args:<br>
-&nbsp;&nbsp;&nbsp;&nbsp;subclass:&nbsp;the&nbsp;__class__&nbsp;of&nbsp;the&nbsp;<a href="__builtin__.html#object">object</a>&nbsp;that&nbsp;inherits&nbsp;from<br>
-&nbsp;&nbsp;&nbsp;&nbsp;<a href="#RecurrentWhisperer">RecurrentWhisperer</a>.&nbsp;This&nbsp;provides&nbsp;static&nbsp;access&nbsp;to&nbsp;that&nbsp;subclass'<br>
-&nbsp;&nbsp;&nbsp;&nbsp;default&nbsp;hyperparameters.<br>
-&nbsp;<br>
-Returns:<br>
-&nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;of&nbsp;hyperparameters.<br>
-&nbsp;<br>
-To&nbsp;Do:&nbsp;Convert&nbsp;this&nbsp;and&nbsp;related&nbsp;functions&nbsp;to&nbsp;@classmethod.</tt></dd></dl>
-
-<dl><dt><a name="RecurrentWhisperer-default_non_hash_hyperparameters"><strong>default_non_hash_hyperparameters</strong></a>(subclass)</dt><dd><tt>Returns&nbsp;the&nbsp;dict&nbsp;of&nbsp;ALL&nbsp;(<a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;+&nbsp;subclass)<br>
-hyperparameters&nbsp;that&nbsp;are&nbsp;NOT&nbsp;included&nbsp;in&nbsp;the&nbsp;run&nbsp;hash.<br>
-&nbsp;<br>
-Args:<br>
-&nbsp;&nbsp;&nbsp;&nbsp;subclass:&nbsp;the&nbsp;__class__&nbsp;of&nbsp;the&nbsp;<a href="__builtin__.html#object">object</a>&nbsp;that&nbsp;inherits&nbsp;from<br>
-&nbsp;&nbsp;&nbsp;&nbsp;<a href="#RecurrentWhisperer">RecurrentWhisperer</a>.&nbsp;This&nbsp;provides&nbsp;static&nbsp;access&nbsp;to&nbsp;that&nbsp;subclass'<br>
-&nbsp;&nbsp;&nbsp;&nbsp;default&nbsp;hyperparameters.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.<br>
 &nbsp;<br>
 Returns:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;of&nbsp;hyperparameters.</tt></dd></dl>
 
-<dl><dt><a name="RecurrentWhisperer-execute_command_line_call"><strong>execute_command_line_call</strong></a>(run_script, hp_dict<font color="#909090">={}</font>)</dt><dd><tt>Executes&nbsp;a&nbsp;command&nbsp;line&nbsp;call&nbsp;to&nbsp;a&nbsp;user-specified&nbsp;bash&nbsp;script&nbsp;with<br>
+<dl><dt><a name="RecurrentWhisperer-default_non_hash_hyperparameters"><strong>default_non_hash_hyperparameters</strong></a>(cls)<font color="#909090"><font face="helvetica, arial"> from <a href="__builtin__.html#type">__builtin__.type</a></font></font></dt><dd><tt>Returns&nbsp;the&nbsp;dict&nbsp;of&nbsp;ALL&nbsp;(<a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;+&nbsp;subclass)<br>
+hyperparameters&nbsp;that&nbsp;are&nbsp;NOT&nbsp;included&nbsp;in&nbsp;the&nbsp;run&nbsp;hash.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;None.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;of&nbsp;hyperparameters.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-execute_command_line_call"><strong>execute_command_line_call</strong></a>(cls, run_script, hp_dict<font color="#909090">={}</font>)<font color="#909090"><font face="helvetica, arial"> from <a href="__builtin__.html#type">__builtin__.type</a></font></font></dt><dd><tt>Executes&nbsp;a&nbsp;command&nbsp;line&nbsp;call&nbsp;to&nbsp;a&nbsp;user-specified&nbsp;shell&nbsp;script&nbsp;with<br>
 <a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;hyperparameters&nbsp;passed&nbsp;in&nbsp;as&nbsp;command-line&nbsp;arguments.<br>
 &nbsp;<br>
 Args:<br>
-&nbsp;&nbsp;&nbsp;&nbsp;run_script:&nbsp;string&nbsp;specifying&nbsp;the&nbsp;bash&nbsp;script&nbsp;call,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;run_script:&nbsp;string&nbsp;specifying&nbsp;the&nbsp;shell&nbsp;script&nbsp;call,<br>
 &nbsp;&nbsp;&nbsp;&nbsp;e.g.,&nbsp;'location/of/your/run_script.sh'<br>
 &nbsp;<br>
 &nbsp;&nbsp;&nbsp;&nbsp;hp_dict:&nbsp;(optional)&nbsp;dict&nbsp;containing&nbsp;any&nbsp;hps&nbsp;to&nbsp;override&nbsp;defaults.<br>
@@ -474,6 +480,22 @@ Args:<br>
 Returns:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
 
+<dl><dt><a name="RecurrentWhisperer-load_lvl_model"><strong>load_lvl_model</strong></a>(cls, run_dir, new_base_path<font color="#909090">=None</font>)<font color="#909090"><font face="helvetica, arial"> from <a href="__builtin__.html#type">__builtin__.type</a></font></font></dt><dd><tt>Load&nbsp;an&nbsp;LVL&nbsp;model&nbsp;given&nbsp;only&nbsp;the&nbsp;run&nbsp;directory,&nbsp;properly&nbsp;handling<br>
+subclassing.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;run_dir:&nbsp;string&nbsp;containing&nbsp;the&nbsp;path&nbsp;to&nbsp;the&nbsp;directory&nbsp;where&nbsp;the<br>
+&nbsp;&nbsp;&nbsp;&nbsp;model&nbsp;run&nbsp;was&nbsp;saved.&nbsp;See&nbsp;definition&nbsp;in&nbsp;<a href="#RecurrentWhisperer-__init__">__init__</a>()<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;desired&nbsp;model&nbsp;with&nbsp;restored&nbsp;LVL&nbsp;parameters.</tt></dd></dl>
+
+<dl><dt><a name="RecurrentWhisperer-setup_hps"><strong>setup_hps</strong></a>(cls, hps_dict)<font color="#909090"><font face="helvetica, arial"> from <a href="__builtin__.html#type">__builtin__.type</a></font></font></dt></dl>
+
+<dl><dt><a name="RecurrentWhisperer-write_shell_script"><strong>write_shell_script</strong></a>(cls, save_path, run_script, hp_dict)<font color="#909090"><font face="helvetica, arial"> from <a href="__builtin__.html#type">__builtin__.type</a></font></font></dt></dl>
+
+<hr>
+Static methods defined here:<br>
 <dl><dt><a name="RecurrentWhisperer-exists_lvl_train_predictions"><strong>exists_lvl_train_predictions</strong></a>(run_dir)</dt></dl>
 
 <dl><dt><a name="RecurrentWhisperer-exists_lvl_train_summary"><strong>exists_lvl_train_summary</strong></a>(run_dir)</dt></dl>
@@ -482,21 +504,20 @@ Returns:<br>
 
 <dl><dt><a name="RecurrentWhisperer-exists_lvl_valid_summary"><strong>exists_lvl_valid_summary</strong></a>(run_dir)</dt></dl>
 
-<dl><dt><a name="RecurrentWhisperer-get_command_line_call"><strong>get_command_line_call</strong></a>(run_script, hp_dict<font color="#909090">={}</font>, do_format_for_bash<font color="#909090">=False</font>)</dt><dd><tt>Generates&nbsp;a&nbsp;command&nbsp;line&nbsp;call&nbsp;to&nbsp;a&nbsp;user-specified&nbsp;bash&nbsp;script&nbsp;with<br>
+<dl><dt><a name="RecurrentWhisperer-get_command_line_call"><strong>get_command_line_call</strong></a>(run_script, hp_dict<font color="#909090">={}</font>, do_shell_format<font color="#909090">=False</font>, shell_delimiter<font color="#909090">=' <font color="#c040c0">\\\n</font>'</font>)</dt><dd><tt>Generates&nbsp;a&nbsp;command&nbsp;line&nbsp;call&nbsp;to&nbsp;a&nbsp;user-specified&nbsp;shell&nbsp;script&nbsp;with<br>
 <a href="#RecurrentWhisperer">RecurrentWhisperer</a>&nbsp;hyperparameters&nbsp;passed&nbsp;in&nbsp;as&nbsp;command-line&nbsp;arguments.<br>
-Can&nbsp;be&nbsp;formatted&nbsp;for&nbsp;execution&nbsp;within&nbsp;Python&nbsp;&nbsp;or&nbsp;from&nbsp;a&nbsp;terminal&nbsp;/<br>
-bash&nbsp;script.<br>
+Can&nbsp;be&nbsp;formatted&nbsp;for&nbsp;execution&nbsp;within&nbsp;Python&nbsp;or&nbsp;from&nbsp;a&nbsp;shell&nbsp;script.<br>
 &nbsp;<br>
 Args:<br>
-&nbsp;&nbsp;&nbsp;&nbsp;run_script:&nbsp;string&nbsp;specifying&nbsp;the&nbsp;bash&nbsp;script&nbsp;call,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;run_script:&nbsp;string&nbsp;specifying&nbsp;the&nbsp;shell&nbsp;script&nbsp;call,<br>
 &nbsp;&nbsp;&nbsp;&nbsp;e.g.,&nbsp;'location/of/your/run_script.sh'<br>
 &nbsp;<br>
 &nbsp;&nbsp;&nbsp;&nbsp;hp_dict:&nbsp;(optional)&nbsp;dict&nbsp;containing&nbsp;any&nbsp;hps&nbsp;to&nbsp;override&nbsp;defaults.<br>
 &nbsp;&nbsp;&nbsp;&nbsp;Default:&nbsp;{}<br>
 &nbsp;<br>
-&nbsp;&nbsp;&nbsp;&nbsp;do_format_for_bash:&nbsp;(optional)&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;to&nbsp;return<br>
+&nbsp;&nbsp;&nbsp;&nbsp;do_format_for_shell:&nbsp;(optional)&nbsp;bool&nbsp;indicating&nbsp;whether&nbsp;to&nbsp;return<br>
 &nbsp;&nbsp;&nbsp;&nbsp;the&nbsp;command-line&nbsp;call&nbsp;as&nbsp;a&nbsp;string&nbsp;(for&nbsp;writing&nbsp;into&nbsp;a&nbsp;higher-level<br>
-&nbsp;&nbsp;&nbsp;&nbsp;bash&nbsp;script;&nbsp;for&nbsp;copying&nbsp;into&nbsp;a&nbsp;terminal).&nbsp;Default:&nbsp;False&nbsp;(see<br>
+&nbsp;&nbsp;&nbsp;&nbsp;shell&nbsp;script;&nbsp;for&nbsp;copying&nbsp;into&nbsp;a&nbsp;terminal).&nbsp;Default:&nbsp;False&nbsp;(see<br>
 &nbsp;&nbsp;&nbsp;&nbsp;below).<br>
 &nbsp;<br>
 Returns:<br>
@@ -504,8 +525,8 @@ Returns:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;cmd_list:&nbsp;a&nbsp;list&nbsp;that&nbsp;is&nbsp;interpretable&nbsp;by&nbsp;subprocess.call:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;subprocess.call(cmd_list)<br>
 &nbsp;<br>
-&nbsp;&nbsp;&nbsp;&nbsp;do_format_for_bash&nbsp;==&nbsp;True:<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;cmd_str:&nbsp;a&nbsp;string&nbsp;(suitable&nbsp;for&nbsp;placing&nbsp;in&nbsp;a&nbsp;bash&nbsp;script&nbsp;or<br>
+&nbsp;&nbsp;&nbsp;&nbsp;do_shell_format&nbsp;==&nbsp;True:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;cmd_str:&nbsp;a&nbsp;string&nbsp;(suitable&nbsp;for&nbsp;placing&nbsp;in&nbsp;a&nbsp;shell&nbsp;script&nbsp;or<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;copying&nbsp;into&nbsp;a&nbsp;terminal&nbsp;.</tt></dd></dl>
 
 <dl><dt><a name="RecurrentWhisperer-get_hash_dir"><strong>get_hash_dir</strong></a>(log_dir, run_hash)</dt><dd><tt>Returns&nbsp;a&nbsp;path&nbsp;to&nbsp;the&nbsp;run_hash&nbsp;in&nbsp;the&nbsp;log_dir.<br>
@@ -559,7 +580,7 @@ Args:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;model&nbsp;run&nbsp;was&nbsp;saved.&nbsp;See&nbsp;definition&nbsp;in&nbsp;<a href="#RecurrentWhisperer-__init__">__init__</a>()<br>
 &nbsp;<br>
 Returns:<br>
-&nbsp;&nbsp;&nbsp;&nbsp;dict&nbsp;with&nbsp;each&nbsp;key&nbsp;being&nbsp;a&nbsp;dataset&nbsp;name&nbsp;and&nbsp;each&nbsp;value&nbsp;is&nbsp;the&nbsp;corresponding&nbsp;set&nbsp;of&nbsp;cross-validation&nbsp;runs&nbsp;performed&nbsp;on&nbsp;that&nbsp;dataset.&nbsp;Jointly,&nbsp;these&nbsp;key,&nbsp;val&nbsp;pairs&nbsp;can&nbsp;reconstruct&nbsp;all&nbsp;of&nbsp;the&nbsp;"leaves"&nbsp;of&nbsp;the&nbsp;cross&nbsp;validation&nbsp;runs&nbsp;by&nbsp;using&nbsp;<a href="#RecurrentWhisperer-get_run_dir">get_run_dir</a>(...).</tt></dd></dl>
+&nbsp;&nbsp;&nbsp;&nbsp;list&nbsp;of&nbsp;cross-validation&nbsp;runs&nbsp;(folder&nbsp;names)&nbsp;found&nbsp;in&nbsp;run_dir.</tt></dd></dl>
 
 <dl><dt><a name="RecurrentWhisperer-is_done"><strong>is_done</strong></a>(run_dir)</dt><dd><tt>Determines&nbsp;whether&nbsp;a&nbsp;run&nbsp;exists&nbsp;in&nbsp;the&nbsp;filesystem&nbsp;and&nbsp;has&nbsp;run&nbsp;to<br>
 completion.<br>
@@ -638,8 +659,6 @@ Args:<br>
 Returns:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
 
-<dl><dt><a name="RecurrentWhisperer-setup_hps"><strong>setup_hps</strong></a>(hps_dict, subclass)</dt></dl>
-
 <hr>
 Data descriptors defined here:<br>
 <dl><dt><strong>__dict__</strong></dt>
@@ -647,6 +666,8 @@ Data descriptors defined here:<br>
 </dl>
 <dl><dt><strong>__weakref__</strong></dt>
 <dd><tt>list&nbsp;of&nbsp;weak&nbsp;references&nbsp;to&nbsp;the&nbsp;object&nbsp;(if&nbsp;defined)</tt></dd>
+</dl>
+<dl><dt><strong>n_figs</strong></dt>
 </dl>
 <dl><dt><strong>n_params</strong></dt>
 <dd><tt>Counts&nbsp;the&nbsp;number&nbsp;of&nbsp;trainable&nbsp;parameters&nbsp;in&nbsp;a&nbsp;Tensorflow&nbsp;model<br>
