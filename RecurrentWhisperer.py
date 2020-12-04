@@ -172,7 +172,7 @@ class RecurrentWhisperer(object):
                 save visualizations to Tensorboard Images. Default: True.
 
                 do_save_ckpt: bool indicating whether or not to save model
-                checkpoints. Needed because setting max_ckpt_to_keep=0 results
+                checkpoints. Needed because setting max_seso_ckpt_to_keep=0 results
                 in TF never deleting checkpoints. Default: True.
 
                 do_save_lvl_ckpt: bool indicating whether or not to save model
@@ -223,7 +223,7 @@ class RecurrentWhisperer(object):
                 Regardless of this setting, .pkl files are saved. Default:
                 False.
 
-                max_ckpt_to_keep: int specifying the maximum number of 
+                max_seso_ckpt_to_keep: int specifying the maximum number of 
                 save-every-so-often model checkpoints to keep around. 
                 Default: 1.
 
@@ -251,6 +251,9 @@ class RecurrentWhisperer(object):
                 device_id: Nonnegative integer specifying the CPU core ID
                 (for device_type: 'cpu') or GPU ID (for device_type: 'gpu') of 
                 the specific local hardware device to be used for this model.
+
+                cpu_device_id: Nonnegative integer specifying the ID of the 
+                CPU core to be used for CPU-only operations. Default: 0.
 
                 per_process_gpu_memory_fraction: float specifying the maximum
                 fraction of GPU memory to allocate. Set to None to allow
@@ -303,14 +306,15 @@ class RecurrentWhisperer(object):
             do_retrospective=True)
         self.timer.start()
 
-        self._setup_device()
-        with tf.device(self.device):
+        self._setup_devices()
+        
+        with tf.variable_scope(hps.name, reuse=tf.AUTO_REUSE):
 
-            with tf.variable_scope(hps.name, reuse=tf.AUTO_REUSE):
-
+            with tf.device(self.cpu_device):
                 self._setup_records()
                 self.timer.split('_setup_records')
 
+            with tf.device(self.device):
                 self._setup_model()
                 self.timer.split('_setup_model')
 
@@ -479,7 +483,7 @@ class RecurrentWhisperer(object):
             'do_save_lvl_valid_summaries': True,
             'do_save_lvl_mat_files': False,
 
-            'max_ckpt_to_keep': 1,
+            'max_seso_ckpt_to_keep': 1,
             'max_ltl_ckpt_to_keep': 1,
             'max_lvl_ckpt_to_keep': 1,
 
@@ -489,6 +493,7 @@ class RecurrentWhisperer(object):
 
             'device_type': 'gpu',
             'device_id': 0,
+            'cpu_device_id': 0,
             'per_process_gpu_memory_fraction': 1.0,
             'disable_gpus': False,
             'allow_gpu_growth': True,
@@ -1052,10 +1057,12 @@ class RecurrentWhisperer(object):
         return (op, ph, update_op, 
             epoch_last_improvement, epoch_ph, update_epoch)
 
-    def _setup_device(self):
-        ''' Select the hardware device to use for this model.
+    def _setup_devices(self):
+        ''' Select the hardware devices to use for this model.
 
-        This creates attribute: device, e.g., : 'gpu:0'
+        This creates attributes:
+            self.device, e.g., : 'gpu:0'
+            self.cpu_device, e.g., : 'cpu:0'
 
         Args:
             None.
@@ -1079,6 +1086,12 @@ class RecurrentWhisperer(object):
 
         self.device = '%s:%d' % (device_type, self.hps.device_id)
         print('Attempting to build TF model on %s\n' % self.device)
+
+        ''' Some simple ops (e.g., tf.assign, tf.assign_add) must be placed on 
+        a CPU device. Instructing otherwise just ellicits warnings and 
+        overrides (at least in TF<=1.15).'''
+        self.cpu_device = 'cpu:%d' % self.hps.cpu_device_id
+        print('Placing CPU-only ops on %s\n' % self.cpu_device)
 
     def _setup_model(self):
         '''Defines the Tensorflow model including:
@@ -1170,7 +1183,7 @@ class RecurrentWhisperer(object):
 
         # save every so often
         self.savers['seso'] = tf.train.Saver(
-            tf.global_variables(), max_to_keep=self.hps.max_ckpt_to_keep)
+            tf.global_variables(), max_to_keep=self.hps.max_seso_ckpt_to_keep)
 
         # lowest training loss
         self.savers['ltl'] = tf.train.Saver(
