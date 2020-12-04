@@ -87,9 +87,9 @@ class RecurrentWhisperer(object):
             learning rate), and those that do not (e.g., logging preferences).
             Those in the former category are hashed to yield a unique run
             directory for saving checkpoints, Tensorboard events, etc. Those
-            in the latter category are included in this hash so that one can
-            more readily interact with a training run without requiring a
-            complete restart (e.g., change printing or visualization
+            in the latter category do not affect this hash so that one can
+            more readily interact with a training run without retraining a 
+            model from scratch (e.g., change printing or visualization
             preferences; change optimization termination criteria).
 
                 See also:
@@ -223,11 +223,16 @@ class RecurrentWhisperer(object):
                 Regardless of this setting, .pkl files are saved. Default:
                 False.
 
-                max_ckpt_to_keep: int specifying the maximum number of model
-                checkpoints to keep around. Default: 1.
+                max_ckpt_to_keep: int specifying the maximum number of 
+                save-every-so-often model checkpoints to keep around. 
+                Default: 1.
+
+                max_ltl_ckpt_to_keep: int specifying the maximum number
+                of lowest-training-loss (ltl) checkpoints to maintain.
+                Default: 1.
 
                 max_lvl_ckpt_to_keep: int specifying the maximum number
-                of lowest validation loss (lvl) checkpoints to maintain.
+                of lowest-validation-loss (lvl) checkpoints to maintain.
                 Default: 1.
 
                 n_epochs_per_ckpt: int specifying the number of epochs between
@@ -475,6 +480,7 @@ class RecurrentWhisperer(object):
             'do_save_lvl_mat_files': False,
 
             'max_ckpt_to_keep': 1,
+            'max_ltl_ckpt_to_keep': 1,
             'max_lvl_ckpt_to_keep': 1,
 
             'n_epochs_per_ckpt': 100,
@@ -648,6 +654,7 @@ class RecurrentWhisperer(object):
 
         hps_dir = os.path.join(run_dir, 'hps')
         ckpt_dir = os.path.join(run_dir, 'ckpt')
+        ltl_dir = os.path.join(run_dir, 'ltl')
         lvl_dir = os.path.join(run_dir, 'lvl')
         events_dir = os.path.join(run_dir, 'events')
         fig_dir = os.path.join(run_dir, 'figs')
@@ -668,6 +675,9 @@ class RecurrentWhisperer(object):
 
             'ckpt_dir': ckpt_dir,
             'ckpt_path': os.path.join(ckpt_dir, 'checkpoint.ckpt'),
+
+            'ltl_dir': ltl_dir,
+            'ltl_ckpt_path': os.path.join(lvl_dir, 'ltl.ckpt'),
 
             'lvl_dir': lvl_dir,
             'lvl_ckpt_path': os.path.join(lvl_dir, 'lvl.ckpt'),
@@ -823,34 +833,6 @@ class RecurrentWhisperer(object):
     # Setup *******************************************************************
     # *************************************************************************
 
-    def _setup_device(self):
-        ''' Select the hardware device to use for this model.
-
-        This creates attribute: device, e.g., : 'gpu:0'
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        '''
-
-        device_type = self.hps.device_type
-        device_id = self.hps.device_id
-
-        assert device_type in ['cpu', 'gpu'], \
-            'Unsupported device_type: %s' % str(device_type)
-
-        if device_type == 'gpu':
-            if 'CUDA_VISIBLE_DEVICES' in os.environ:
-                cuda_devices = os.environ['CUDA_VISIBLE_DEVICES']
-            else:
-                cuda_devices = ''
-            print('\n\nCUDA_VISIBLE_DEVICES: %s' % cuda_devices)
-
-        self.device = '%s:%d' % (device_type, self.hps.device_id)
-        print('Attempting to build TF model on %s\n' % self.device)
-
     def _setup_run_dir(self):
         '''Sets up a directory for this training run. The directory name is
         derived from a hash of the hyperparameter settings. Subdirectories are
@@ -882,8 +864,12 @@ class RecurrentWhisperer(object):
         self.ckpt_dir = paths['ckpt_dir']
         self.ckpt_path = paths['ckpt_path']
 
+        self.ltl_dir = paths['ltl_dir']
+        self.ltl_ckpt_path = paths['ltl_ckpt_path']
+        
         self.lvl_dir = paths['lvl_dir']
         self.lvl_ckpt_path = paths['lvl_ckpt_path']
+
         self.done_path = paths['done_path']
         self.model_log_path = paths['model_log_path']
         self.loggers_log_path = paths['loggers_log_path']
@@ -1009,36 +995,22 @@ class RecurrentWhisperer(object):
                 dtype=tf.int32)
 
             # lowest validation loss
-            ops['lvl'] = tf.Variable(np.inf,
-                name='lvl',
-                trainable=False,
-                dtype=self.dtype)
-            placeholders['lvl'] = tf.placeholder(self.dtype,
-                name='lvl')
-            update_ops['lvl'] = tf.assign(ops['lvl'], placeholders['lvl'],
-                name='update_lvl')
-
-            ops['epoch_last_lvl_improvement'] = tf.Variable(0,
-                name='epoch_last_lvl_improvement',
-                trainable=False,
-                dtype=tf.int32)
-            placeholders['epoch_last_lvl_improvement'] = tf.placeholder(
-                tf.int32,
-                name='epoch_last_lvl_improvement')
-            update_ops['epoch_last_lvl_improvement'] = tf.assign(
-                ops['epoch_last_lvl_improvement'],
-                placeholders['epoch_last_lvl_improvement'],
-                name='update_epoch_last_lvl_improvement')
+            (ops['lvl'],
+            placeholders['lvl'],
+            update_ops['lvl'],
+            ops['epoch_last_lvl_improvement'],
+            placeholders['epoch_last_lvl_improvement'],
+            update_ops['epoch_last_lvl_improvement']) = \
+                self._setup_loss_records('lvl')
 
             # lowest training loss
-            ops['ltl'] = tf.Variable(np.inf,
-                name='ltl',
-                trainable=False,
-                dtype=self.dtype)
-            placeholders['ltl'] = tf.placeholder(
-                self.dtype, name='lowest_training_loss')
-            update_ops['ltl'] = tf.assign(ops['ltl'], placeholders['ltl'],
-                name='update_ltl')
+            (ops['ltl'],
+            placeholders['ltl'],
+            update_ops['ltl'],
+            ops['epoch_last_ltl_improvement'],
+            placeholders['epoch_last_ltl_improvement'],
+            update_ops['epoch_last_ltl_improvement']) = \
+                self._setup_loss_records('ltl')
 
         self.records = {
             'ops': ops,
@@ -1046,6 +1018,67 @@ class RecurrentWhisperer(object):
             'update_ops': update_ops,
             'increment_ops': increment_ops
             }
+
+    def _setup_loss_records(self, version):
+        ''' Helper function for building auxilliary TF data for maintaining 
+        state about loss values and history.
+
+        Args:
+            version: 'ltl' or 'lvl'.
+
+        Returns:
+            A lot.
+        '''
+        self._assert_version_is_ltl_or_lvl(version)
+
+        op = tf.Variable(
+            np.inf, name=version, trainable=False, dtype=self.dtype)
+        
+        ph = tf.placeholder(self.dtype, name=version)
+        
+        update_op = tf.assign(op, ph, name='update_%s' % version)
+
+        epoch_last_improvement = tf.Variable(0,
+            name='epoch_last_%s_improvement' % version,
+            trainable=False,
+            dtype=tf.int32)
+        
+        epoch_ph = tf.placeholder(
+            tf.int32, name='epoch_last_%s_improvement' % version)
+        
+        update_epoch = tf.assign(epoch_last_improvement, epoch_ph,
+            name='update_epoch_last_%s_improvement' % version)
+
+        return (op, ph, update_op, 
+            epoch_last_improvement, epoch_ph, update_epoch)
+
+    def _setup_device(self):
+        ''' Select the hardware device to use for this model.
+
+        This creates attribute: device, e.g., : 'gpu:0'
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+
+        device_type = self.hps.device_type
+        device_id = self.hps.device_id
+
+        assert device_type in ['cpu', 'gpu'], \
+            'Unsupported device_type: %s' % str(device_type)
+
+        if device_type == 'gpu':
+            if 'CUDA_VISIBLE_DEVICES' in os.environ:
+                cuda_devices = os.environ['CUDA_VISIBLE_DEVICES']
+            else:
+                cuda_devices = ''
+            print('\n\nCUDA_VISIBLE_DEVICES: %s' % cuda_devices)
+
+        self.device = '%s:%d' % (device_type, self.hps.device_id)
+        print('Attempting to build TF model on %s\n' % self.device)
 
     def _setup_model(self):
         '''Defines the Tensorflow model including:
@@ -1138,6 +1171,10 @@ class RecurrentWhisperer(object):
         # save every so often
         self.savers['seso'] = tf.train.Saver(
             tf.global_variables(), max_to_keep=self.hps.max_ckpt_to_keep)
+
+        # lowest training loss
+        self.savers['ltl'] = tf.train.Saver(
+            tf.global_variables(), max_to_keep=self.hps.max_ltl_ckpt_to_keep)
 
         # lowest validation loss
         self.savers['lvl'] = tf.train.Saver(
@@ -1541,7 +1578,7 @@ class RecurrentWhisperer(object):
         self.timer.split('_setup_training')
 
         # Visualizations generated from untrained network
-        self._maybe_update_training_visualizations(train_data, valid_data)
+        self._maybe_update_visualizations(train_data, valid_data)
         self.timer.split('_init_visualizations')
 
         # Training loop
@@ -1576,12 +1613,12 @@ class RecurrentWhisperer(object):
 
             # *****************************************************************
 
-            self._maybe_update_training_visualizations(train_data, valid_data)
+            self._maybe_update_visualizations(train_data, valid_data)
             epoch_timer.split('visualize')
 
             # *****************************************************************
 
-            self._maybe_save_checkpoint()
+            self._maybe_save_seso_checkpoint()
             epoch_timer.split('save')
 
             # *****************************************************************
@@ -1642,7 +1679,7 @@ class RecurrentWhisperer(object):
 
         # Update lowest training loss (if applicable)
         if self.epoch_loss < self._ltl:
-            self._update_ltl(self.epoch_loss)
+            self._update_loss_records(self.epoch_loss, version='ltl')
 
         self.adaptive_learning_rate.update(self.epoch_loss)
 
@@ -1968,11 +2005,10 @@ class RecurrentWhisperer(object):
         predictions, summary = self.predict(valid_data)
         print('\tValidation loss: %.2e' % summary['loss'])
 
+        self._maybe_save_lvl_checkpoint(predictions, summary, train_data)
+
         if self.hps.do_save_tensorboard_summaries:
             self._update_valid_tensorboard_summaries(summary)
-
-        self._maybe_save_lvl_checkpoint(
-            summary['loss'], train_data, valid_data)
 
     @staticmethod
     def _compute_epoch_average(batch_summaries, key):
@@ -2108,7 +2144,7 @@ class RecurrentWhisperer(object):
 
         # Save checkpoint upon completing training
         if hps.do_save_ckpt:
-            self._save_seso_checkpoint()
+            self._save_checkpoint(version='seso')
 
         # Save .done file. Critically placed after saving final checkpoint,
         # but before doing a bunch of other stuff that might fail. This way,
@@ -2131,7 +2167,7 @@ class RecurrentWhisperer(object):
             self._maybe_print_visualizations_timing()
 
         if hps.do_generate_lvl_visualizations and hps.do_save_lvl_ckpt:
-            if self.has_lvl_ckpt:
+            if self._exists_lvl_checkpoint:
                 # Generate LVL visualizations
                 print('\tGenerating visualizations from restored LVL model...')
                 self.restore_from_lvl_checkpoint()
@@ -2163,7 +2199,7 @@ class RecurrentWhisperer(object):
     # Visualizations **********************************************************
     # *************************************************************************
 
-    def _maybe_update_training_visualizations(self, train_data, valid_data):
+    def _maybe_update_visualizations(self, train_data, valid_data):
         '''Updates visualizations if the current epoch number indicates that
         an update is due. Saves those visualization to Tensorboard or to
         individual figure file, depending on hyperparameters
@@ -2360,39 +2396,49 @@ class RecurrentWhisperer(object):
         return tf.trainable_variables()
 
     @property
-    def _epoch(self):
-        '''Returns the number of training epochs taken thus far. An epoch is
-        typically defined as one pass through all training examples, possibly
-        using multiple batches (although this may depend on subclass-specific
-        implementation details).
+    def _ltl(self):
+        '''Returns the lowest training loss encountered thus far (i.e., across
+        an entire pass through the training data).
 
         Args:
             None.
 
         Returns:
-            epoch: int specifying the current epoch number.
+            ltl: float specifying the lowest training loss.
         '''
 
         # TO DO: remove "_" from definition
-        return self.session.run(self.records['ops']['epoch'])
-
-    def _increment_epoch(self):
-        self.session.run(self.records['increment_ops']['epoch'])
+        return self.session.run(self.records['ops']['ltl'])
 
     @property
-    def _epoch_last_lvl_improvement(self):
-        '''Returns the epoch of the most recent improvement to the lowest
-        validation loss.
+    def _lvl(self):
+        '''Returns the lowest validation loss encountered thus far during
+        training.
 
         Args:
             None.
 
         Returns:
-            int specifying the epoch number.
+            lvl: float specifying the lowest validation loss.
         '''
 
-        return self.session.run(
-            self.records['ops']['epoch_last_lvl_improvement'])
+        # TO DO: remove "_" from definition
+        return self.session.run(self.records['ops']['lvl'])
+
+    @property
+    def _train_time(self):
+        '''Returns the time elapsed during training, measured in seconds, and
+        accounting for restoring from previously saved runs.
+
+        Args:
+            None.
+
+        Returns:
+            float indicating time elapsed during training..
+        '''
+
+        # TO DO: remove "_" from definition
+        return self.train_time_offset + self.timer()
 
     @property
     def _step(self):
@@ -2411,94 +2457,54 @@ class RecurrentWhisperer(object):
         return self.session.run(self.records['ops']['global_step'])
 
     @property
-    def _lvl(self):
-        '''Returns the lowest validation loss encountered thus far during
-        training.
+    def _epoch(self):
+        '''Returns the number of training epochs taken thus far. An epoch is
+        typically defined as one pass through all training examples, possibly
+        using multiple batches (although this may depend on subclass-specific
+        implementation details).
 
         Args:
             None.
 
         Returns:
-            lvl: float specifying the lowest validation loss.
+            epoch: int specifying the current epoch number.
         '''
 
         # TO DO: remove "_" from definition
-        return self.session.run(self.records['ops']['lvl'])
-
-    def _update_lvl(self, lvl, epoch=None):
-        ''' Updates the lowest validation loss and the epoch of this
-        improvement.
-
-        Args:
-            lvl: A numpy scalar value indicating the (new) lowest validation
-            loss.
-
-            epoch (optional): Numpy scalar indicating the epoch of this
-            improvement. Default: the current epoch.
-
-        Returns:
-            None.
-        '''
-
-        # Not Tensorflow
-        if epoch is None:
-            epoch = self._epoch
-
-        # Tensorflow
-        feed_dict = {
-            self.records['placeholders']['lvl']: lvl,
-            self.records['placeholders']['epoch_last_lvl_improvement']: epoch
-            }
-        ops = [
-            self.records['update_ops']['lvl'],
-            self.records['update_ops']['epoch_last_lvl_improvement']]
-
-        self.session.run(ops, feed_dict=feed_dict)
+        return self.session.run(self.records['ops']['epoch'])
 
     @property
-    def _ltl(self):
-        '''Returns the lowest training loss encountered thus far (i.e., across
-        an entire pass through the training data).
+    def _epoch_last_ltl_improvement(self):
+        '''Returns the epoch of the most recent improvement to the lowest loss
+        over the training data.
 
         Args:
             None.
 
         Returns:
-            ltl: float specifying the lowest training loss.
+            int specifying the epoch number.
         '''
-
-        # TO DO: remove "_" from definition
-        return self.session.run(self.records['ops']['ltl'])
-
-    def _update_ltl(self, ltl):
-        ''' Updates the lowest training loss.
-
-        Args:
-            ltl: A numpy scalar value indicating the (new) lowest training
-            loss.
-
-        Returns:
-            None.
-        '''
-
-        self.session.run(
-            self.records['update_ops']['ltl'],
-            feed_dict={self.records['placeholders']['ltl']: ltl})
+        return self._epoch_last_loss_improvement('ltl')
 
     @property
-    def _train_time(self):
-        '''Returns the time elapsed during training, measured in seconds, and
-        accounting for restoring from previously saved runs.
+    def _epoch_last_lvl_improvement(self):
+        '''Returns the epoch of the most recent improvement to the lowest loss
+        over the validation data.
 
         Args:
             None.
 
         Returns:
-            float indicating time elapsed during training..
+            int specifying the epoch number.
         '''
+        return self._epoch_last_loss_improvement('lvl')
 
-        # TO DO: remove "_" from definition
-        return self.train_time_offset + self.timer()
+    def _epoch_last_loss_improvement(self, version):
+
+        self._assert_version_is_ltl_or_lvl(version)
+
+        op_name = 'epoch_last_%s_improvement' % version
+        return self.session.run(self.records['ops'][op_name])
 
     def _update_train_time(self):
         '''Runs the TF op that updates the time elapsed during training.
@@ -2513,6 +2519,51 @@ class RecurrentWhisperer(object):
         self.session.run(
             self.records['update_ops']['train_time'],
             feed_dict={self.records['placeholders']['train_time']: time_val})
+
+    def _increment_epoch(self):
+        self.session.run(self.records['increment_ops']['epoch'])
+
+    def _update_loss_records(self, loss, version, epoch=None):
+        ''' Updates TF records of the lowest loss and the epoch in which this 
+        improvement was achieved. This is critical for maintaining the 
+        trajectory of training across checkpoint saves and restores--i.e., for
+        robustness to restarts.
+
+        Args:
+            loss: A numpy scalar value indicating the (new) lowest loss.
+
+            version: 'ltl' or 'lvl', indicating whether this is the lowest
+            training loss or lowest validation loss, respectively.
+
+            epoch (optional): Numpy scalar indicating the epoch of this
+            improvement. Default: the current epoch.
+
+        Returns:
+            None.
+        '''
+
+        self._assert_version_is_ltl_or_lvl(version)
+
+        # Not Tensorflow
+        if epoch is None:
+            epoch = self._epoch
+
+        # E.g., 'epoch_last_lvl_improvement'
+        epoch_key = 'epoch_last_%s_improvement' % version
+
+        # Tensorflow
+        placeholders = self.records['placeholders']
+        update_ops = self.records['update_ops']
+
+        feed_dict = {
+            placeholders[version]: loss,
+            placeholders[epoch_key]: epoch}
+        ops = [
+            update_ops[version],
+            update_ops[epoch_key]
+            ]
+
+        self.session.run(ops, feed_dict=feed_dict)
 
     # *************************************************************************
     # TF Variables access and updates *****************************************
@@ -2587,9 +2638,8 @@ class RecurrentWhisperer(object):
         hps = self.hps
 
         if do_reset_loss_history:
-            self._update_ltl(np.inf)
-
-            self._update_lvl(np.inf)
+            self._update_loss_records(np.inf, version='ltl')
+            self._update_loss_records(np.inf, version='lvl')
 
         if do_reset_learning_rate:
             self.adaptive_learning_rate = AdaptiveLearningRate(**hps.alr_hps)
@@ -2658,7 +2708,11 @@ class RecurrentWhisperer(object):
     # Saving: model checkpoints ***********************************************
     # *************************************************************************
 
-    def _maybe_save_checkpoint(self):
+    def _assert_version_is_ltl_or_lvl(self, version):
+        assert version in ['ltl', 'lvl'], \
+            'Unsupported version: %s' % str(version)
+
+    def _maybe_save_seso_checkpoint(self):
         '''Saves a model checkpoint if the current epoch number indicates that
         a checkpoint is due.
 
@@ -2671,85 +2725,81 @@ class RecurrentWhisperer(object):
         if self.hps.do_save_ckpt and \
             np.mod(self._epoch, self.hps.n_epochs_per_ckpt) == 0:
 
-            self._save_seso_checkpoint()
+            self._save_checkpoint(version='seso')
 
-    def _maybe_save_lvl_checkpoint(self, valid_loss, train_data, valid_data):
-        '''Saves a model checkpoint if the current validation loss values is
-        lower than all previously evaluated validation loss values. This
-        includes saving model predictions over the training and validation
-        data.
+    def _maybe_save_ltl_checkpoint(self, train_loss, train_data, 
+        valid_data=None):
+
+        # TBD
+        raise NotImplementedError()
+
+    def _maybe_save_lvl_checkpoint(self, 
+        valid_pred, 
+        valid_summary, 
+        train_data):
+        '''Saves a model checkpoint if the current validation loss is lower 
+        than all previously evaluated validation losses. Optionally, this will 
+        also generate and save model predictions over the training and 
+        validation data.
 
         If prediction summaries are generated, those summaries are saved in
         separate .pkl files (and optional .mat files). See docstring for
         predict() for additional detail.
 
         Args:
-            valid_loss: float indicating the current loss evaluated over the
-            validation data.
+            valid_pred and valid_summary: dicts as returned by 
+            predict(valid_data).
 
             train_data: dict containing the training data.
-
-            valid_data: dict containing the validation data.
 
         Returns:
             None.
         '''
+        valid_loss = valid_summary['loss']
+
         if (self._epoch==0 or valid_loss < self._lvl):
 
             print('\t\tAchieved lowest validation loss.')
 
-            self._update_lvl(valid_loss)
+            self._update_loss_records(valid_loss, version='lvl')
+
+            self._maybe_save_pred_and_summary('train',
+                data=train_data, 
+                version='lvl')
+
+            self._maybe_save_pred_and_summary('valid',
+                pred=valid_pred,
+                summary=valid_summary,
+                version='lvl')
 
             if self.hps.do_save_lvl_ckpt:
-                self._save_lvl_checkpoint()
+                self._save_checkpoint(version='lvl')
 
-            if self.hps.do_save_lvl_train_predictions or \
-                self.hps.do_save_lvl_train_summaries:
-
-                self.refresh_lvl_files(train_data, 'train')
-
-            if self.hps.do_save_lvl_valid_predictions or \
-                self.hps.do_save_lvl_valid_summaries:
-
-                self.refresh_lvl_files(valid_data, 'valid')
-
-    def _save_lvl_checkpoint(self):
-        ''' Saves a lowest-validation-loss checkpoint.
+    def _save_checkpoint(self, version):
+        '''Saves a model checkpoint, along with data for restoring the adaptive
+        learning rate and the adaptive gradient clipper.
 
         Args:
-            None.
+            version: string indicating which version to label this checkpoint
+            as: 'seso', 'ltl', or 'lvl'.
 
         Returns:
             None.
         '''
-        print('\t\tSaving lvl checkpoint ...')
-        self._save_checkpoint(self.savers['lvl'], self.lvl_ckpt_path)
+        assert version in ['seso', 'ltl', 'lvl'], \
+            'Unsupported version: %s' % str(version)
 
-    def _save_seso_checkpoint(self):
-        ''' Saves an every-so-often checkpoint.
+        print('\tSaving %s checkpoint...' % str.upper(version))
 
-        Args:
-            None.
+        if version == 'seso': 
+            ckpt_path = self.ckpt_path
+        elif version == 'ltl':
+            ckpt_path = self.ltl_ckpt_path
+        elif version == 'lvl':
+            ckpt_path = self.lvl_ckpt_path
 
-        Returns:
-            None.
-        '''
-        print('\tSaving checkpoint...')
-        self._save_checkpoint(self.savers['seso'], self.ckpt_path)
-
-    def _save_checkpoint(self, saver, ckpt_path):
-        '''Saves a model checkpoint.
-
-        Args:
-            saver: Tensorflow saver to use, generated via tf.train.Saver(...).
-
-            ckpt_path: string containing the path of the checkpoint to be
-            saved.
-
-        Returns:
-            None.
-        '''
         self._update_train_time()
+        saver = self.savers[version]
         saver.save(self.session, ckpt_path,
             global_step=self.records['ops']['global_step'])
 
@@ -2760,6 +2810,8 @@ class RecurrentWhisperer(object):
     # *************************************************************************
     # Loading and Restoring: model checkpoints ********************************
     # *************************************************************************
+
+    # To do: generalize functionality for ltl models.
 
     @classmethod
     def load_lvl_model(cls, run_dir, new_base_path=None):
@@ -2809,6 +2861,10 @@ class RecurrentWhisperer(object):
         lvl_dir = paths['lvl_dir']
         lvl_ckpt = tf.train.get_checkpoint_state(lvl_dir)
         return lvl_ckpt is not None
+
+    @property
+    def _exists_lvl_checkpoint(self):
+        return self.exists_lvl_checkpoint(self.run_dir)
 
     def restore_from_lvl_checkpoint(self, model_checkpoint_path=None):
         '''Restores a model from a previously saved lowest-validation-loss
@@ -2877,7 +2933,83 @@ class RecurrentWhisperer(object):
     # Saving: predictions and summaries ***************************************
     # *************************************************************************
 
-    def _maybe_save_lvl_predictions(self, predictions, train_or_valid_str):
+    def save_predictions_and_summary(self, data, train_or_valid_str, version):
+        ''' Saves model predictions and a prediction summary, regardless of the
+        hyperparameters. This is provided for external convenience, and is 
+        never used internally.
+
+        Prediction summaries are saved in a separate .pkl file from the 
+        predictions themselves. See docstring for predict() for additional 
+        detail.
+
+        Args:
+            data: dict containing the data over which predictions are 
+            generated. This can be the training data or the validation data.
+
+            train_or_valid_str: either 'train' or 'valid', indicating whether
+            data contains training data or validation data, respectively.
+
+            version: 'ltl' or 'lvl', indicating whether the state of the model
+            is lowest-training-loss or lowest-validation-loss, respectively.
+            This determines the names and locations of the files to be saved.
+
+        Returns:
+            None.
+        '''
+
+        self._assert_version_is_ltl_or_lvl(version)
+
+        pred, summary = self.predict(data)
+        self._save_pred(pred, train_or_valid_str, version=version)
+        self._save_summary(summary, train_or_valid_str, version=version)
+
+    def _maybe_save_pred_and_summary(self, train_or_valid_str,
+        data=None,    # Either provide data, ...
+        pred=None,    # or provide both pred
+        summary=None, # and summary.
+        version='lvl'):
+        '''Saves model predictions and/or a prediction summary. Which are 
+        saved, if any, depends on the hyperparamers. See docstring to 
+        save_predictions_and_summary(...).'''
+
+        self._assert_version_is_ltl_or_lvl(version)
+
+        # Lookup what to save based on (non-hash) hyperparameters.
+        do_save_pred = self._do_save_pred(
+            train_or_valid_str, version=version)
+        do_save_summary = self._do_save_summary(
+            train_or_valid_str, version=version)
+
+        if not (do_save_pred or do_save_summary):
+            return
+
+        # Goal: only call predict() if absolutely necessary since it requires 
+        # substantial computation. 
+        do_generate_pred = (do_save_pred and pred is None) or \
+            (do_save_summary and summary is None)
+
+        # Summary always comes along when predictions are generated. So, make
+        # sure we never have to call predict() just to get the summary if we
+        # already got the predictions.
+        if pred is not None:
+            assert summary is not None, \
+                'Summary must be provided if pred is provided.'
+
+        if do_generate_pred:
+            pred, summary = self.predict(data)
+
+        if do_save_pred:
+            self._save_pred(
+                pred, train_or_valid_str, version=version)
+
+        if do_save_summary:
+            self._save_summary(
+                summary, train_or_valid_str, version=version)
+
+    def _save_pred(self, 
+        predictions, 
+        train_or_valid_str,
+        version='lvl'):
         '''Saves all model predictions in .pkl files (and optionally in .mat
         files as well).
 
@@ -2890,47 +3022,32 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-
         if predictions is not None:
-            if (self.hps.do_save_lvl_train_predictions and
-                train_or_valid_str == 'train') or \
-                (self.hps.do_save_lvl_valid_predictions and
-                train_or_valid_str == 'valid'):
 
-                print('\tSaving lvl predictions (%s).' % train_or_valid_str)
-                filename_no_extension = train_or_valid_str + '_predictions'
-                self._save_lvl_helper(predictions, filename_no_extension)
+            print('\tSaving %s predictions (%s).' % 
+                (version, train_or_valid_str))
 
-    def _maybe_save_lvl_summaries(self,
-        summary, train_or_valid_str):
+            # E.g., 'train_predictions' or 'valid_predictions'
+            filename_no_extension = train_or_valid_str + '_predictions'
+
+            self._save_pred_or_summary_helper(
+                predictions, filename_no_extension, version=version)
+
+    def _save_summary(self,
+        summary, 
+        train_or_valid_str,
+        version='lvl'):
 
         if summary is not None:
-            print('\t\tSaving lvl summary (%s).' % train_or_valid_str)
-            # E.g., train_predictions or valid_summary
+                
+            print('\t\tSaving %s summary (%s).' % 
+                (version, train_or_valid_str))
+
+            # E.g., 'train_summary' or 'valid_summary'
             filename_no_extension = train_or_valid_str + '_summary'
-            self._save_lvl_helper(summary, filename_no_extension)
-
-    def refresh_lvl_files(self, data, train_or_valid_str):
-        '''Saves model predictions over the training or validation data.
-
-        If prediction summaries are generated, those summaries are saved in
-        separate .pkl files (and optional .mat files). See docstring for
-        predict() for additional detail.
-
-        Args:
-            data: dict containing either the training or validation data.
-
-            train_or_valid_str: either 'train' or 'valid', indicating whether
-            data contains training data or validation data, respectively.
-
-        Returns:
-            None.
-        '''
-
-        if data is not None:
-            pred, summary = self.predict(data)
-            self._maybe_save_lvl_predictions(pred, train_or_valid_str)
-            self._maybe_save_lvl_summaries(summary, train_or_valid_str)
+            
+            self._save_pred_or_summary_helper(
+                summary, filename_no_extension, version=version)
 
     def _save_done_file(self):
         '''Save an empty .done file (indicating that the training procedure
@@ -2949,7 +3066,10 @@ class RecurrentWhisperer(object):
         file.write('')
         file.close()
 
-    def _save_lvl_helper(self, data_to_save, filename_no_extension):
+    def _save_pred_or_summary_helper(self, 
+        data_to_save, 
+        filename_no_extension,
+        version='lvl'):
         '''Pickle and save data as .pkl file. Optionally also save the data as
         a .mat file.
 
@@ -2960,12 +3080,59 @@ class RecurrentWhisperer(object):
                 None.
         '''
 
-        pkl_path = os.path.join(self.lvl_dir, filename_no_extension)
+        if version == 'ltl':
+            save_dir = self.ltl_dir
+        elif version == 'lvl':
+            save_dir = self.lvl_dir
+
+        pkl_path = os.path.join(save_dir, filename_no_extension)
         self._save_pkl(data_to_save, pkl_path)
 
         if self.hps.do_save_lvl_mat_files:
-            mat_path = os.path.join(self.lvl_dir, filename_no_extension)
+            mat_path = os.path.join(save_dir, filename_no_extension)
             self._save_mat(data_to_save, pkl_path)
+
+    def _do_save_pred(self, train_or_valid_str, version='lvl'):
+        ''' Determines whether or not to save a set of predictions depending 
+        on hyperparameter settings.
+
+        Returns: bool indicating whether or not to perform the save.
+        '''
+
+        if train_or_valid_str == 'train':
+            if version == 'ltl':
+                return self.hps.do_save_ltl_train_predictions
+            elif version == 'lvl':
+                return self.hps.do_save_lvl_train_predictions
+        elif train_or_valid_str == 'valid':
+            if version == 'ltl':
+                return self.hps.do_save_ltl_valid_predictions
+            elif version == 'lvl':
+                return self.hps.do_save_lvl_valid_predictions
+
+        raise ValueError('Unsupported train_or_valid_str (%s) or version (%s).'
+            (train_or_valid_str, version))
+
+    def _do_save_summary(self, train_or_valid_str, version='lvl'):
+        ''' Determines whether or not to save a summary of predictions 
+        depending on hyperparameter settings.
+
+        Returns: bool indicating whether or not to perform the save.
+        '''
+
+        if train_or_valid_str == 'train':
+            if version == 'ltl':
+                return self.hps.do_save_ltl_train_summary
+            elif version == 'lvl':
+                return self.hps.do_save_lvl_train_summary
+        elif train_or_valid_str == 'valid':
+            if version == 'ltl':
+                return self.hps.do_save_ltl_valid_summary
+            elif version == 'lvl':
+                return self.hps.do_save_lvl_valid_summary
+
+        raise ValueError('Unsupported train_or_valid_str (%s) or version (%s).'
+            (train_or_valid_str, version))
 
     @staticmethod
     def _save_pkl(data_to_save, save_path_no_extension):
