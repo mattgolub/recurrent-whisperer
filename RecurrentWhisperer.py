@@ -12,7 +12,6 @@ from __future__ import print_function
 import sys
 import os
 import shutil
-import ntpath
 import logging
 from copy import deepcopy
 from subprocess import call
@@ -172,8 +171,11 @@ class RecurrentWhisperer(object):
                 save visualizations to Tensorboard Images. Default: True.
 
                 do_save_ckpt: bool indicating whether or not to save model
-                checkpoints. Needed because setting max_seso_ckpt_to_keep=0 results
-                in TF never deleting checkpoints. Default: True.
+                checkpoints. Default: True.
+
+                do_save_ltl_ckpt: bool indicating whether or not to save model
+                checkpoints specifically when a new lowest training loss is
+                achieved. Default: True.
 
                 do_save_lvl_ckpt: bool indicating whether or not to save model
                 checkpoints specifically when a new lowest validation loss is
@@ -217,7 +219,7 @@ class RecurrentWhisperer(object):
                 maintain a .pkl file containing summaries of the validation
                  predictions based on the lowest-validation-loss parameters.
 
-                do_save_lvl_mat_files: bool indicating whether to save .mat
+                do_save_mat_files: bool indicating whether to save .mat
                 files containing predictions over the training and validation
                 data each time a new lowest validation loss is achieved.
                 Regardless of this setting, .pkl files are saved. Default:
@@ -448,9 +450,10 @@ class RecurrentWhisperer(object):
         return {
             'name': 'RecurrentWhisperer',
 
-            'max_n_epochs_without_lvl_improvement': 200,
             'min_loss': None,
             'max_train_time': None,
+            'max_n_epochs_without_ltl_improvement': 200, # NEW
+            'max_n_epochs_without_lvl_improvement': 200,
 
             'do_log_output': False,
             'do_restart_run': False,
@@ -461,6 +464,7 @@ class RecurrentWhisperer(object):
             'do_save_tensorboard_images': True,
 
             'do_save_ckpt': True,
+            'do_save_ltl_ckpt': True,
             'do_save_lvl_ckpt': True,
 
             'fig_format': 'pdf',
@@ -477,11 +481,14 @@ class RecurrentWhisperer(object):
             'do_generate_lvl_visualizations': True,
             'do_save_lvl_visualizations': True,
 
+            'do_save_ltl_train_summaries': True,
+
             'do_save_lvl_train_predictions': True,
             'do_save_lvl_train_summaries': True,
             'do_save_lvl_valid_predictions': True,
             'do_save_lvl_valid_summaries': True,
-            'do_save_lvl_mat_files': False,
+
+            'do_save_mat_files': False,
 
             'max_seso_ckpt_to_keep': 1,
             'max_ltl_ckpt_to_keep': 1,
@@ -658,7 +665,7 @@ class RecurrentWhisperer(object):
         '''
 
         hps_dir = os.path.join(run_dir, 'hps')
-        ckpt_dir = os.path.join(run_dir, 'ckpt')
+        seso_dir = os.path.join(run_dir, 'seso')
         ltl_dir = os.path.join(run_dir, 'ltl')
         lvl_dir = os.path.join(run_dir, 'lvl')
         events_dir = os.path.join(run_dir, 'events')
@@ -678,11 +685,11 @@ class RecurrentWhisperer(object):
             'loggers_log_path': os.path.join(events_dir, 'dependencies.log'),
             'done_path': os.path.join(events_dir, 'training.done'),
 
-            'ckpt_dir': ckpt_dir,
-            'ckpt_path': os.path.join(ckpt_dir, 'checkpoint.ckpt'),
+            'seso_dir': seso_dir,
+            'seso_ckpt_path': os.path.join(seso_dir, 'checkpoint.ckpt'),
 
             'ltl_dir': ltl_dir,
-            'ltl_ckpt_path': os.path.join(lvl_dir, 'ltl.ckpt'),
+            'ltl_ckpt_path': os.path.join(ltl_dir, 'ltl.ckpt'),
 
             'lvl_dir': lvl_dir,
             'lvl_ckpt_path': os.path.join(lvl_dir, 'lvl.ckpt'),
@@ -856,6 +863,10 @@ class RecurrentWhisperer(object):
         fold_idx = hps.fold_idx
         run_hash = hps.hash
         run_dir = self.get_run_dir(log_dir, run_hash, n_folds, fold_idx)
+
+        # TO DO: Overhaul this to just store self.paths = self.get_paths(...)
+        # This will save a few steps every time a new path is added.
+        # But there will be quite the find/replace headache.
         paths = self.get_paths(run_dir)
 
         self.run_hash = run_hash
@@ -866,8 +877,9 @@ class RecurrentWhisperer(object):
         self.hps_yaml_path = paths['hps_yaml_path']
         self.fig_dir = paths['fig_dir']
         self.fp_dir = paths['fp_dir']
-        self.ckpt_dir = paths['ckpt_dir']
-        self.ckpt_path = paths['ckpt_path']
+
+        self.seso_dir = paths['seso_dir']
+        self.seso_ckpt_path = paths['seso_ckpt_path']
 
         self.ltl_dir = paths['ltl_dir']
         self.ltl_ckpt_path = paths['ltl_ckpt_path']
@@ -884,7 +896,7 @@ class RecurrentWhisperer(object):
 
         if os.path.isdir(self.run_dir):
             print('\nRun directory found: %s.' % self.run_dir)
-            ckpt = tf.train.get_checkpoint_state(self.ckpt_dir)
+            ckpt = tf.train.get_checkpoint_state(self.seso_dir)
             lvl_ckpt = tf.train.get_checkpoint_state(self.lvl_dir)
             if ckpt is None and lvl_ckpt is None:
                 print('No checkpoints found.')
@@ -900,7 +912,8 @@ class RecurrentWhisperer(object):
             print('\nCreating run directory: %s.' % self.run_dir)
             os.makedirs(self.run_dir)
             os.makedirs(self.hps_dir)
-            os.makedirs(self.ckpt_dir)
+            os.makedirs(self.seso_dir)
+            os.makedirs(self.ltl_dir)
             os.makedirs(self.lvl_dir)
             os.makedirs(self.events_dir)
             os.makedirs(self.fig_dir)
@@ -1267,13 +1280,11 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        ckpt = tf.train.get_checkpoint_state(self.ckpt_dir)
-        lvl_ckpt = tf.train.get_checkpoint_state(self.lvl_dir)
 
-        if ckpt is not None:
-            self._restore_from_checkpoint(self.savers['seso'], self.ckpt_dir)
-        elif lvl_ckpt is not None:
-            self._restore_from_checkpoint(self.savers['lvl'], self.lvl_dir)
+        if self.exists_checkpoint('seso'):
+            self._restore_from_checkpoint('seso')
+        elif self.exists_checkpoint('lvl'):
+            self._restore_from_checkpoint('lvl')
         else:
             # Initialize new session
             print('Initializing new run (%s).' % self.hps.hash)
@@ -1614,8 +1625,8 @@ class RecurrentWhisperer(object):
             # *****************************************************************
 
             batch_summaries = self._train_epoch(data_batches)
-            self._update_learning_rate(batch_summaries)
-            self._update_grad_clipping(batch_summaries)
+            self._update_learning_rate()
+            self._update_grad_clipping()
             self._increment_epoch()
             epoch_timer.split('train')
 
@@ -1631,6 +1642,7 @@ class RecurrentWhisperer(object):
 
             # *****************************************************************
 
+            self._maybe_save_ltl_checkpoint(batch_summaries)
             self._maybe_save_seso_checkpoint()
             epoch_timer.split('save')
 
@@ -1684,24 +1696,21 @@ class RecurrentWhisperer(object):
             batch_summaries.append(batch_summary)
 
         self.prev_loss = self.epoch_loss
-        self.epoch_loss = self._compute_epoch_average(batch_summaries, 'loss')
+        self.epoch_loss = self._compute_epoch_average(
+            batch_summaries, 'loss')
+
+        self.epoch_grad_norm = self._compute_epoch_average(
+            batch_summaries, 'grad_global_norm')
 
         return batch_summaries
 
-    def _update_learning_rate(self, batch_summaries):
-
-        # Update lowest training loss (if applicable)
-        if self.epoch_loss < self._ltl:
-            self._update_loss_records(self.epoch_loss, version='ltl')
+    def _update_learning_rate(self):
 
         self.adaptive_learning_rate.update(self.epoch_loss)
 
-    def _update_grad_clipping(self, batch_summaries):
+    def _update_grad_clipping(self):
 
-        epoch_grad_norm = self._compute_epoch_average(
-            batch_summaries, 'grad_global_norm')
-
-        self.adaptive_grad_norm_clip.update(epoch_grad_norm)
+        self.adaptive_grad_norm_clip.update(self.epoch_grad_norm)
 
     def _print_epoch_summary(self, batch_summaries, timer=None):
         ''' Prints an summary describing one epoch of training.
@@ -1747,8 +1756,8 @@ class RecurrentWhisperer(object):
     def _train_batch(self, batch_data):
         '''Runs one training step. This function must evaluate the Tensorboard
         summaries:
-            self.merged_opt_summary
-            self.merged_hist_summary
+            self.tensorboard['merged_opt_summary']
+            self.tensorboard['merged_hist_summary']
 
         Args:
             batch_data: dict containing one batch of training data. Key/value
@@ -2023,8 +2032,48 @@ class RecurrentWhisperer(object):
         if self.hps.do_save_tensorboard_summaries:
             self._update_valid_tensorboard_summaries(summary)
 
-    @staticmethod
-    def _compute_epoch_average(batch_summaries, key):
+    @classmethod
+    def _combine_batch_summaries(cls, batch_summaries):
+        ''' Combines batched results from _train_batch(...) into a single 
+        summary dict, formatted identically to an individual batch_summary.
+
+        For each summary scalar, this is done by averaging that scalar across 
+        all batches, weighting by batch size. The only exception is batch_size
+        itself, which is summed.
+
+        NOTE: A combined value will only be interpretable if that value in an 
+        individual original batch_summary is itself an average across that 
+        batch.
+
+        Args:
+            batch_summaries:
+                List of summary dicts, as returned by _train_epoch(...).
+
+        Returns:
+            summary:
+                A single summary dict with the same keys as those in each of
+                the batch_summaries.
+        '''
+
+        BATCH_SIZE_KEY = 'batch_size'
+        summary = {}
+
+        # Average everything except batch_size
+        for key in np.sort(batch_summaries[0].keys()):
+
+            if key == BATCH_SIZE_KEY:
+                pass
+            else:
+                summary[key] = cls._compute_epoch_average(batch_summaries, key)
+
+        # Sum batch sizes
+        batch_size = np.sum([s[BATCH_SIZE_KEY] for s in batch_summaries])
+        summary[BATCH_SIZE_KEY] = batch_size
+
+        return summary
+
+    @classmethod
+    def _compute_epoch_average(cls, batch_summaries, key):
         '''Computes a weighted average of evaluations of a summary
         statistic across an epoch of data batches. This is all done in
         numpy (no Tensorflow).
@@ -2179,27 +2228,9 @@ class RecurrentWhisperer(object):
 
             self._maybe_print_visualizations_timing()
 
-        if hps.do_generate_lvl_visualizations and hps.do_save_lvl_ckpt:
-            if self._exists_lvl_checkpoint:
-                # Generate LVL visualizations
-                print('\tGenerating visualizations from restored LVL model...')
-                self.restore_from_lvl_checkpoint()
-
-                self._setup_visualizations_timer()
-
-                self.update_visualizations(train_data, valid_data, is_lvl=True)
-
-                if hps.do_save_tensorboard_images:
-                    self._update_tensorboard_images()
-
-                if hps.do_save_lvl_visualizations:
-                    self.save_visualizations()
-
-                self._maybe_print_visualizations_timing()
-
-            else:
-                raise Warning('Attempted to generate LVL visualizations, '
-                    'but cannot because LVL model could not be found.')
+        # To do: enable choice of whether this is for ltl or lvl model.
+        # It would be too messy to do both (for Tensorboard Images).
+        self._maybe_generate_lowest_loss_visualizations(train_data, valid_data)
 
         if hps.do_log_output:
             self._log_file.close()
@@ -2252,6 +2283,49 @@ class RecurrentWhisperer(object):
                 self.save_visualizations()
 
             self._maybe_print_visualizations_timing()
+
+    def _maybe_generate_lowest_loss_visualizations(self, 
+        train_data, 
+        valid_data,
+        version='lvl'):
+
+        def do_generate(version, hps):
+            if version == 'ltl':
+                return hps.do_generate_ltl_visualizations
+            else:
+                return hps.do_generate_lvl_visualizations
+
+        def do_save(version, hps):
+            if version == 'ltl':
+                return hps.do_save_ltl_visualizations
+            else:
+                return hps.do_save_lvl_visualizations
+
+        if do_generate(version, self.hps):
+
+            if self.exists_checkpoint(version):
+                
+                print('\tGenerating visualizations from restored %s model...'
+                    % str.upper(version))
+
+                self._restore_from_checkpoint(version)
+
+                self._setup_visualizations_timer()
+
+                self.update_visualizations(train_data, valid_data, 
+                    is_lvl=version=='lvl')
+
+                if hps.do_save_tensorboard_images:
+                    self._update_tensorboard_images()
+
+                if do_save(version, self.hps):
+                    self.save_visualizations()
+
+                self._maybe_print_visualizations_timing()
+
+            else:
+                raise Warning('Attempted to generate LVL visualizations, '
+                    'but cannot because LVL model could not be found.')
 
     def update_visualizations(self, train_data, valid_data=None,
         is_final=False,
@@ -2398,15 +2472,21 @@ class RecurrentWhisperer(object):
 
     @property
     def trainable_variables(self):
-        ''' Returns a list of TF Variables that are updated during each call to
-        _train_batch(...).
+        ''' Returns the list of trainable TF variables that compose this model.
 
-        Args: None
+        Args: 
+            None.
 
         Returns:
-            A list of TF Variables.
+            A list of TF.Variable objects.
         '''
-        return tf.trainable_variables()
+
+        # Exclude anything a user may have created on the graph that is not
+        # part of this model.
+        tf_vars = tf.trainable_variables()
+        model_vars = [v for v in tf_vars if self.hps.name in v.name]
+
+        return model_vars
 
     @property
     def _ltl(self):
@@ -2593,9 +2673,8 @@ class RecurrentWhisperer(object):
         Returns:
             integer specifying the number of trainable parameters.
         '''
-
-        n_params = sum([np.prod(v.shape).value \
-            for v in self.trainable_variables])
+        model_vars = self.trainable_variables
+        n_params = sum([np.prod(v.shape).value for v in model_vars])
 
         return n_params
 
@@ -2721,10 +2800,6 @@ class RecurrentWhisperer(object):
     # Saving: model checkpoints ***********************************************
     # *************************************************************************
 
-    def _assert_version_is_ltl_or_lvl(self, version):
-        assert version in ['ltl', 'lvl'], \
-            'Unsupported version: %s' % str(version)
-
     def _maybe_save_seso_checkpoint(self):
         '''Saves a model checkpoint if the current epoch number indicates that
         a checkpoint is due.
@@ -2740,11 +2815,31 @@ class RecurrentWhisperer(object):
 
             self._save_checkpoint(version='seso')
 
-    def _maybe_save_ltl_checkpoint(self, train_loss, train_data, 
-        valid_data=None):
+    def _maybe_save_ltl_checkpoint(self, batch_summaries):
 
-        # TBD
-        raise NotImplementedError()
+        # Currently this is modified from _maybe_save_lvl_checkpoint.
+        # More code sharing would be nice, but there are some complexities.
+        # Namely, predictions across the training data are not currently
+        # returned by _train_epoch(), and it may be cumbersome or 
+        # computationally disadvantageous to change that. Thus, saving ltl 
+        # predictions would currently require running predict(train_data). 
+        # But that is redundant because a forward pass was already evaluated  
+        # by _train_epoch(). For now, we just won't support saving ltl 
+        # predictions.
+
+        version = 'ltl'
+
+        if (self._epoch==0 or self.epoch_loss < self._ltl):
+
+            print('\t\tAchieved lowest training loss.')
+            self._update_loss_records(self.epoch_loss, version=version)
+
+            if self.hps.do_save_ltl_ckpt:
+                self._save_checkpoint(version=version)
+
+            if self.hps.do_save_ltl_train_summaries:
+                train_summary = self._combine_batch_summaries(batch_summaries)
+                self._save_summary(train_summary, 'train', version=version)
 
     def _maybe_save_lvl_checkpoint(self, 
         valid_pred, 
@@ -2773,8 +2868,10 @@ class RecurrentWhisperer(object):
         if (self._epoch==0 or valid_loss < self._lvl):
 
             print('\t\tAchieved lowest validation loss.')
-
             self._update_loss_records(valid_loss, version='lvl')
+
+            if self.hps.do_save_lvl_ckpt:
+                self._save_checkpoint(version='lvl')
 
             self._maybe_save_pred_and_summary('train',
                 data=train_data, 
@@ -2784,9 +2881,6 @@ class RecurrentWhisperer(object):
                 pred=valid_pred,
                 summary=valid_summary,
                 version='lvl')
-
-            if self.hps.do_save_lvl_ckpt:
-                self._save_checkpoint(version='lvl')
 
     def _save_checkpoint(self, version):
         '''Saves a model checkpoint, along with data for restoring the adaptive
@@ -2799,18 +2893,12 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        assert version in ['seso', 'ltl', 'lvl'], \
-            'Unsupported version: %s' % str(version)
+
+        self._validate_ckpt_version(version)
 
         print('\tSaving %s checkpoint...' % str.upper(version))
-
-        if version == 'seso': 
-            ckpt_path = self.ckpt_path
-        elif version == 'ltl':
-            ckpt_path = self.ltl_ckpt_path
-        elif version == 'lvl':
-            ckpt_path = self.lvl_ckpt_path
-
+        ckpt_path = self._get_ckpt_path(version)
+        
         self._update_train_time()
         saver = self.savers[version]
         saver.save(self.session, ckpt_path,
@@ -2820,102 +2908,107 @@ class RecurrentWhisperer(object):
         self.adaptive_learning_rate.save(ckpt_dir)
         self.adaptive_grad_norm_clip.save(ckpt_dir)
 
-    # *************************************************************************
-    # Loading and Restoring: model checkpoints ********************************
-    # *************************************************************************
+    def _get_ckpt_dir(self, version):
+        # E.g., self.lvl_dir
+        return getattr(self, '%s_dir' % version)
 
-    # To do: generalize functionality for ltl models.
+    def _get_ckpt_path(self, version):
+        # E.g., self.lvl_ckpt_path
+        return getattr(self, '%s_ckpt_path' % version)
+
+    @staticmethod
+    def _assert_version_is_ltl_or_lvl(version):
+        assert version in ['ltl', 'lvl'], \
+            'Unsupported version: %s' % str(version)
+
+    @staticmethod
+    def _validate_ckpt_version(version):
+        assert version in ['seso', 'ltl', 'lvl'], \
+            'Unsupported version: %s' % str(version)
+
+    # *************************************************************************
+    # Restoring from model checkpoints ****************************************
+    # *************************************************************************
 
     @classmethod
-    def load_lvl_model(cls, run_dir, new_base_path=None):
-        ''' Load an LVL model given only the run directory, properly handling
+    def restore(cls, run_dir, version, base_path=None):
+        ''' Load a saved model given only the run directory, properly handling
         subclassing.
 
         Args:
             run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
+            model run was saved. See definition in __init__().
+
+            version: 'ltl', 'lvl', or 'seso' indicating which version of the 
+            model to load: lowest-training-loss, lowest-validation-loss, or
+            'save-every-so-often', respectively. Which of these models exist, 
+            if any, depends on the hyperparameter settings used during 
+            training.
 
         Returns:
-            The desired model with restored LVL parameters.
+            The desired model with restored parameters, including the training
+            state (epoch number, training time, adaptive learning rate, 
+            adaptive gradient clipping).
         '''
 
-        hps_dict = cls.load_hyperparameters(run_dir)
+        # Validate version here. Existence of checkpoint is validated in 
+        # _restore_from_checkpoint(...).
+        cls._validate_ckpt_version(version)
 
-        if new_base_path is not None:
+        hps_dict = cls.load_hyperparameters(run_dir)
+        log_dir = hps_dict['log_dir']
+
+        if base_path is None:
+            # Assume standard checkpoint directory structure
+            ckpt_path = None
+        else:
             # Handle loading a model that was saved on another system.
             # This functionality is paused under development.
             raise NotImplementedError()
+            ckpt_path = cls._get_ckpt_path(version) # This will fail
+            ckpt_path = cls.update_dir_to_local_system(ckpt_path, base_path)
+            log_dir = cls.update_dir_to_local_system(log_dir, base_path)
 
-            local_log_dir = cls.update_dir_to_local_system(
-                hps_dict['log_dir'], new_base_path)
-            hps_dict['log_dir'] = local_log_dir
-
-        # Build model but don't initialize any parameters, 
-        # and don't restore from standard checkpoints.
+        # Build model but don't initialize any parameters, and don't restore 
+        # from standard checkpoints.
+        hps_dict['log_dir'] = log_dir
         hps_dict['do_custom_restore'] = True
         hps_dict['do_log_output'] = False
         model = cls(**hps_dict)
 
-        # Find and resotre parameters from lvl checkpoint
-        lvl_ckpt = tf.train.get_checkpoint_state(model.lvl_dir)
-        lvl_ckpt_path = lvl_ckpt.model_checkpoint_path
-
-        if new_base_path is not None:
-            lvl_ckpt_path = model.update_dir_to_local_system(
-                lvl_ckpt_path, new_base_path)
-
-        model.restore_from_lvl_checkpoint(model_checkpoint_path=lvl_ckpt_path)
+        # Find and resotre parameters from lvl checkpoint          
+        model._restore_from_checkpoint(version, checkpoint_path=ckpt_path)
 
         return model
 
-    @classmethod
-    def exists_lvl_checkpoint(cls, run_dir):
-        paths = cls.get_paths(run_dir)
-        lvl_dir = paths['lvl_dir']
-        lvl_ckpt = tf.train.get_checkpoint_state(lvl_dir)
-        return lvl_ckpt is not None
-
-    @property
-    def _exists_lvl_checkpoint(self):
-        return self.exists_lvl_checkpoint(self.run_dir)
-
-    def restore_from_lvl_checkpoint(self, model_checkpoint_path=None):
-        '''Restores a model from a previously saved lowest-validation-loss
-        checkpoint.
-
-        Args:
-            model_checkpoint_path (optional): string containing a path to
-            a model checkpoint. Use this as an override if needed for
-            loading models that were saved under a different directory
-            structure (e.g., on another machine).
-
-        Returns:
-            None.
-
-        Raises:
-            AssertionError if no lowest-validation-loss checkpoint exists.
+    def exists_checkpoint(self, version):
         '''
-        self._restore_from_checkpoint(self.savers['lvl'], self.lvl_dir, 
-            model_checkpoint_path=model_checkpoint_path)
+        Args:
+            version: string indicating which version to label this checkpoint
+            as: 'seso', 'ltl', or 'lvl'.
+        '''
 
-    def _restore_from_checkpoint(self, saver, ckpt_dir, 
-        model_checkpoint_path=None):
+        self._validate_ckpt_version(version)
+        ckpt_dir = self._get_ckpt_dir(version)
+
+        # This might be equivalent.
+        # ckpt_path = self._get_ckpt_path(version)
+        # return tf.train.checkpoint_exists(ckpt_path)
+
+        ckpt = tf.train.get_checkpoint_state(ckpt_dir)
+        return ckpt is not None
+
+    def _restore_from_checkpoint(self, version, checkpoint_path=None):
         ''' Restores a model and relevant support structures from the most
         advanced previously saved checkpoint. This includes restoring TF model
         parameters, as well as adaptive learning rate (and history) and 
         adaptive gradient clipping (and history).
 
         Args:
-            saver: Tensorflow saver to use, generated via tf.train.Saver(...).
-
-            ckpt_dir: string containing the path to the directory containing
-            the checkpoint to be restored.
-
-            model_checkpoint_path (optional): string containing a path to
+            checkpoint_path (optional): string containing a path to
             a model checkpoint. Use this as an override if needed for
             loading models that were saved under a different directory
-            structure (e.g., on another machine). Default: automatically
-            find checkpoint path based on standard directory conventions.
+            structure (e.g., on another machine). Default: None.
 
         Returns:
             None.
@@ -2923,18 +3016,31 @@ class RecurrentWhisperer(object):
         Raises:
             AssertionError if no checkpoint exists.
         '''
-        if model_checkpoint_path is None:
+
+        self._validate_ckpt_version(version)
+
+        if checkpoint_path is None:
+            # Could use exists_checkpoint(...) here, but that would require a
+            # redundant call to tf.train.get_checkpoint_state(...).
+            ckpt_dir = self._get_ckpt_dir(version)
             ckpt = tf.train.get_checkpoint_state(ckpt_dir) # None if no ckpt
             assert ckpt is not None, ('No checkpoint found in: %s' % ckpt_dir)
-            return self._restore_from_checkpoint(saver, ckpt_dir, 
-                model_checkpoint_path=ckpt.model_checkpoint_path)
+
+            # Recurse
+            return self._restore_from_checkpoint( 
+                version, checkpoint_path=ckpt.model_checkpoint_path)
         else:
-            assert tf.train.checkpoint_exists(model_checkpoint_path),\
-                ('Checkpoint does not exist: %s' % model_checkpoint_path)
+            
+            assert tf.train.checkpoint_exists(checkpoint_path),\
+                ('Checkpoint does not exist: %s' % checkpoint_path)
+            
+            ckpt_dir, ckpt_filename = os.path.split(checkpoint_path)
+
             # This is what we came here for. 
-            print('Loading checkpoint: %s.'
-              % ntpath.basename(model_checkpoint_path))
-            saver.restore(self.session, model_checkpoint_path)
+            print('Loading checkpoint: %s.' % ckpt_filename)
+            
+            saver = self.savers[version]
+            saver.restore(self.session, checkpoint_path)
             self.adaptive_learning_rate.restore(ckpt_dir)
             self.adaptive_grad_norm_clip.restore(ckpt_dir)
 
@@ -2962,15 +3068,16 @@ class RecurrentWhisperer(object):
             train_or_valid_str: either 'train' or 'valid', indicating whether
             data contains training data or validation data, respectively.
 
-            version: 'ltl' or 'lvl', indicating whether the state of the model
-            is lowest-training-loss or lowest-validation-loss, respectively.
-            This determines the names and locations of the files to be saved.
+            version: 'ltl', 'lvl', or 'seso' indicating whether the state of 
+            the model is lowest-training-loss, lowest-validation-loss, or
+            'save-every-so-often', respectively. This determines the names and 
+            locations of the files to be saved.
 
         Returns:
             None.
         '''
 
-        self._assert_version_is_ltl_or_lvl(version)
+        self._validate_ckpt_version(version)
 
         pred, summary = self.predict(data)
         self._save_pred(pred, train_or_valid_str, version=version)
@@ -3093,15 +3200,11 @@ class RecurrentWhisperer(object):
                 None.
         '''
 
-        if version == 'ltl':
-            save_dir = self.ltl_dir
-        elif version == 'lvl':
-            save_dir = self.lvl_dir
-
+        save_dir = self._get_ckpt_dir(version)
         pkl_path = os.path.join(save_dir, filename_no_extension)
         self._save_pkl(data_to_save, pkl_path)
 
-        if self.hps.do_save_lvl_mat_files:
+        if self.hps.do_save_mat_files:
             mat_path = os.path.join(save_dir, filename_no_extension)
             self._save_mat(data_to_save, pkl_path)
 
@@ -3112,16 +3215,9 @@ class RecurrentWhisperer(object):
         Returns: bool indicating whether or not to perform the save.
         '''
 
-        if train_or_valid_str == 'train':
-            if version == 'ltl':
-                return self.hps.do_save_ltl_train_predictions
-            elif version == 'lvl':
-                return self.hps.do_save_lvl_train_predictions
-        elif train_or_valid_str == 'valid':
-            if version == 'ltl':
-                return self.hps.do_save_ltl_valid_predictions
-            elif version == 'lvl':
-                return self.hps.do_save_lvl_valid_predictions
+        # E.g., do_save_lvl_train_predictions
+        key = 'do_save_%s_%s_predictions' % (version, train_or_valid_str)
+        return self.hps[key]
 
         raise ValueError('Unsupported train_or_valid_str (%s) or version (%s).'
             (train_or_valid_str, version))
@@ -3133,19 +3229,9 @@ class RecurrentWhisperer(object):
         Returns: bool indicating whether or not to perform the save.
         '''
 
-        if train_or_valid_str == 'train':
-            if version == 'ltl':
-                return self.hps.do_save_ltl_train_summary
-            elif version == 'lvl':
-                return self.hps.do_save_lvl_train_summary
-        elif train_or_valid_str == 'valid':
-            if version == 'ltl':
-                return self.hps.do_save_ltl_valid_summary
-            elif version == 'lvl':
-                return self.hps.do_save_lvl_valid_summary
-
-        raise ValueError('Unsupported train_or_valid_str (%s) or version (%s).'
-            (train_or_valid_str, version))
+        # E.g., do_save_lvl_train_summary
+        key = 'do_save_%s_%s_summary' % (version, train_or_valid_str)
+        return self.hps[key]
 
     @staticmethod
     def _save_pkl(data_to_save, save_path_no_extension):
@@ -3186,6 +3272,10 @@ class RecurrentWhisperer(object):
     # *************************************************************************
     # Loading and Restoring: predictions and summaries ************************
     # *************************************************************************
+
+    # TO DO: Simplify using version arg (although perhaps not critical, since
+    # seso predictions/summary aren't critical and don't exist in previous 
+    # workflows [since they are new to RW as of this branch]).
 
     @classmethod
     def exists_lvl_train_predictions(cls, run_dir):
