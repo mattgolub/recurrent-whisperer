@@ -18,30 +18,7 @@ class Timer(object):
 	Example usage, using prospective splits (default):
 
 		# Build a timer object to profile three tasks.
-		t = Timer(3)
-
-		t.start()           	# Start the timer (required).
-
-		run_task_1()        	# Run task 1 of 3.
-		t1 = t.split('Task 1')	# Measure time taken for task 1.
-
-		run_task_2()        	# Run task 2 of 3.
-		t2 = t.split('Task 2')	# Measure time taken for task 2.
-
-		run_task_3()        	# Run task 3 of 3.
-		t3 = t.split('Task 3')	# Measure time taken for task 3.
-
-		t.disp()            	# Print profile of timing.
-
-		--> Total time: 16.00s
-		-->     Task 1: 2.00s (12.5%)
-		-->     Task 2: 8.00s (50.0%)
-		-->     Task 3: 6.00s (37.5%)
-
-	Example usage, using retrospective splits:
-
-		# Build a timer object to profile three tasks.
-		t = Timer(3, do_retrospective=True)
+		t = Timer(3, do_retrospective=False)
 
 		t.start()           	# Start the timer (optional).
 
@@ -57,15 +34,38 @@ class Timer(object):
 		t.stop()				# Stop the timer
 								# (required to see split 3 time)
 
-		t.disp()            	# Print profile of timing.
+		t.print()            	# Print profile of timing.
 
 		--> Total time: 16.00s
 		-->     Task 1: 2.00s (12.5%)
 		-->     Task 2: 8.00s (50.0%)
 		-->     Task 3: 6.00s (37.5%)
 
-		# Note that split() returns None with retrospective splits, as it
+		# Note that split() returns None with prospective splits, as it
 		# cannot yet know the timing of the upcoming task.
+
+	Example usage, using retrospective splits:
+
+		# Build a timer object to profile three tasks.
+		t = Timer(3, do_retrospective=True)
+
+		t.start()           	# Start the timer (required).
+
+		run_task_1()        	# Run task 1 of 3.
+		t1 = t.split('Task 1')	# Measure time taken for task 1.
+
+		run_task_2()        	# Run task 2 of 3.
+		t2 = t.split('Task 2')	# Measure time taken for task 2.
+
+		run_task_3()        	# Run task 3 of 3.
+		t3 = t.split('Task 3')	# Measure time taken for task 3.
+
+		t.print()            	# Print profile of timing.
+
+		--> Total time: 16.00s
+		-->     Task 1: 2.00s (12.5%)
+		-->     Task 2: 8.00s (50.0%)
+		-->     Task 3: 6.00s (37.5%)
 
 	Outward facing usage is identical when the number of tasks to be timed is
 	not specified from the outset. However, this prevents Timer from
@@ -91,6 +91,10 @@ class Timer(object):
 			Over-allocating (i.e., requesting more splits than ultimately are
 			invoked) will not impact profiling (though may have memory
 			implications in extreme applications). Default: 10.
+
+			do_retrospective (optional): bool. Default: False.
+
+			do_print_single_line (optional): bool. Default: False.
 
 			n_indent (optional): int specifying the number of indentation
 			to prefix into print statements. Useful when utilizing multiple
@@ -176,12 +180,17 @@ class Timer(object):
 	def stop(self):
 		''' Stops the timer, freezing total and split times. '''
 
-		# Future work: fill in final split if it had been started?
+
 
 		if self._is_stopped:
 			self._print('Timer has already been stopped. '
 				'Ignoring call to Timer.stop()')
 		else:
+			# Fill in final split if it had been started.
+			if not self.do_retrospective:
+				self._stop_split()
+
+			# Record stop time.S
 			self._stop_time = time.time()
 
 	def split(self, name=None, stop=False):
@@ -223,6 +232,10 @@ class Timer(object):
 			return self._get_split_time(idx)
 
 		else:
+			'''
+			Record split stop.
+
+			'''
 
 			if self._is_started:
 				self._stop_split()
@@ -247,6 +260,58 @@ class Timer(object):
 		idx = self.split_names.index(name)
 		return self._get_split_time(idx)
 
+	def get_splits(self):
+		''' Returns a list of all completed split times.
+		'''
+		idx = 0
+		splits = []
+		while self._is_split_complete(idx):
+
+			split_name = self._split_names[idx]
+			split_time = self._get_split_time(idx)
+			splits.append(split_time)
+			idx += 1
+
+		return splits
+
+	def print(self, n_indent=None, do_single_line=None):
+		'''Prints the profile of the tasks that have been timed thus far.
+
+		Args:
+			None.
+
+		Returns:
+			None.
+		'''
+
+		if self._is_started:
+
+			total_time = self._print_total_time(
+				do_single_line=do_single_line,
+				n_indent=n_indent)
+
+			self._print_split_times(total_time, 
+				do_single_line=do_single_line,
+				n_indent=n_indent)
+		else:
+			self._print('Timer has not been started.')
+
+	def disp(self, *args, **kwargs):
+
+		print('Timer.disp() is deprecated and '
+		      'will be removed in a future version of Timer.py. '
+		      'Use Timer.print(...) instead.')
+
+		self.print(*args, **kwargs)
+
+	@property
+	def total_time(self):
+		return self.__call__()
+
+	# ************************************************************************
+	# Internal support *******************************************************
+	# ************************************************************************
+
 	def _start_split(self, name=None):
 
 		idx = self._prepare_next_split()
@@ -264,30 +329,6 @@ class Timer(object):
 
 		if self.do_retrospective and name is not None:
 			self._split_names[idx] = name
-
-	def disp(self, *args, **kwargs):
-
-		Print('Timer.disp() is deprecated and '
-		      'will be removed in a future version of Timer.py. '
-		      'Use Timer.print(...) instead.')
-
-		self.print(*args, **kwargs)
-
-	def print(self, n_indent=None):
-		'''Prints the profile of the tasks that have been timed thus far.
-
-		Args:
-			None.
-
-		Returns:
-			None.
-		'''
-
-		if self._is_started:
-			total_time = self._print_total_time(n_indent=n_indent)
-			self._print_split_times(total_time, n_indent=n_indent)
-		else:
-			self._print('Timer has not been started.')
 
 	@property
 	def _is_running(self):
@@ -372,7 +413,7 @@ class Timer(object):
 
 			idx += 1
 
-		if self._do_print_single_line:
+		if do_single_line:
 			print(' ]', end='\n')
 
 	def _print_total_time(self, n_indent=None, do_single_line=None):
@@ -414,3 +455,182 @@ class Timer(object):
 	def _generate_print_prefix(self, n_indent):
 
 		return '\t' * n_indent
+
+	# ************************************************************************
+	# Testing ****************************************************************
+	# ************************************************************************
+
+	@classmethod
+	def run_tests(cls):
+		''' See docstring to test(...).
+
+		Args:
+			None.
+
+		Returns:
+			None.
+		'''
+
+		times = [.123, .234, .345, .456]
+		cls.test(times, do_retrospective=True, verbose=True)
+		cls.test(times, do_retrospective=False, verbose=True)
+
+		times = np.random.rand(200)/100.;
+		cls.test(times, do_retrospective=True, verbose=False)
+		cls.test(times, do_retrospective=False, verbose=False)
+
+	@classmethod
+	def test(cls, times, 
+		do_retrospective=False, 
+		verbose=False, 
+		tol_seconds=1e-3,
+		tol_stddev_seconds=5e-4):
+		''' Test the Timer class by timing calls to time.sleep(times[i]).
+
+		Args:
+			times: list of (nonnegative) times to measure.
+
+		Returns: 
+			the Timer object used in the timing simultion.
+		'''
+		N = len(times)
+		n_tests = 3
+		n_passed = 0
+
+		print('\n***********************************************************')
+		print('Testing Timer class (do_retrospective=%s)' % do_retrospective)
+		print('Simulating %d sequential processes as calls to time.sleep().' 
+			% N)
+		print('Expected total time for this test: %.3fs.' % np.sum(times))
+
+		if do_retrospective:
+			tmr = cls._test_retrospective(times)
+		else:
+			tmr = cls._test_prospective(times)
+
+		if verbose:
+			print('')
+			tmr.print()
+			print('')
+		else:
+			print('Done (%.3fs).' % tmr.total_time)
+
+		t_meas = tmr.get_splits()
+
+		# These should be nonnegative (realistically, they should be strictly 
+		# positive), indicating consistent and very small amounts of overhead 
+		# involved with the timing scaffolding.
+		diffs = np.subtract(t_meas, times)
+
+		print('\nAverage error per task (i.e., overhead): %.3es\n' 
+			% np.mean(diffs))
+
+		# *********************************************************************
+		# 1. Make sure all overhead times are nonnegative.
+		# *********************************************************************
+		passed = np.all(diffs >= 0)
+		pass_or_fail = 'PASSED' if passed else 'FAILED'
+		print('%s test 1 of %d:' % (pass_or_fail, n_tests))
+		print('\tMin error: %.3es (must be >= 0s)' 
+			% np.min(diffs))
+
+		if passed:
+			n_passed += 1
+		else:
+			print('\tDetected measured times that were '
+				'shorter than the known time.')
+
+		# *********************************************************************
+		# 2. Make sure all overhead times are less than set tolerance.
+		# *********************************************************************
+		passed = np.all(diffs <= tol_seconds)
+		pass_or_fail = 'PASSED' if passed else 'FAILED'
+		print('%s test 2 of %d:' % (pass_or_fail, n_tests))
+		print('\tMax error: %.3es (must be <= %.3es)' 
+			% (np.max(diffs), tol_seconds))
+
+		if passed:
+			n_passed += 1
+		else:
+			print('\tDetected overhead times that exceeded '
+				'tolerance of %.3es.' % tol_seconds)
+
+		# *********************************************************************
+		# 3. Make sure overhead times have less variability than set tolerance.
+		# *********************************************************************
+		passed = np.std(diffs, ddof=0) < tol_stddev_seconds
+		pass_or_fail = 'PASSED' if passed else 'FAILED'
+		print('%s test 3 of %d:' % (pass_or_fail, n_tests))
+		print('\tStandard deviation of errors: %.3es (must be <= %.3es)' 
+			% (np.std(diffs, ddof=0), tol_stddev_seconds))
+
+		if passed:
+			n_passed += 1
+		else:
+			print('\tDetected overhead standard deviation '
+				'in excess of tolerance.')
+
+		# *********************************************************************
+		# Print all actual and measured times.
+		# *********************************************************************
+		if verbose:
+			print('\nActual time --> measured time:')
+			for n in range(N):
+				print('%f-->%f: (error = %fs)' % 
+					(times[n], t_meas[n], diffs[n]))
+			print ('')
+
+		# *********************************************************************
+		# Print testing summary.
+		# *********************************************************************
+		if n_passed == n_tests:
+			print('PASSED ALL TESTS.')
+		else:
+			raise AssertionError(
+				'FAILED %d OF %d TESTS.' % (n_tests-n_passed, n_passed))
+
+		print('***********************************************************\n')
+
+		return tmr
+
+	@classmethod
+	def _test_prospective(cls, times):
+
+		N = len(times)
+		tmr = cls(N, do_retrospective=False)
+
+		tmr.start() # optional
+
+		for n in range(N):
+
+			# Start split for "task" n.
+			tmr.split()
+
+			# Run "task" n
+			time.sleep(times[n])
+
+		tmr.stop()
+
+		return tmr
+
+	@classmethod
+	def _test_retrospective(cls, times):
+
+		N = len(times)
+		tmr = cls(N, do_retrospective=True)
+		tmr.start()
+
+		for n in range(N):
+
+			# Run "task" n
+			time.sleep(times[n])
+
+			# Retrospective time measurement for "task" n
+			t = tmr.split()
+
+		# This shouldn't be needed, not in documentation, doesn't help.
+		# tmr.split() 
+
+		tmr.stop() # Optional
+
+		return tmr
