@@ -1610,11 +1610,11 @@ class RecurrentWhisperer(object):
         done = False
         while not done:
 
+            print('Epoch %d (step %d):' % (self._epoch, self._step))
+
             epoch_timer = Timer(N_EPOCH_SPLITS,
                 name='Epoch',
-                do_retrospective=True,
-                do_print_single_line=True,
-                n_indent=1)
+                do_retrospective=True)
             epoch_timer.start()
 
             # *****************************************************************
@@ -1712,7 +1712,7 @@ class RecurrentWhisperer(object):
 
         self.adaptive_grad_norm_clip.update(self.epoch_grad_norm)
 
-    def _print_epoch_summary(self, batch_summaries, timer=None):
+    def _print_epoch_summary(self, batch_summaries, timer=None, n_indent=1):
         ''' Prints an summary describing one epoch of training.
 
         Args:
@@ -1731,13 +1731,21 @@ class RecurrentWhisperer(object):
         else:
             loss_improvement = self.prev_loss - self.epoch_loss
 
-        print('Epoch %d:' % self._epoch)
-        print('\tTraining loss: %.2e;' % self.epoch_loss)
-        print('\tImprovement in training loss: %.2e;' % loss_improvement)
-        print('\tLearning rate: %.2e;' %  self.adaptive_learning_rate())
-        print('\tLogging to: %s' % self.run_dir)
+        # Line 1
+        print('\t' * n_indent, end='')
+        print('Training loss: %.2e' % self.epoch_loss, end='; ')
+        print('Improvement: %.2e' % loss_improvement, end='; ')
+        print('Learning rate: %.2e.' %  self.adaptive_learning_rate())
 
-        timer.print()
+        # Line 2
+        print('\t' * n_indent, end='')
+        print('Logging to: %s' % self.run_dir)
+
+        if timer is not None:
+            # Line 3
+            timer.print(do_single_line=True, n_indent=n_indent)
+
+        print('')
 
     def _print_run_summary(self):
         ''' Prints a final summary of the complete optimization.
@@ -2203,6 +2211,8 @@ class RecurrentWhisperer(object):
             checkpoint was saved.
         '''
         hps = self.hps
+
+        print('\nClosing training:')
 
         # Save checkpoint upon completing training
         if hps.do_save_ckpt:
@@ -2831,7 +2841,7 @@ class RecurrentWhisperer(object):
 
         if (self._epoch==0 or self.epoch_loss < self._ltl):
 
-            print('\t\tAchieved lowest training loss.')
+            print('\tAchieved lowest training loss.')
             self._update_loss_records(self.epoch_loss, version=version)
 
             if self.hps.do_save_ltl_ckpt:
@@ -2896,7 +2906,7 @@ class RecurrentWhisperer(object):
 
         self._validate_ckpt_version(version)
 
-        print('\tSaving %s checkpoint...' % str.upper(version))
+        print('\t\tSaving %s checkpoint.' % str.upper(version))
         ckpt_path = self._get_ckpt_path(version)
         
         self._update_train_time()
@@ -3161,7 +3171,7 @@ class RecurrentWhisperer(object):
         if summary is not None:
                 
             print('\t\tSaving %s summary (%s).' % 
-                (version, train_or_valid_str))
+                (str.upper(version), train_or_valid_str))
 
             # E.g., 'train_summary' or 'valid_summary'
             filename_no_extension = train_or_valid_str + '_summary'
