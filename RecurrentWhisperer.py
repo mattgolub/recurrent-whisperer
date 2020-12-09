@@ -1625,6 +1625,12 @@ class RecurrentWhisperer(object):
             # *****************************************************************
 
             batch_summaries = self._train_epoch(data_batches)
+
+            ''' Note, these updates are intentionally placed before any 
+            possible checkpointing for the epoch. This placement is critical 
+            for reproducible training trajectories when restoring (i.e., for
+            robustness to unexpected restarts). See note in 
+            _print_run_summary(). '''
             self._update_learning_rate()
             self._update_grad_clipping()
             self._increment_epoch()
@@ -1725,6 +1731,15 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
+
+        ''' Note that at the time this is called, updates have been applied to 
+        epoch, learning rate, and gradient clipping, but those updates have not
+        yet influenced a gradient step on the model parameters. In other 
+        words, here we have a model/predictions/summary/global_step from epoch 
+        n, but self._epoch(), self.adaptive_learning_rate(), and gradient 
+        clipping parameters have all been updated to their epoch n+1 values.
+        This should not be changed, since it's critical for properly restoring 
+        a model and its training trajectory. '''
 
         if self.prev_loss is None:
             loss_improvement = np.nan
