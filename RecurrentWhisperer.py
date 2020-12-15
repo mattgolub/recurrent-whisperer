@@ -452,7 +452,7 @@ class RecurrentWhisperer(object):
 
             'min_loss': None,
             'max_train_time': None,
-            'max_n_epochs_without_ltl_improvement': 200, # NEW
+            'max_n_epochs_without_ltl_improvement': 200,
             'max_n_epochs_without_lvl_improvement': 200,
 
             'do_log_output': False,
@@ -495,6 +495,7 @@ class RecurrentWhisperer(object):
             'max_lvl_ckpt_to_keep': 1,
 
             'n_epochs_per_ckpt': 100,
+            'n_epochs_per_ltl_update': 100,
             'n_epochs_per_validation_update': 100,
             'n_epochs_per_visualization_update': 100,
 
@@ -897,8 +898,9 @@ class RecurrentWhisperer(object):
         if os.path.isdir(self.run_dir):
             print('\nRun directory found: %s.' % self.run_dir)
             ckpt = tf.train.get_checkpoint_state(self.seso_dir)
+            ltl_ckpt = tf.train.get_checkpoint_state(self.ltl_dir)
             lvl_ckpt = tf.train.get_checkpoint_state(self.lvl_dir)
-            if ckpt is None and lvl_ckpt is None:
+            if ckpt is None and ltl_ckpt is None and lvl_ckpt is None:
                 print('No checkpoints found.')
             if self.hps.do_restart_run:
                 print('\tDeleting run directory.')
@@ -2592,6 +2594,11 @@ class RecurrentWhisperer(object):
         return self.session.run(self.records['ops']['epoch'])
 
     @property
+    def _epoch_next_ltl_check(self):
+        hps = self.hps
+        return self._epoch_last_ltl_improvement + hps.n_epochs_per_ltl_update  
+
+    @property
     def _epoch_last_ltl_improvement(self):
         '''Returns the epoch of the most recent improvement to the lowest loss
         over the training data.
@@ -2854,7 +2861,9 @@ class RecurrentWhisperer(object):
 
         version = 'ltl'
 
-        if (self._epoch==0 or self.epoch_loss < self._ltl):
+        if self._epoch == 0 or \
+            (self.epoch_loss < self._ltl and \
+                self._epoch >= self._epoch_next_ltl_check):
 
             print('\tAchieved lowest training loss.')
             self._update_loss_records(self.epoch_loss, version=version)
@@ -2922,7 +2931,7 @@ class RecurrentWhisperer(object):
         self._validate_ckpt_version(version)
 
         print('\t\tSaving %s checkpoint.' % str.upper(version))
-        ckpt_path = self._get_ckpt_path(version)
+        ckpt_path = self._get_ckpt_path_stem(version)
         
         self._update_train_time()
         saver = self.savers[version]
@@ -2937,8 +2946,10 @@ class RecurrentWhisperer(object):
         # E.g., self.lvl_dir
         return getattr(self, '%s_dir' % version)
 
-    def _get_ckpt_path(self, version):
+    def _get_ckpt_path_stem(self, version):
         # E.g., self.lvl_ckpt_path
+        # Actual checkpoint path will append step and extension
+        # (for that, use _get_ckpt_path, as relevant for restoring from ckpt)
         return getattr(self, '%s_ckpt_path' % version)
 
     @staticmethod
@@ -2956,7 +2967,7 @@ class RecurrentWhisperer(object):
     # *************************************************************************
 
     @classmethod
-    def restore(cls, run_dir, version, base_path=None):
+    def restore(cls, run_dir, version, do_update_base_path=False):
         ''' Load a saved model given only the run directory, properly handling
         subclassing.
 
@@ -2969,6 +2980,13 @@ class RecurrentWhisperer(object):
             'save-every-so-often', respectively. Which of these models exist, 
             if any, depends on the hyperparameter settings used during 
             training.
+
+            do_update_base_path (optional): bool indicating whether to update 
+            all relevant filesystem paths using the directory structure 
+            inferred from run_dir. Set to True when restoring a model from a 
+            location other than where it was originally created/fit, e.g., if 
+            it points to a remote directory that is mounted locally or if the 
+            run directory was copied from another location. Default: False.
 
         Returns:
             The desired model with restored parameters, including the training
@@ -2983,16 +3001,24 @@ class RecurrentWhisperer(object):
         hps_dict = cls.load_hyperparameters(run_dir)
         log_dir = hps_dict['log_dir']
 
-        if base_path is None:
+        if not do_update_base_path:
             # Assume standard checkpoint directory structure
             ckpt_path = None
         else:
-            # Handle loading a model that was saved on another system.
-            # This functionality is paused under development.
-            raise NotImplementedError()
-            ckpt_path = cls._get_ckpt_path(version) # This will fail
-            ckpt_path = cls.update_dir_to_local_system(ckpt_path, base_path)
-            log_dir = cls.update_dir_to_local_system(log_dir, base_path)
+            # Handle loading a model that was created/fit somewhere else, but 
+            # now is accessible via run_dir.
+
+            # Get rid of trailing sep
+            if run_dir[-1] == '/':
+                run_dir = run_dir[:-1]
+
+            paths = cls.get_paths(run_dir)
+
+            # These are now relative to run_dir (which is local)
+            log_dir, run_hash = os.path.split(run_dir)
+
+            ckpt_dir = paths['%s_dir' % version]
+            ckpt_path = cls._get_ckpt_path(ckpt_dir, do_update_base_path=True)
 
         # Build model but don't initialize any parameters, and don't restore 
         # from standard checkpoints.
@@ -3023,13 +3049,20 @@ class RecurrentWhisperer(object):
         ckpt = tf.train.get_checkpoint_state(ckpt_dir)
         return ckpt is not None
 
-    def _restore_from_checkpoint(self, version, checkpoint_path=None):
+    def _restore_from_checkpoint(self, version, 
+        checkpoint_path=None):
         ''' Restores a model and relevant support structures from the most
         advanced previously saved checkpoint. This includes restoring TF model
         parameters, as well as adaptive learning rate (and history) and 
         adaptive gradient clipping (and history).
 
         Args:
+            version: 'ltl', 'lvl', or 'seso' indicating which version of the 
+            model to load: lowest-training-loss, lowest-validation-loss, or
+            'save-every-so-often', respectively. Which of these models exist, 
+            if any, depends on the hyperparameter settings used during 
+            training.
+
             checkpoint_path (optional): string containing a path to
             a model checkpoint. Use this as an override if needed for
             loading models that were saved under a different directory
@@ -3045,17 +3078,12 @@ class RecurrentWhisperer(object):
         self._validate_ckpt_version(version)
 
         if checkpoint_path is None:
-            # Could use exists_checkpoint(...) here, but that would require a
-            # redundant call to tf.train.get_checkpoint_state(...).
+            # Find ckpt path and recurse
             ckpt_dir = self._get_ckpt_dir(version)
-            ckpt = tf.train.get_checkpoint_state(ckpt_dir) # None if no ckpt
-            assert ckpt is not None, ('No checkpoint found in: %s' % ckpt_dir)
-
-            # Recurse
-            return self._restore_from_checkpoint( 
-                version, checkpoint_path=ckpt.model_checkpoint_path)
+            ckpt_path = self._get_ckpt_path(ckpt_dir)
+            return self._restore_from_checkpoint(version, 
+                checkpoint_path=ckpt_path)
         else:
-            
             assert tf.train.checkpoint_exists(checkpoint_path),\
                 ('Checkpoint does not exist: %s' % checkpoint_path)
             
@@ -3071,7 +3099,26 @@ class RecurrentWhisperer(object):
 
             # Resume training timer from value at last save.
             self.train_time_offset = self.session.run(
-                self.records['ops']['train_time'])                  
+                self.records['ops']['train_time'])    
+    
+    @classmethod
+    def _get_ckpt_path(cls, ckpt_dir, do_update_base_path=False):
+
+        ckpt = tf.train.get_checkpoint_state(ckpt_dir) # None if no ckpt
+        assert ckpt is not None, ('No checkpoint found in: %s' % ckpt_dir)
+        ckpt_path = ckpt.model_checkpoint_path
+
+        if do_update_base_path:
+            ''' If model was originally created/fit on a different machine, TF
+            will refer to a bunch of paths that we no longer want to use. We 
+            only want to use the directory structure indicated in ckpt_dir, 
+            which is always local (because we made it through the assert 
+            above).
+            '''
+            prev_ckpt_dir, ckpt_filename = os.path.split(ckpt_path)
+            ckpt_path = os.path.join(ckpt_dir, ckpt_filename)
+
+        return ckpt_path
 
     # *************************************************************************
     # Saving: predictions and summaries ***************************************
