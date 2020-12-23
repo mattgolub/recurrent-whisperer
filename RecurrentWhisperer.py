@@ -1612,7 +1612,7 @@ class RecurrentWhisperer(object):
         done = False
         while not done:
 
-            print('Epoch %d (step %d):' % (self._epoch, self._step))
+            self._print_epoch_state()
 
             epoch_timer = Timer(N_EPOCH_SPLITS,
                 name='Epoch',
@@ -1720,6 +1720,20 @@ class RecurrentWhisperer(object):
 
         self.adaptive_grad_norm_clip.update(self.epoch_grad_norm)
 
+    def _print_epoch_state(self, n_indent=1):
+        ''' Prints information about the current epoch before any training 
+        steps have been taken within the epoch.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+        print('Epoch %d (step %d):' % (self._epoch, self._step))
+        print('\t' * n_indent, end='')
+        print('Learning rate: %.2e' % self.adaptive_learning_rate())
+
     def _print_epoch_summary(self, batch_summaries, timer=None, n_indent=1):
         ''' Prints an summary describing one epoch of training.
 
@@ -1734,12 +1748,20 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        ''' Note that at the time this is called, updates have been applied to 
-        epoch, learning rate, and gradient clipping, but those updates have not
-        yet influenced a gradient step on the model parameters. In other 
-        words, here we have a model/predictions/summary/global_step from epoch 
+        ''' At the time this is called, all training steps have been taken for 
+        the epoch, and those steps are reflected in the loss values (and other 
+        summary scalars) in batch_summaries.
+
+        Additionally, the next set of updates have been applied to epoch, 
+        learning rate, and gradient clipping, but those updates have not
+        yet influenced a gradient step on the model parameters. If desired, 
+        those values should be logged in _print_epoch_state(...), which is 
+        called before any training steps have been taken for the epoch.
+
+        In other words, here we have a model/predictions/summaries from epoch 
         n, but self._epoch(), self.adaptive_learning_rate(), and gradient 
         clipping parameters have all been updated to their epoch n+1 values.
+
         This should not be changed, since it's critical for properly restoring 
         a model and its training trajectory. '''
 
@@ -1748,15 +1770,11 @@ class RecurrentWhisperer(object):
         else:
             loss_improvement = self.prev_loss - self.epoch_loss
 
-        # Line 1
-        print('\t' * n_indent, end='')
-        print('Training loss: %.2e' % self.epoch_loss, end='; ')
-        print('Improvement: %.2e' % loss_improvement, end='; ')
-        print('Learning rate: %.2e.' %  self.adaptive_learning_rate())
+        indent = '\t' * n_indent
 
-        # Line 2
-        print('\t' * n_indent, end='')
-        print('Logging to: %s' % self.run_dir)
+        print('%sTraining loss: %.2e' % (indent, self.epoch_loss))
+        print('%sImprovement: %.2e' % (indent, loss_improvement))
+        print('%sLogging to: %s' % (indent, self.run_dir))
 
         if timer is not None:
             # Line 3
