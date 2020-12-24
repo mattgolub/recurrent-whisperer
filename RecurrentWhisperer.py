@@ -339,7 +339,7 @@ class RecurrentWhisperer(object):
                 self.timer.split('_setup_session')
 
                 if not hps.do_custom_restore:
-                    self._initialize_or_restore()
+                    self.initialize_or_restore()
                     self.print_trainable_variables()
                     self.timer.split('_initialize_or_restore')
 
@@ -1270,40 +1270,42 @@ class RecurrentWhisperer(object):
         b = np.zeros(output_size)
         return W, b
 
-    def _initialize_or_restore(self):
-        '''Initializes all Tensorflow objects, either from existing model
+    def initialize_or_restore(self, version_priority=['seso', 'ltl', 'lvl']):
+        '''Initializes all Tensorflow objects, either from an existing model
         checkpoint if detected or otherwise as specified in _setup_model. If
         starting a training run from scratch, writes a yaml file containing
         all hyperparameter settings.
 
         Args:
-            None.
+            version_priority (optional): list of checkpoint version strings
+            arranged in order of preference for use when restoring. The first 
+            version found will be used. Default: ['seso', 'ltl', 'lvl'].
 
         Returns:
             None.
         '''
 
-        if self.exists_checkpoint('seso'):
-            self._restore_from_checkpoint('seso')
-        elif self.exists_checkpoint('lvl'):
-            self._restore_from_checkpoint('lvl')
-        else:
-            # Initialize new session
-            print('Initializing new run (%s).' % self.hps.hash)
-            self.session.run(tf.global_variables_initializer())
+        for version in version_priority:
+            if self.exists_checkpoint(version):
+                self._restore_from_checkpoint(version)
+                return
 
-            self.hps.save_yaml(self.hps_yaml_path) # For visual inspection
-            self.hps.save(self.hps_path) # For restoring a run via its run_dir
-            # (i.e., without needing to manually specify hps)
+        # Initialize new session
+        print('Initializing new run (%s).' % self.hps.hash)
+        self.session.run(tf.global_variables_initializer())
 
-            if self.hps.run_script is not None:
-                self.write_shell_script(
-                    self.run_script_path,
-                    self.hps.run_script,
-                    self.hps.integrated_hps)
+        self.hps.save_yaml(self.hps_yaml_path) # For visual inspection
+        self.hps.save(self.hps_path) # For restoring a run via its run_dir
+        # (i.e., without needing to manually specify hps)
 
-            # Start training timer from scratch
-            self.train_time_offset = 0.0
+        if self.hps.run_script is not None:
+            self.write_shell_script(
+                self.run_script_path,
+                self.hps.run_script,
+                self.hps.integrated_hps)
+
+        # Start training timer from scratch
+        self.train_time_offset = 0.0
 
     # *************************************************************************
     # Tensorboard *************************************************************
