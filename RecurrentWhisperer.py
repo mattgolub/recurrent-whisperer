@@ -1856,13 +1856,6 @@ class RecurrentWhisperer(object):
         '''
 
         if do_batch:
-            # THIS MESSES WITH VISUALIZATIONS. Here data are randomly batched,
-            # then recombined. But no one outside of this function knows about
-            # the effective shuffling of trials!
-            #
-            # To do: ensure trials are recombined into their original order.
-            # This will require tracking trial IDs and passing those to
-            # _combined_prediction_batches().
 
             batches_list, idx_list = self._split_data_into_batches(data)
             n_batches = len(batches_list)
@@ -2128,8 +2121,8 @@ class RecurrentWhisperer(object):
             values are to be averaged.
 
         Returns:
-            avg: float indicating the batch-size-weighted average of the
-            batch_summaries[i][key] values.
+            avg: float or numpy array containing the batch-size-weighted average of the batch_summaries[i][key] values. Shape matches that
+            of each batch_summaries[i][key] value (typically a scalar).
         '''
 
         BATCH_SIZE_KEY = 'batch_size'
@@ -2154,8 +2147,13 @@ class RecurrentWhisperer(object):
             batch_vals.append(batch_summary[key])
             batch_sizes.append(batch_summary[BATCH_SIZE_KEY])
 
-        weights = np.true_divide(batch_sizes, np.sum(batch_sizes))
-        avg = np.dot(weights, batch_vals)
+        # Deprecated. Only works if batch_summary[key] is scalar.
+        # weights = np.true_divide(batch_sizes, np.sum(batch_sizes))
+        # avg = np.dot(weights, batch_vals)
+
+        # This supports arbitrary shaped numpy arrays
+        # (though by convention only scalars should be in prediction summary.)
+        avg = np.average(batch_vals, weights=batch_sizes, axis=0)
 
         return avg
 
