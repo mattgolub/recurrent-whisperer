@@ -1239,37 +1239,6 @@ class RecurrentWhisperer(object):
     # Initializations *********************************************************
     # *************************************************************************
 
-    def _np_init_weight_matrix(self, input_size, output_size):
-        '''Randomly initializes a weight matrix W and bias vector b.
-
-        For use with input data matrix X [n x input_size] and output data
-        matrix Y [n x output_size], such that Y = X*W + b (with broadcast
-        addition). This is the typical required usage for TF dynamic_rnn.
-
-        Weights drawn from a standard normal distribution and are then
-        rescaled to preserve input-output variance.
-
-        Args:
-            input_size: non-negative int specifying the number of input
-            dimensions of the linear mapping.
-
-            output_size: non-negative int specifying the number of output
-            dimensions of the linear mapping.
-
-        Returns:
-            W: numpy array of shape [input_size x output_size] containing
-            randomly initialized weights.
-
-            b: numpy array of shape [output_size,] containing all zeros.
-        '''
-        if input_size == 0:
-            scale = 1.0 # This avoids divide by zero error
-        else:
-            scale = 1.0 / np.sqrt(input_size)
-        W = np.multiply(scale,self.rng.randn(input_size, output_size))
-        b = np.zeros(output_size)
-        return W, b
-
     def initialize_or_restore(self, version_priority=['seso', 'ltl', 'lvl']):
         '''Initializes all Tensorflow objects, either from an existing model
         checkpoint if detected or otherwise as specified in _setup_model. If
