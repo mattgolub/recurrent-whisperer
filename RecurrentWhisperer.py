@@ -66,6 +66,10 @@ class RecurrentWhisperer(object):
     _get_batch_size(...)
     _subselect_batch(...)
 
+    Required only if generating (or augmenting) data on-the-fly during
+    training:
+    _generate_data_batches(...)
+
     Required only if calling predict(data, do_batch=True):
     _combine_prediction_batches(...)
 
@@ -1901,12 +1905,29 @@ class RecurrentWhisperer(object):
             '''
 
         if data is None:
-            return self._generate_data_batches()
+            return self._generate_data_batches(data)
         else:
             # Cleaner currently to not return idx_list, since otherwise would
             # require output argument handling in train().
             data_batches, idx_list = self._split_data_into_batches(data)
             return data_batches
+
+    def _generate_data_batches(self, data):
+        ''' Generates one epoch of data batches for use when data are
+        generated (or augmented) on-the-fly during training.
+
+        Args:
+            data (optional): for use in generating augmented data. See
+            docstring in _get_data_batches().
+
+        Returns:
+            data_list: list of dicts, where each dict contains one batch of
+            data.
+        '''
+
+        raise StandardError(
+            '%s must be implemented by RecurrentWhisperer subclass'
+             % sys._getframe().f_code.co_name)
 
     def _split_data_into_batches(self, data):
         ''' Randomly splits data into a set of batches. If the number of
