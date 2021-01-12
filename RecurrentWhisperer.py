@@ -488,9 +488,9 @@ class RecurrentWhisperer(object):
             'do_save_ltl_train_summaries': True,
 
             'do_save_lvl_train_predictions': True,
-            'do_save_lvl_train_summaries': True,
+            'do_save_lvl_train_summary': True,
             'do_save_lvl_valid_predictions': True,
-            'do_save_lvl_valid_summaries': True,
+            'do_save_lvl_valid_summary': True,
 
             'do_save_mat_files': False,
 
