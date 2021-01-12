@@ -1260,7 +1260,7 @@ class RecurrentWhisperer(object):
 
         for version in version_priority:
             if self.exists_checkpoint(version):
-                self._restore_from_checkpoint(version)
+                self.restore_from_checkpoint(version)
                 return
 
         # Initialize new session
@@ -2339,7 +2339,7 @@ class RecurrentWhisperer(object):
                 print('\tGenerating visualizations from restored %s model...'
                     % str.upper(version))
 
-                self._restore_from_checkpoint(version)
+                self.restore_from_checkpoint(version)
 
                 self._setup_visualizations_timer()
 
@@ -2999,7 +2999,7 @@ class RecurrentWhisperer(object):
         '''
 
         # Validate version here. Existence of checkpoint is validated in
-        # _restore_from_checkpoint(...).
+        # restore_from_checkpoint(...).
         cls._validate_ckpt_version(version)
 
         hps_dict = cls.load_hyperparameters(run_dir)
@@ -3032,7 +3032,7 @@ class RecurrentWhisperer(object):
         model = cls(**hps_dict)
 
         # Find and resotre parameters from lvl checkpoint
-        model._restore_from_checkpoint(version, checkpoint_path=ckpt_path)
+        model.restore_from_checkpoint(version, checkpoint_path=ckpt_path)
 
         return model
 
@@ -3053,7 +3053,7 @@ class RecurrentWhisperer(object):
         ckpt = tf.train.get_checkpoint_state(ckpt_dir)
         return ckpt is not None
 
-    def _restore_from_checkpoint(self, version,
+    def restore_from_checkpoint(self, version,
         checkpoint_path=None):
         ''' Restores a model and relevant support structures from the most
         advanced previously saved checkpoint. This includes restoring TF model
@@ -3085,7 +3085,7 @@ class RecurrentWhisperer(object):
             # Find ckpt path and recurse
             ckpt_dir = self._get_ckpt_dir(version)
             ckpt_path = self._get_ckpt_path(ckpt_dir)
-            return self._restore_from_checkpoint(version,
+            return self.restore_from_checkpoint(version,
                 checkpoint_path=ckpt_path)
         else:
             assert tf.train.checkpoint_exists(checkpoint_path),\
