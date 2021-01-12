@@ -211,7 +211,7 @@ class RecurrentWhisperer(object):
                 maintain a .pkl file containing predictions over the training
                 data based on the lowest-validation-loss parameters.
 
-                do_save_lvl_train_summaries: bool indicating whether to
+                do_save_lvl_train_summary: bool indicating whether to
                 maintain a .pkl file containing summaries of the training
                 predictions based on the lowest-validation-loss parameters.
 
@@ -219,7 +219,7 @@ class RecurrentWhisperer(object):
                 maintain a .pkl file containing predictions over the validation
                 data based on the lowest-validation-loss parameters.
 
-                do_save_lvl_valid_summaries: bool indicating whether to
+                do_save_lvl_valid_summary: bool indicating whether to
                 maintain a .pkl file containing summaries of the validation
                  predictions based on the lowest-validation-loss parameters.
 
@@ -485,7 +485,7 @@ class RecurrentWhisperer(object):
             'do_generate_lvl_visualizations': True,
             'do_save_lvl_visualizations': True,
 
-            'do_save_ltl_train_summaries': True,
+            'do_save_ltl_train_summary': True,
 
             'do_save_lvl_train_predictions': True,
             'do_save_lvl_train_summary': True,
@@ -2875,7 +2875,7 @@ class RecurrentWhisperer(object):
             if self.hps.do_save_ltl_ckpt:
                 self._save_checkpoint(version=version)
 
-            if self.hps.do_save_ltl_train_summaries:
+            if self.hps.do_save_ltl_train_summary:
                 train_summary = self._combine_batch_summaries(batch_summaries)
                 self._save_summary(train_summary, 'train', version=version)
 
