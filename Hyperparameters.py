@@ -182,16 +182,16 @@ class Hyperparameters(object):
         # This has no dicts (all values are bool, int, float, or str)
         hps_flat = vars(args)
 
-        # Recursively reconstruct any dicts (based on colon delimiters)
-        hps = Hyperparameters.unflatten(hps_flat)
-
         # As is, any values that were set to None at the command line will
         # now be 'None' in the dict. Here, change 'None' to None. This is less
-        # easily implemented as a type argument function provided to 
+        # easily implemented as a type argument function provided to
         # ArgumentParser (as is done with str2bool.)
-        for key, val in hps.iteritems():
+        for key, val in hps_flat.iteritems():
             if val == 'None':
-                hps[key] = None
+                hps_flat[key] = None
+
+        # Recursively reconstruct any dicts (based on colon delimiters)
+        hps = Hyperparameters.unflatten(hps_flat)
 
         return hps
 
