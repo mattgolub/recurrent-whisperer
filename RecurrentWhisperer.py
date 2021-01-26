@@ -20,7 +20,10 @@ import pdb
 import tensorflow as tf
 import numpy as np
 import numpy.random as npr
+
+# Imports for saving data, predictions, summaries
 import cPickle
+import h5py, json
 import scipy.io as spio
 
 if os.environ.get('DISPLAY','') == '':
@@ -70,13 +73,13 @@ class RecurrentWhisperer(object):
     training:
     _generate_data_batches(...)
 
-    Required only if calling predict(data, do_batch=True):
+    Required only if do_batch_predictions:
     _combine_prediction_batches(...)
 
     Not required, but helpful in some cases:
     _setup_training(...)
     _update_valid_tensorboard_summaries
-    update_visualizations(...)
+    _update_visualizations(...)
 
     '''
 
@@ -138,6 +141,11 @@ class RecurrentWhisperer(object):
                 to simplify command-line argument parsing, which is already
                 nicely handled by Hyperparameters.py Default: 'train'.
 
+                do_batch_predictions: bool indicating whether to compute
+                predictions in batches, or all in a single evaluation of the
+                TF graph. This may be required for GPU/CPU memory management
+                in large models or for large datasets. Default: False.
+
                 max_n_epochs_without_lvl_improvement: int specifying
                 optimization termination criteria on the number of training
                 epochs performed without improvements to the lowest validation
@@ -185,11 +193,35 @@ class RecurrentWhisperer(object):
                 checkpoints specifically when a new lowest validation loss is
                 achieved. Default: True.
 
-                fig_format: string indicating the saved figure type (i.e.,
+                fig_filetype: string indicating the saved figure type (i.e.,
                 file extension). See matplotlib.pyplot.figure.savefig().
                 Default: 'pdf'.
 
                 fig_dpi: dots per inch for saved figures. Default: 600.
+
+                predictions_filetype: string indicating the filetype for
+                saving model predictions. Options include 'npz', 'h5', 'mat',
+                'pkl', 'json'. Default: 'npz'.
+
+                summary_filetype: string indicating the filetype for saving
+                prediction summaries. Options include 'npz', 'h5', 'mat',
+                'pkl', 'json'. Default: 'npz'.
+
+                ***************************************************************
+                WHEN, AND HOW OFTEN, TO GENERATE AND SAVE VISUALIZATIONS ******
+                ***************************************************************
+
+                do_generate_pretraining_visualizations: bool indicating
+                whether or not to generate visualizations using the
+                initialized (untrained) model. Beyond the diagnostic value,
+                this can be helpful in forcing errors early if there are bugs
+                in your visualizations code (rather than after an initial
+                round of training epochs). Default: False.
+
+                do_save_pretraining_visualizations: bool indicating whether or
+                not to save individual figure files for the pre-training
+                visualizations. Only relevant if
+                do_generate_pretraining_visualizations. Default: False.
 
                 do_generate_training_visualizations: bool indicating whether or
                 not to generate visualizations periodically throughout
@@ -197,15 +229,45 @@ class RecurrentWhisperer(object):
                 n_epoochs_per_visualization_update. Default: True.
 
                 do_save_training_visualizations: bool indicating whether or not
-                to save the training visualizations to Tensorboard. Default:
-                True.
+                to save individual figure files as they are generated
+                periodically throughout training. Only relevant if
+                do_generate_training_visualizations. Default: True.
+
+                do_generate_final_visualizations: bool indicating whether or
+                not to generate visualizations using the final state of the
+                model (i.e., upon termination of training). Default: True.
+
+                do_save_final_visualizations: bool indicating whether or not
+                to save individual figure files for the final visualizations.
+                Only relevant if do_generate_final_visualizations.
+                Default: True.
+
+                do_generate_ltl_visualizations: bool indicating whether or not
+                to, after training is complete, load the LTL model and generate
+                visualization from it. Default: True.
+
+                do_save_ltl_visualizations: bool indicating whether or not to
+                save individual figure files for the LTL visualizations. Only
+                relevant if do_generate_ltl_visualizations Default: True.
+
+                do_save_ltl_train_summary: bool indicating whether to
+                save prediction summaries over the training data each time the
+                model achieves a new lowest training loss. Default: True.
+
+                do_save_ltl_train_predictions: bool indicating whether to,
+                after training is complete, load the LTL model, generate
+                predictions over the training data, and save those predictions
+                to disk. Note, because this can be time consuming, this is
+                only done once, rather than continually throughout training.
+                Default: True.
 
                 do_generate_lvl_visualizations: bool indicating whether or not
                 to, after training is complete, load the LVL model and generate
                 visualization from it. Default: True.
 
                 do_save_lvl_visualizations: bool indicating whether or not to
-                save the LVL visualizations to Tensorboard. Default: True.
+                save individual figure files for the LVL visualizations. Only
+                relevant if do_generate_lvl_visualizations. Default: True.
 
                 do_save_lvl_train_predictions: bool indicating whether to
                 maintain a .pkl file containing predictions over the training
@@ -223,12 +285,6 @@ class RecurrentWhisperer(object):
                 maintain a .pkl file containing summaries of the validation
                  predictions based on the lowest-validation-loss parameters.
 
-                do_save_mat_files: bool indicating whether to save .mat
-                files containing predictions over the training and validation
-                data each time a new lowest validation loss is achieved.
-                Regardless of this setting, .pkl files are saved. Default:
-                False.
-
                 max_seso_ckpt_to_keep: int specifying the maximum number of
                 save-every-so-often model checkpoints to keep around.
                 Default: 1.
@@ -241,10 +297,11 @@ class RecurrentWhisperer(object):
                 of lowest-validation-loss (lvl) checkpoints to maintain.
                 Default: 1.
 
-                n_epochs_per_ckpt: int specifying the number of epochs between
-                checkpoint saves. Default: 100.
+                n_epochs_per_seso_update: int specifying the number of epochs
+                between save-every-so-often (seso) checkpoint saves.
+                Default: 100.
 
-                n_epochs_per_validation_update: int specifying the number of
+                n_epochs_per_lvl_update: int specifying the number of
                 epochs between evaluating predictions over the validation
                 data. Default: 100.
 
@@ -348,7 +405,7 @@ class RecurrentWhisperer(object):
                     self.timer.split('_initialize_or_restore')
 
     # *************************************************************************
-    # Static access ***********************************************************
+    # Hyperparameters management **********************************************
     # *************************************************************************
 
     @classmethod
@@ -454,55 +511,70 @@ class RecurrentWhisperer(object):
         return {
             'name': 'RecurrentWhisperer',
 
+            # Termination criteria
             'min_loss': None,
             'max_train_time': None,
             'max_n_epochs_without_ltl_improvement': 200,
             'max_n_epochs_without_lvl_improvement': 200,
 
+            'do_batch_predictions': False,
+
             'do_log_output': False,
             'do_restart_run': False,
             'do_custom_restore': False,
 
+            # Tensorboard logging
             'do_save_tensorboard_summaries': True,
 			'do_save_tensorboard_histograms': True,
             'do_save_tensorboard_images': True,
 
-            'do_save_ckpt': True,
-            'do_save_ltl_ckpt': True,
-            'do_save_lvl_ckpt': True,
+            # Frequency of (potentially time consuming) operations
+            'n_epochs_per_seso_update': 100,
+            'n_epochs_per_ltl_update': 100,
+            'n_epochs_per_lvl_update': 100,
+            'n_epochs_per_visualization_update': 100,
 
-            'fig_format': 'pdf',
-            'fig_dpi': 600,
+            # Visualizations
+            'do_generate_pretraining_visualizations': False,  # (pre-training)
+            'do_save_pretraining_visualizations': False,
 
-            'do_print_visualizations_timing': False,
-            'do_generate_pretraining_visualizations': False,
-            'do_generate_training_visualizations': True,
+            'do_generate_training_visualizations': True,      # (peri-training)
             'do_save_training_visualizations': True,
 
-            'do_generate_final_visualizations': True,
+            'do_generate_final_visualizations': True,         # (post-training)
             'do_save_final_visualizations': True,
 
-            'do_generate_lvl_visualizations': True,
-            'do_save_lvl_visualizations': True,
+            'fig_filetype': 'pdf',
+            'fig_dpi': 600,
+            'do_print_visualizations_timing': False,
 
+            'predictions_filetype': 'npz',
+            'summary_filetype': 'npz',
+
+            # Save-every-so-often (seso) checkpoints
+            'do_save_ckpt': True,
+            'max_seso_ckpt_to_keep': 1,
+
+            # Lowest-training-loss (LTL):
+            # checkpoints, predictions, summary, visualizations
+            'do_save_ltl_ckpt': True,
             'do_save_ltl_train_summary': True,
+            'do_save_ltl_train_predictions': True,
+            'do_generate_ltl_visualizations': True,
+            'do_save_ltl_visualizations': True,
+            'max_ltl_ckpt_to_keep': 1,
 
+            # Lowest-validation-loss (LVL) checkpoints
+            'do_save_lvl_ckpt': True,
             'do_save_lvl_train_predictions': True,
             'do_save_lvl_train_summary': True,
             'do_save_lvl_valid_predictions': True,
             'do_save_lvl_valid_summary': True,
-
-            'do_save_mat_files': False,
-
-            'max_seso_ckpt_to_keep': 1,
-            'max_ltl_ckpt_to_keep': 1,
+            'do_generate_lvl_visualizations': True,
+            'do_save_lvl_visualizations': True,
             'max_lvl_ckpt_to_keep': 1,
 
-            'n_epochs_per_ckpt': 100,
-            'n_epochs_per_ltl_update': 100,
-            'n_epochs_per_validation_update': 100,
-            'n_epochs_per_visualization_update': 100,
-
+            # GPU / CPU device management
             'device_type': 'gpu',
             'device_id': 0,
             'cpu_device_id': 0,
@@ -571,179 +643,6 @@ class RecurrentWhisperer(object):
         return Hyperparameters(hps_dict,
             cls.default_hash_hyperparameters(),
             cls.default_non_hash_hyperparameters())
-
-    @staticmethod
-    def get_hash_dir(log_dir, run_hash):
-        '''Returns a path to the run_hash in the log_dir.
-
-        Args:
-            log_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-            run_hash: string containing the hyperparameters hash used to
-            establish the run directory. Returned by
-            Hyperparameters.run_hash.
-
-        Returns:
-            Path to the hash directory.
-        '''
-        return os.path.join(log_dir, run_hash)
-
-    @staticmethod
-    def get_run_dir(log_dir, run_hash, n_folds=None, fold_idx=None):
-        ''' Returns a path to the directory containing all files related to a
-        given run.
-
-        Args:
-            log_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-            run_hash: string containing the hyperparameters hash used to
-            establish the run directory. Returned by
-            Hyperparameters.run_hash.
-
-            n_folds: (optional) Non-negative integer specifying the number of
-            cross-validation folds in the run.
-
-            fold_idx: (optional) Index specifying the cross-validation fold for
-            this run.
-
-        Returns:
-            Path to the run directory.
-        '''
-
-        hash_dir = RecurrentWhisperer.get_hash_dir(log_dir, run_hash)
-
-        if (n_folds is not None) and (fold_idx is not None):
-
-            fold_str = str('fold-%d-of-%d' % (fold_idx+1, n_folds))
-            run_dir = os.path.join(hash_dir, fold_str)
-
-            return run_dir
-
-        else:
-            return hash_dir
-
-    @staticmethod
-    def get_run_info(run_dir):
-        '''Advanced functionality for models invoking K-fold cross-validation.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-        Returns:
-            list of cross-validation runs (folder names) found in run_dir.
-
-        '''
-
-        def list_dirs(path_str):
-            return [name for name in os.listdir(path_str) \
-                if os.path.isdir(os.path.join(path_str, name)) ]
-
-        run_info = []
-        if RecurrentWhisperer.is_run_dir(run_dir):
-            pass
-        else:
-            fold_names = list_dirs(run_dir)
-
-            run_info = []
-            for fold_name in fold_names:
-                fold_dir = os.path.join(run_dir, fold_name)
-                if RecurrentWhisperer.is_run_dir(fold_dir):
-                    run_info.append(fold_name)
-
-        return run_info
-
-    @staticmethod
-    def get_paths(run_dir):
-        '''Generates all paths relevant for saving and loading model data.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-        Returns:
-            dict containing all paths relevant for saving and loading model
-            data. Keys are strings, with suffixes '_dir' and '_path' referring
-            to directories and filenames, respectively.
-        '''
-
-        hps_dir = os.path.join(run_dir, 'hps')
-        seso_dir = os.path.join(run_dir, 'seso')
-        ltl_dir = os.path.join(run_dir, 'ltl')
-        lvl_dir = os.path.join(run_dir, 'lvl')
-        events_dir = os.path.join(run_dir, 'events')
-        fig_dir = os.path.join(run_dir, 'figs')
-        fp_dir = os.path.join(run_dir, 'fps')
-
-        return {
-            'run_dir': run_dir,
-            'run_script_path': os.path.join(run_dir, 'run.sh'),
-
-            'hps_dir': hps_dir,
-            'hps_path': os.path.join(hps_dir, 'hyperparameters.pkl'),
-            'hps_yaml_path': os.path.join(hps_dir, 'hyperparameters.yml'),
-
-            'events_dir': events_dir,
-            'model_log_path': os.path.join(events_dir, 'model.log'),
-            'loggers_log_path': os.path.join(events_dir, 'dependencies.log'),
-            'done_path': os.path.join(events_dir, 'training.done'),
-
-            'seso_dir': seso_dir,
-            'seso_ckpt_path': os.path.join(seso_dir, 'checkpoint.ckpt'),
-
-            'ltl_dir': ltl_dir,
-            'ltl_ckpt_path': os.path.join(ltl_dir, 'ltl.ckpt'),
-
-            'lvl_dir': lvl_dir,
-            'lvl_ckpt_path': os.path.join(lvl_dir, 'lvl.ckpt'),
-
-            'fig_dir': fig_dir,
-            'fp_dir': fp_dir,
-            }
-
-    @staticmethod
-    def is_run_dir(run_dir):
-        '''Determines whether a run exists in the filesystem.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__().
-
-        Returns:
-            bool indicating whether a run exists.
-        '''
-
-        if run_dir is None:
-            return False
-
-        paths = RecurrentWhisperer.get_paths(run_dir)
-
-        # Check for existence of all directories that would have been created
-        # if a run was executed. This won't look for various files, which may
-        # or may not be saved depending on hyperparameter choices.
-        for key in paths:
-            if 'dir' in key and not os.path.exists(paths[key]):
-                return False
-
-        return True
-
-    @staticmethod
-    def is_done(run_dir):
-        '''Determines whether a run exists in the filesystem and has run to
-        completion.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__().
-
-        Returns:
-            bool indicating whether the run is "done".
-        '''
-
-        paths = RecurrentWhisperer.get_paths(run_dir)
-        return os.path.exists(paths['done_path'])
 
     @staticmethod
     def get_command_line_call(run_script,
@@ -868,62 +767,44 @@ class RecurrentWhisperer(object):
         fold_idx = hps.fold_idx
         run_hash = hps.hash
         run_dir = self.get_run_dir(log_dir, run_hash, n_folds, fold_idx)
+        subdirs, paths = self._build_paths(run_dir)
 
-        # TO DO: Overhaul this to just store self.paths = self.get_paths(...)
-        # This will save a few steps every time a new path is added.
-        # But there will be quite the find/replace headache.
-        paths = self.get_paths(run_dir)
+        self._subdirs = subdirs
+        self._paths = paths
+        self._run_hash = run_hash
+        self._run_dir = run_dir
 
-        self.run_hash = run_hash
-        self.run_dir = paths['run_dir']
-        self.run_script_path = paths['run_script_path']
-        self.hps_dir = paths['hps_dir']
-        self.hps_path = paths['hps_path']
-        self.hps_yaml_path = paths['hps_yaml_path']
-        self.fig_dir = paths['fig_dir']
-        self.fp_dir = paths['fp_dir']
+        hps_dir = subdirs['hps']
+        seso_dir = subdirs['seso']
+        ltl_dir = subdirs['ltl']
+        lvl_dir = subdirs['lvl']
 
-        self.seso_dir = paths['seso_dir']
-        self.seso_ckpt_path = paths['seso_ckpt_path']
-
-        self.ltl_dir = paths['ltl_dir']
-        self.ltl_ckpt_path = paths['ltl_ckpt_path']
-
-        self.lvl_dir = paths['lvl_dir']
-        self.lvl_ckpt_path = paths['lvl_ckpt_path']
-
-        self.done_path = paths['done_path']
-        self.model_log_path = paths['model_log_path']
-        self.loggers_log_path = paths['loggers_log_path']
-
-        # For managing Tensorboard events
-        self.events_dir = paths['events_dir']
-
-        if os.path.isdir(self.run_dir):
-            print('\nRun directory found: %s.' % self.run_dir)
-            ckpt = tf.train.get_checkpoint_state(self.seso_dir)
-            ltl_ckpt = tf.train.get_checkpoint_state(self.ltl_dir)
-            lvl_ckpt = tf.train.get_checkpoint_state(self.lvl_dir)
+        if os.path.isdir(run_dir):
+            print('\nRun directory found: %s.' % run_dir)
+            ckpt = tf.train.get_checkpoint_state(seso_dir)
+            ltl_ckpt = tf.train.get_checkpoint_state(ltl_dir)
+            lvl_ckpt = tf.train.get_checkpoint_state(lvl_dir)
             if ckpt is None and ltl_ckpt is None and lvl_ckpt is None:
                 print('No checkpoints found.')
             if self.hps.do_restart_run:
                 print('\tDeleting run directory.')
-                shutil.rmtree(self.run_dir)
+                shutil.rmtree(run_dir)
 
                 # Avoids pathological behavior whereby it is impossible to
                 # restore a run that was started with do_restart_run = True.
                 self.hps.do_restart_run = False
 
-        if not os.path.isdir(self.run_dir):
-            print('\nCreating run directory: %s.' % self.run_dir)
-            os.makedirs(self.run_dir)
-            os.makedirs(self.hps_dir)
-            os.makedirs(self.seso_dir)
-            os.makedirs(self.ltl_dir)
-            os.makedirs(self.lvl_dir)
-            os.makedirs(self.events_dir)
-            os.makedirs(self.fig_dir)
-            os.makedirs(self.fp_dir)
+        if not os.path.isdir(run_dir):
+            print('\nCreating run directory: %s.' % run_dir)
+
+            # Subdirectories
+            for d in subdirs.values():
+                os.makedirs(d)
+
+            # Sub-subdirectories
+            for version in ['seso', 'ltl', 'lvl']:
+                d = self._build_fig_dir(run_dir, version=version)
+                os.makedirs(d)
 
         if hps.do_log_output:
             self._setup_logger()
@@ -948,7 +829,10 @@ class RecurrentWhisperer(object):
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         log_level = logging.DEBUG
 
-        fh = logging.FileHandler(self.loggers_log_path)
+        model_log_path = self._paths['model_log_path']
+        loggers_log_path = self._paths['loggers_log_path']
+
+        fh = logging.FileHandler(loggers_log_path)
         fh.setLevel(log_level)
         fh.setFormatter(formatter)
 
@@ -963,7 +847,7 @@ class RecurrentWhisperer(object):
         # RecurrentWhisperer
         self._default_stdout = sys.stdout
         self._default_stderr = sys.stderr
-        self._log_file = open(self.model_log_path, 'a+')
+        self._log_file = open(model_log_path, 'a+')
         sys.stdout = self._log_file
         sys.stderr = self._log_file
 
@@ -1263,17 +1147,21 @@ class RecurrentWhisperer(object):
                 self.restore_from_checkpoint(version)
                 return
 
+        hps_path = self._paths['hps_path']
+        hps_yaml_path = self._paths['hps_yaml_path']
+        run_script_path = self._paths['run_script_path']
+
         # Initialize new session
         print('Initializing new run (%s).' % self.hps.hash)
         self.session.run(tf.global_variables_initializer())
 
-        self.hps.save_yaml(self.hps_yaml_path) # For visual inspection
-        self.hps.save(self.hps_path) # For restoring a run via its run_dir
+        self.hps.save_yaml(hps_yaml_path) # For visual inspection
+        self.hps.save(hps_path) # For restoring a run via its run_dir
         # (i.e., without needing to manually specify hps)
 
         if self.hps.run_script is not None:
             self.write_shell_script(
-                self.run_script_path,
+                run_script_path,
                 self.hps.run_script,
                 self.hps.integrated_hps)
 
@@ -1492,8 +1380,7 @@ class RecurrentWhisperer(object):
 
         self._visualizations_timer.split('Transition from Tensorboard')
 
-    @staticmethod
-    def _tensorboard_image_name(fig_name):
+    def _tensorboard_image_name(self, fig_name):
         ''' Replaces all instances of '/' with '-'. Facilitates
         differentiating figure paths from Tensorboard Image scopes.
 
@@ -1797,7 +1684,220 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def predict(self, data, do_batch=False):
+    def _is_training_complete(self, epoch_loss, do_check_lvl=True):
+        '''Determines whether the training optimization procedure should
+        terminate. Termination criteria, governed by hyperparameters, are
+        thresholds on the following:
+
+            1) the training loss
+            2) the learning rate
+            3) the number of training epochs performed
+            4) the number of training epochs performed since the lowest
+               validation loss improved (only if do_check_lvl == True).
+
+        Args:
+            epoch_summaries:
+
+        Returns:
+            bool indicating whether any of the termination criteria have been
+            met.
+        '''
+        hps = self.hps
+
+        if self.is_done(self.run_dir):
+            print('Stopping optimization: found .done file.')
+            return True
+
+        if epoch_loss is np.inf:
+            print('\nStopping optimization: loss is Inf!')
+            return True
+
+        if np.isnan(epoch_loss):
+            print('\nStopping optimization: loss is NaN!')
+            return True
+
+        if hps.min_loss is not None and epoch_loss <= hps.min_loss:
+            print ('\nStopping optimization: loss meets convergence criteria.')
+            return True
+
+        if self.adaptive_learning_rate.is_finished(do_check_step=False):
+            print ('\nStopping optimization: minimum learning rate reached.')
+            return True
+
+        if self.adaptive_learning_rate.is_finished(do_check_rate=False):
+            print('\nStopping optimization:'
+                  ' reached maximum number of training epochs.')
+            return True
+
+        if hps.max_train_time is not None and \
+            self._train_time > hps.max_train_time:
+
+            print ('\nStopping optimization: training time exceeds '
+                'maximum allowed.')
+            return True
+
+        if do_check_lvl:
+            # Check whether lvl has been given a value (after being
+            # initialized to np.inf), and if so, check whether that value has
+            # improved recently.
+            if not np.isinf(self._lvl) and \
+                self._epoch - self._epoch_last_lvl_improvement >= \
+                    hps.max_n_epochs_without_lvl_improvement:
+
+                print('\nStopping optimization:'
+                      ' reached maximum number of training epochs'
+                      ' without improvement to the lowest validation loss.')
+
+                return True
+
+        return False
+
+    def _close_training(self, train_data=None, valid_data=None):
+        ''' Optionally saves a final checkpoint, then loads the LVL model and
+        generates LVL visualizations.
+
+        Args:
+            train_data: dict containing the training data.
+
+            valid_data: dict containing the validation data.
+
+        Returns:
+            None.
+        '''
+        hps = self.hps
+
+        print('\nClosing training:')
+
+        # Save checkpoint upon completing training
+        if hps.do_save_ckpt:
+            self._save_checkpoint(version='seso')
+
+        # Save .done file. Critically placed after saving final checkpoint,
+        # but before doing a bunch of other stuff that might fail. This way,
+        # if anything below does fail, the .done file will be present,
+        # indicating safe to interpret checkpoint model as final.
+        self._save_done_file()
+
+        self.save_final_results(train_data, valid_data, version='seso')
+        self.save_final_results(train_data, valid_data, version='lvl')
+        self.save_final_results(train_data, valid_data, version='ltl')
+
+        if hps.do_log_output:
+            self._log_file.close()
+
+            # Redirect all printing, errors, and warnings back to defaults
+            sys.stdout = self._default_stdout
+            sys.stderr = self._default_stderr
+
+    def save_final_results(self, train_data, valid_data, version='seso'):
+        ''' Optionally save predictions and/or visualizations upon completion
+        of training. This will optionally restore from 'ltl' or 'lvl'
+        checkpoints, or will use the current model state if version is 'seso'.
+        '''
+
+        def _do_train_visualizations(version, data):
+
+            if data is None:
+                return False
+
+            if version == 'final':
+                return self.hps.do_generate_final_visualizations
+            elif version == 'lvl':
+                return False
+            elif version == 'ltl':
+                return self.hps.do_generate_ltl_visualizations
+
+        def _do_valid_visualizations(version, data):
+
+            if data is None:
+                return False
+
+            if version == 'final':
+                return self.hps.do_generate_final_visualizations
+            elif version == 'lvl':
+                return self.hps.do_generate_lvl_visualizations
+            elif version == 'ltl':
+                return False
+
+        def _do_train_predictions(version, data):
+
+            if data is None:
+                return False
+
+            if version == 'final':
+                return False
+
+            return self._do_save_pred('train', version)
+
+        def _do_valid_predictions(version, data):
+
+            if data is None:
+                return False
+
+            if version == 'final':
+                return False
+
+            return self._do_save_pred('valid', version)
+
+        def _do_save_visualizations(version):
+            if version == 'final':
+                return hps.do_save_final_visualizations
+            elif version == 'ltl':
+                return hps.do_save_ltl_visualizations
+            elif version == 'lvl':
+                return hps.do_save_lvl_visualizations
+
+        self._assert_ckpt_version(version)
+
+        do_train_pred = _do_valid_predictions(version, train_data)
+        do_train_vis = _do_train_visualizations(version, train_data)
+
+        do_valid_pred = _do_valid_predictions(version, valid_data)
+        do_valid_vis = _do_valid_visualizations(version, valid_data)
+
+        do_list = [do_train_pred, do_train_vis, do_valid_pred, do_valid_vis]
+
+        if not any(do_list):
+            # This covers the case of data generated on the fly
+            # (train_data=None, valid_data=None)
+            return
+
+        if version in ['ltl' or 'lvl']:
+            self.restore_from_checkpoint(version)
+
+        if do_train_pred or do_train_vis:
+
+            train_pred, train_summary = self.predict(train_data,
+                train_or_valid_str='train')
+
+            if do_train_pred:
+                self._save_pred(train_pred, 'train', version=version)
+                self._save_summary(train_summary, 'train', version=version)
+
+            if do_train_vis:
+                self.update_visualizations(
+                    train_data, train_pred, 'train', version,
+                    do_save=_do_save_visualizations(version))
+
+        if do_valid_pred or do_valid_vis:
+
+            valid_pred, valid_summary = self.predict(valid_data,
+                train_or_valid_str='valid')
+
+            if do_valid_pred:
+                self._save_pred(valid_pred, 'valid', version=version)
+                self._save_summary(valid_summary, 'valid', version=version)
+
+            if do_valid_vis:
+                self.update_visualizations(
+                    valid_data, valid_pred, 'valid', version,
+                    do_save=_do_save_visualizations(version))
+
+    # *************************************************************************
+    # Prediction **************************************************************
+    # *************************************************************************
+
+    def predict(self, data, train_or_valid_str='valid', do_batch=None):
         ''' Runs a forward pass through the model using given input data. If
         the input data are larger than the batch size, the data are processed
         sequentially in multiple batches.
@@ -1806,10 +1906,15 @@ class RecurrentWhisperer(object):
             data: dict containing requisite data for generating predictions.
             Key/value pairs will be specific to the subclass implementation.
 
-            do_batch: bool indicating whether to split data into batches and
-            then sequentially process those batches. This can be important for
-            large models and/or large datasets relative to memory resources.
-            Default: False.
+            train_or_valid_str (optional): either 'train' or 'valid',
+            indicating whether data contains training data or validation data,
+            respectively. This can be used to modulate the behavior of
+            _predict_batch(). Default: 'valid'.
+
+            do_batch (optional): bool indicating whether to split data into
+            batches and then sequentially process those batches. This can be
+            important for large models and/or large datasets relative to
+            memory resources. Default: falls back to hps.do_batch_predictions.
 
         Returns:
             predictions: dict containing model predictions based on data. Key/
@@ -1828,6 +1933,9 @@ class RecurrentWhisperer(object):
         predictions.
         '''
 
+        if do_batch is None:
+            do_batch = self.hps.do_batch_predictions
+
         if do_batch:
 
             batches_list, idx_list = self._split_data_into_batches(data)
@@ -1843,7 +1951,7 @@ class RecurrentWhisperer(object):
                       % (batch_idx+1, n_batches, batch_size))
 
                 batch_predictions, batch_summary = self._predict_batch(
-                    batch_data)
+                    batch_data, train_or_valid_str=train_or_valid_str)
 
                 pred_list.append(batch_predictions)
                 summary_list.append(batch_summary)
@@ -1852,19 +1960,25 @@ class RecurrentWhisperer(object):
                 pred_list, summary_list, idx_list)
 
         else:
-            predictions, summary = self._predict_batch(data)
+            predictions, summary = self._predict_batch(
+                data, train_or_valid_str=train_or_valid_str)
 
         assert ('loss' in summary),\
             ('summary must minimally contain key: \'loss\', but does not.')
 
         return predictions, summary
 
-    def _predict_batch(self, batch_data):
+    def _predict_batch(self, batch_data, train_or_valid_str='valid'):
         ''' Runs a forward pass through the model using a single batch of data.
 
         Args:
-            data: dict containing requisite data for generating predictions.
-            Key/value pairs will be specific to the subclass implementation.
+            batch_data: dict containing requisite data for generating
+            predictions. Key/value pairs will be specific to the subclass
+            implementation.
+
+            train_or_valid_str (optional): either 'train' or 'valid',
+            indicating whether data contains training data or validation data,
+            respectively. Default: 'valid'.
 
         Returns:
             predictions: See docstring for predict().
@@ -1875,6 +1989,56 @@ class RecurrentWhisperer(object):
         raise StandardError(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
+
+    # *************************************************************************
+    # Validation **************************************************************
+    # *************************************************************************
+
+    def update_validation(self, train_data, valid_data):
+        '''Evaluates the validation data, updates the corresponding
+        Tensorboard summaries are updated, and if the validation loss
+        indicates a new minimum, a model checkpoint is saved.
+
+        Args:
+            train_data: dict containing the training data.
+
+            valid_data: dict containing the validation data.
+
+        Returns:
+            None.
+        '''
+
+        predictions, summary = self.predict(valid_data)
+        print('\tValidation loss: %.2e' % summary['loss'])
+
+        self._maybe_save_lvl_checkpoint(predictions, summary, train_data)
+
+        if self.hps.do_save_tensorboard_summaries:
+            self._update_valid_tensorboard_summaries(summary)
+
+    def _maybe_update_validation(self, train_data, valid_data):
+        '''Evaluates the validation data if the current epoch number indicates
+        that such an update is due.
+
+        Args:
+            train_data: dict containing the training data.
+
+            valid_data: dict containing the validation data.
+
+        Returns:
+            None.
+        '''
+
+        if valid_data is None:
+            pass
+        else:
+            n = self.hps.n_epochs_per_lvl_update
+            if np.mod(self._epoch, n) == 0:
+                self.update_validation(train_data, valid_data)
+
+    # *************************************************************************
+    # Batch management ********************************************************
+    # *************************************************************************
 
     def _get_batch_size(self, batch_data):
         '''Returns the number of training examples in a batch of training data.
@@ -2014,48 +2178,6 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def _maybe_update_validation(self, train_data, valid_data):
-        '''Evaluates the validation data if the current epoch number indicates
-        that such an update is due.
-
-        Args:
-            train_data: dict containing the training data.
-
-            valid_data: dict containing the validation data.
-
-        Returns:
-            None.
-        '''
-
-        if valid_data is None:
-            pass
-        else:
-            n = self.hps.n_epochs_per_validation_update
-            if np.mod(self._epoch, n) == 0:
-                self.update_validation(train_data, valid_data)
-
-    def update_validation(self, train_data, valid_data):
-        '''Evaluates the validation data, updates the corresponding
-        Tensorboard summaries are updated, and if the validation loss
-        indicates a new minimum, a model checkpoint is saved.
-
-        Args:
-            train_data: dict containing the training data.
-
-            valid_data: dict containing the validation data.
-
-        Returns:
-            None.
-        '''
-
-        predictions, summary = self.predict(valid_data)
-        print('\tValidation loss: %.2e' % summary['loss'])
-
-        self._maybe_save_lvl_checkpoint(predictions, summary, train_data)
-
-        if self.hps.do_save_tensorboard_summaries:
-            self._update_valid_tensorboard_summaries(summary)
-
     @classmethod
     def _combine_batch_summaries(cls, batch_summaries):
         ''' Combines batched results from _train_batch(...) into a single
@@ -2147,144 +2269,105 @@ class RecurrentWhisperer(object):
 
         return avg
 
-    def _is_training_complete(self, epoch_loss, do_check_lvl=True):
-        '''Determines whether the training optimization procedure should
-        terminate. Termination criteria, governed by hyperparameters, are
-        thresholds on the following:
-
-            1) the training loss
-            2) the learning rate
-            3) the number of training epochs performed
-            4) the number of training epochs performed since the lowest
-               validation loss improved (only if do_check_lvl == True).
-
-        Args:
-            epoch_summaries:
-
-        Returns:
-            bool indicating whether any of the termination criteria have been
-            met.
-        '''
-        hps = self.hps
-
-        if self.is_done(self.run_dir):
-            print('Stopping optimization: found .done file.')
-            return True
-
-        if epoch_loss is np.inf:
-            print('\nStopping optimization: loss is Inf!')
-            return True
-
-        if np.isnan(epoch_loss):
-            print('\nStopping optimization: loss is NaN!')
-            return True
-
-        if hps.min_loss is not None and epoch_loss <= hps.min_loss:
-            print ('\nStopping optimization: loss meets convergence criteria.')
-            return True
-
-        if self.adaptive_learning_rate.is_finished(do_check_step=False):
-            print ('\nStopping optimization: minimum learning rate reached.')
-            return True
-
-        if self.adaptive_learning_rate.is_finished(do_check_rate=False):
-            print('\nStopping optimization:'
-                  ' reached maximum number of training epochs.')
-            return True
-
-        if hps.max_train_time is not None and \
-            self._train_time > hps.max_train_time:
-
-            print ('\nStopping optimization: training time exceeds '
-                'maximum allowed.')
-            return True
-
-        if do_check_lvl:
-            # Check whether lvl has been given a value (after being
-            # initialized to np.inf), and if so, check whether that value has
-            # improved recently.
-            if not np.isinf(self._lvl) and \
-                self._epoch - self._epoch_last_lvl_improvement >= \
-                    hps.max_n_epochs_without_lvl_improvement:
-
-                print('\nStopping optimization:'
-                      ' reached maximum number of training epochs'
-                      ' without improvement to the lowest validation loss.')
-
-                return True
-
-        return False
-
-    def _close_training(self, train_data=None, valid_data=None):
-        ''' Optionally saves a final checkpoint, then loads the LVL model and
-        generates LVL visualizations.
-
-        Args:
-            train_data: dict containing the training data.
-
-            valid_data: dict containing the validation data.
-
-        Returns:
-            None.
-
-        Raises:
-            Warning if attempting to generate LVL visualizations when no LVL
-            checkpoint was saved.
-        '''
-        hps = self.hps
-
-        print('\nClosing training:')
-
-        # Save checkpoint upon completing training
-        if hps.do_save_ckpt:
-            self._save_checkpoint(version='seso')
-
-        # Save .done file. Critically placed after saving final checkpoint,
-        # but before doing a bunch of other stuff that might fail. This way,
-        # if anything below does fail, the .done file will be present,
-        # indicating safe to interpret checkpoint model as final.
-        self._save_done_file()
-
-        if hps.do_generate_final_visualizations:
-
-            self._setup_visualizations_timer()
-
-            self.update_visualizations(train_data, valid_data, is_final=True)
-
-            if hps.do_save_tensorboard_images:
-                self._update_tensorboard_images()
-
-            if hps.do_save_final_visualizations:
-                self.save_visualizations()
-
-            self._maybe_print_visualizations_timing()
-
-        # To do: enable choice of whether this is for ltl or lvl model.
-        # It would be too messy to do both (for Tensorboard Images).
-        self._maybe_generate_lowest_loss_visualizations(train_data, valid_data)
-
-        if hps.do_log_output:
-            self._log_file.close()
-
-            # Redirect all printing, errors, and warnings back to defaults
-            sys.stdout = self._default_stdout
-            sys.stderr = self._default_stderr
-
     # *************************************************************************
     # Visualizations **********************************************************
     # *************************************************************************
 
-    def _maybe_update_visualizations(self, train_data, valid_data):
+    def _update_visualizations(self, data, pred, train_or_valid_str, version):
+        '''Updates visualizations in self.figs.
+
+        Args:
+            data: dict.
+
+            pred: dict containing the result from predict(data).
+
+            train_or_valid_str: either 'train' or 'valid', indicating whether
+            data contains training data or validation data, respectively.
+
+            version: string indicating the state of the model, which can be
+            used to select which figures to generate. Options are: 'ltl',
+            'lvl', 'seso', or 'final'.
+
+        Returns:
+            None.
+        '''
+        pass
+
+    def save_visualizations(self, version='seso'):
+        '''Saves individual figures to this run's figure directory. This is
+        independent of Tensorboard Images.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+        hps = self.hps
+        fig_dir = self._build_fig_dir(self.run_dir, version=version)
+
+        for fig_name, fig in self.figs.iteritems():
+
+            self._visualizations_timer.split('Saving: %s' % fig_name)
+
+            file_path_no_ext = os.path.join(fig_dir, fig_name)
+            figs_dir_i, file_name_no_ext = os.path.split(file_path_no_ext)
+            file_name = file_name_no_ext + '.' + hps.fig_filetype
+            file_path = os.path.join(figs_dir_i, file_name)
+
+            # This fig's dir may have additional directory structure beyond
+            # the already existing .../figs/ directory. Make it.
+            if not os.path.isdir(figs_dir_i):
+                os.makedirs(figs_dir_i)
+
+            fig.savefig(file_path,
+                bbox_inches='tight',
+                format=hps.fig_filetype,
+                dpi=hps.fig_dpi)
+
+        # Make sure whatever happens next doesn't affect timing of last save.
+        self._visualizations_timer.split('Transition from saving.')
+
+    @staticmethod
+    def refresh_figs():
+        ''' Refreshes all matplotlib figures.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+        if os.environ.get('DISPLAY','') == '':
+            # If executing on a server with no graphical back-end
+            pass
+        else:
+            plt.ion()
+            plt.show()
+            plt.pause(1e-10)
+
+    @property
+    def n_figs(self):
+        return len(self.figs)
+
+    def _maybe_update_visualizations(self, data, pred=None,
+        train_or_valid_str='train',
+        version='seso'):
         '''Updates visualizations if the current epoch number indicates that
         an update is due. Saves those visualization to Tensorboard or to
-        individual figure file, depending on hyperparameters
+        individual figure files, depending on hyperparameters
         (do_save_tensorboard_images and do_save_training_visualizations,
         respectively.)
 
         Args:
-            train_data: dict containing the training data.
+            data:
 
-            valid_data: dict containing the validation data.
+            pred:
+
+            train_or_valid_str: either 'train' or 'valid', indicating whether
+            data contains training data or validation data, respectively.
+
+            version:
 
         Returns:
             None.
@@ -2300,125 +2383,40 @@ class RecurrentWhisperer(object):
                 np.mod(epoch, hps.n_epochs_per_visualization_update) == 0 and \
                 hps.do_generate_training_visualizations
 
+        if do_pretraining(hps, self._epoch):
 
-        if do_pretraining(hps, self._epoch) or do_training(hps, self._epoch):
+            self.update_visualizations(
+                data, pred, train_or_valid_str, version,
+                do_save=self.hps.do_save_pretraining_visualizations)
 
-            self._setup_visualizations_timer()
+        elif do_training(hps, self._epoch):
 
-            self.update_visualizations(train_data, valid_data, is_final=False)
+            self.update_visualizations(
+                data, pred, train_or_valid_str, version,
+                do_save=self.hps.do_save_training_visualizations)
 
-            if hps.do_save_tensorboard_images:
-                self._update_tensorboard_images()
+    def update_visualizations(self, data, pred, train_or_valid_str, version,
+        do_save=True, # Save individual figures (indep of Tensorboard)
+        do_update_tensorboard=None):
 
-            if self.hps.do_save_training_visualizations:
-                self.save_visualizations()
+        self._setup_visualizations_timer()
 
-            self._maybe_print_visualizations_timing()
+        self._update_visualizations(
+            data=data,
+            pred=pred,
+            train_or_valid_str=train_or_valid_str,
+            version=version)
 
-    def _maybe_generate_lowest_loss_visualizations(self,
-        train_data,
-        valid_data,
-        version='lvl'):
+        if do_update_tensorboard is None:
+            do_update_tensorboard = self.hps.do_save_tensorboard_images
 
-        def do_generate(version, hps):
-            if version == 'ltl':
-                return hps.do_generate_ltl_visualizations
-            else:
-                return hps.do_generate_lvl_visualizations
+        if do_update_tensorboard:
+            self._update_tensorboard_images()
 
-        def do_save(version, hps):
-            if version == 'ltl':
-                return hps.do_save_ltl_visualizations
-            else:
-                return hps.do_save_lvl_visualizations
+        if do_save:
+            self.save_visualizations(version=version)
 
-        if do_generate(version, self.hps):
-
-            if self.exists_checkpoint(version):
-
-                print('\tGenerating visualizations from restored %s model...'
-                    % str.upper(version))
-
-                self.restore_from_checkpoint(version)
-
-                self._setup_visualizations_timer()
-
-                self.update_visualizations(train_data, valid_data,
-                    is_lvl=version=='lvl')
-
-                if hps.do_save_tensorboard_images:
-                    self._update_tensorboard_images()
-
-                if do_save(version, self.hps):
-                    self.save_visualizations()
-
-                self._maybe_print_visualizations_timing()
-
-            else:
-                raise Warning('Attempted to generate LVL visualizations, '
-                    'but cannot because LVL model could not be found.')
-
-    def update_visualizations(self, train_data, valid_data=None,
-        is_final=False,
-        is_lvl=False):
-        '''Updates visualizations in self.figs. Only called if
-            do_generate_training_visualizations OR
-            do_generate_lvl_visualizations.
-
-        Args:
-            train_data: dict containing the training data.
-
-            valid_data: dict containing the validation data.
-
-            is_final: bool indicating if this call is made when the model is
-            in its final state after training has terminated.
-
-            is_lvl: bool indicating if this call is made when the model is in
-            its lowest-validation-loss state.
-
-            The two flags above can be used to signal generating a more
-            comprehensive set of visualizations and / or analyses than those
-            that are periodically generated throughout training.
-
-        Returns:
-            None.
-        '''
-        pass
-
-    def save_visualizations(self):
-        '''Saves individual figures to this run's figure directory. This is
-        independent of Tensorboard Images.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        '''
-        hps = self.hps
-        fig_dir = self.fig_dir
-
-        for fig_name, fig in self.figs.iteritems():
-
-            self._visualizations_timer.split('Saving: %s' % fig_name)
-
-            figs_dir_i, file_name_no_ext = os.path.split(
-                os.path.join(fig_dir, fig_name))
-            file_name = file_name_no_ext + '.' + hps.fig_format
-            file_path = os.path.join(figs_dir_i, file_name)
-
-            # This fig's dir may have additional directory structure beyond
-            # the already existing .../figs/ directory. Make it.
-            if not os.path.isdir(figs_dir_i):
-                os.makedirs(figs_dir_i)
-
-            fig.savefig(file_path,
-                bbox_inches='tight',
-                format=hps.fig_format,
-                dpi=hps.fig_dpi)
-
-        # Make sure whatever happens next doesn't affect timing of last save.
-        self._visualizations_timer.split('Transition from saving.')
+        self._maybe_print_visualizations_timing()
 
     def _get_fig(self, fig_name,
         width=6.4,
@@ -2454,28 +2452,6 @@ class RecurrentWhisperer(object):
 
         return fig
 
-    @staticmethod
-    def refresh_figs():
-        ''' Refreshes all matplotlib figures.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        '''
-        if os.environ.get('DISPLAY','') == '':
-            # If executing on a server with no graphical back-end
-            pass
-        else:
-            plt.ion()
-            plt.show()
-            plt.pause(1e-10)
-
-    @property
-    def n_figs(self):
-        return len(self.figs)
-
     def _setup_visualizations_timer(self):
 
         # Future work: this could be made more conservative.
@@ -2492,6 +2468,163 @@ class RecurrentWhisperer(object):
 
         if self.hps.do_print_visualizations_timing:
             self._visualizations_timer.print()
+
+    # *************************************************************************
+    # Exposed directory access ************************************************
+    # *************************************************************************
+
+    @property
+    def run_hash(self):
+        return self._run_hash
+
+    @property
+    def run_dir(self):
+        return self._run_dir
+
+    @property
+    def events_dir(self):
+        return self._subdirs['events']
+
+    @property
+    def seso_dir(self):
+        return self._subdirs['seso']
+
+    @property
+    def ltl_dir(self):
+        return self._subdirs['ltl']
+
+    @property
+    def lvl_dir(self):
+        return self._subdirs['lvl']
+
+    @property
+    def hps_dir(self):
+        return self._subdirs['hps']
+
+    @property
+    def fps_dir(self):
+        return self._subdirs['fps']
+
+    @staticmethod
+    def get_hash_dir(log_dir, run_hash):
+        '''Returns a path to the run_hash in the log_dir.
+
+        Args:
+            log_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+            run_hash: string containing the hyperparameters hash used to
+            establish the run directory. Returned by
+            Hyperparameters.run_hash.
+
+        Returns:
+            Path to the hash directory.
+        '''
+        return os.path.join(log_dir, run_hash)
+
+    @staticmethod
+    def get_run_dir(log_dir, run_hash, n_folds=None, fold_idx=None):
+        ''' Returns a path to the directory containing all files related to a
+        given run.
+
+        Args:
+            log_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+            run_hash: string containing the hyperparameters hash used to
+            establish the run directory. Returned by
+            Hyperparameters.run_hash.
+
+            n_folds: (optional) Non-negative integer specifying the number of
+            cross-validation folds in the run.
+
+            fold_idx: (optional) Index specifying the cross-validation fold for
+            this run.
+
+        Returns:
+            Path to the run directory.
+        '''
+
+        hash_dir = RecurrentWhisperer.get_hash_dir(log_dir, run_hash)
+
+        if (n_folds is not None) and (fold_idx is not None):
+
+            fold_str = str('fold-%d-of-%d' % (fold_idx+1, n_folds))
+            run_dir = os.path.join(hash_dir, fold_str)
+
+            return run_dir
+
+        else:
+            return hash_dir
+
+    @staticmethod
+    def get_run_info(run_dir):
+        '''Advanced functionality for models invoking K-fold cross-validation.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            list of cross-validation runs (folder names) found in run_dir.
+
+        '''
+
+        def list_dirs(path_str):
+            return [name for name in os.listdir(path_str) \
+                if os.path.isdir(os.path.join(path_str, name)) ]
+
+        run_info = []
+        if RecurrentWhisperer.is_run_dir(run_dir):
+            pass
+        else:
+            fold_names = list_dirs(run_dir)
+
+            run_info = []
+            for fold_name in fold_names:
+                fold_dir = os.path.join(run_dir, fold_name)
+                if RecurrentWhisperer.is_run_dir(fold_dir):
+                    run_info.append(fold_name)
+
+        return run_info
+
+    @classmethod
+    def is_run_dir(cls, run_dir):
+        '''Determines whether a run exists in a specified directory.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__().
+
+        Returns:
+            bool indicating whether a run exists.
+        '''
+
+        if run_dir is None:
+            return False
+
+        # Check for existence of all directories that would have been created
+        # if a run was executed. This won't look for various files, which may
+        # or may not be saved depending on hyperparameter choices.
+        dirs = cls._build_subdirs(run_dir)
+        exists = [os.path.exists(d) for d in dirs.values()]
+        return all(exists)
+
+    @classmethod
+    def is_done(cls, run_dir):
+        '''Determines whether a run exists in the filesystem and has run to
+        completion.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__().
+
+        Returns:
+            bool indicating whether the run is "done".
+        '''
+
+        done_path = cls._build_done_path(run_dir)
+        return os.path.exists(done_path)
 
     # *************************************************************************
     # Scalar access and updates ***********************************************
@@ -2714,27 +2847,6 @@ class RecurrentWhisperer(object):
 
         return n_params
 
-    def _get_vars_by_name_components(self, *name_components):
-        ''' Returns TF variables whose names meet input search criteria.
-
-        _get_vars_by_name_components(search_str1, search_str2, ...)
-
-        Args:
-            search_str1, search_str2, ... : strings to search for across all TF
-            trainable variables. Variables will be returned only if they
-            contain all of these strings.
-
-        Returns:
-            a list of TF variables whose name match the search criteria.
-        '''
-        matching_vars = []
-        for v in self.trainable_variables:
-            hits = [name_component in v.name
-                for name_component in name_components]
-            if all(hits):
-                matching_vars.append(v)
-        return matching_vars
-
     def update_variables_optimized(self, vars_to_train,
         do_reset_loss_history=True,
         do_reset_learning_rate=True,
@@ -2805,6 +2917,27 @@ class RecurrentWhisperer(object):
             print('\t' + v.name + ': ' + str(v.shape))
         print('')
 
+    def _get_vars_by_name_components(self, *name_components):
+        ''' Returns TF variables whose names meet input search criteria.
+
+        _get_vars_by_name_components(search_str1, search_str2, ...)
+
+        Args:
+            search_str1, search_str2, ... : strings to search for across all TF
+            trainable variables. Variables will be returned only if they
+            contain all of these strings.
+
+        Returns:
+            a list of TF variables whose name match the search criteria.
+        '''
+        matching_vars = []
+        for v in self.trainable_variables:
+            hits = [name_component in v.name
+                for name_component in name_components]
+            if all(hits):
+                matching_vars.append(v)
+        return matching_vars
+
     # *************************************************************************
     # Loading hyperparameters *************************************************
     # *************************************************************************
@@ -2821,9 +2954,7 @@ class RecurrentWhisperer(object):
             dict containing the loaded hyperparameters.
         '''
 
-        paths = cls.get_paths(run_dir)
-
-        hps_path = paths['hps_path']
+        hps_path = cls._build_hps_path(run_dir)
 
         if os.path.exists(hps_path):
             hps_dict = Hyperparameters.restore(hps_path)
@@ -2831,6 +2962,11 @@ class RecurrentWhisperer(object):
             raise IOError('%s not found.' % hps_path)
 
         return hps_dict
+
+    @classmethod
+    def exists_hyperparameters(cls, run_dir):
+        hps_path = cls._build_hps_path(run_dir)
+        return os.path.exists(hps_path)
 
     # *************************************************************************
     # Saving: model checkpoints ***********************************************
@@ -2847,7 +2983,7 @@ class RecurrentWhisperer(object):
             None.
         '''
         if self.hps.do_save_ckpt and \
-            np.mod(self._epoch, self.hps.n_epochs_per_ckpt) == 0:
+            np.mod(self._epoch, self.hps.n_epochs_per_seso_update) == 0:
 
             self._save_checkpoint(version='seso')
 
@@ -2889,8 +3025,7 @@ class RecurrentWhisperer(object):
         validation data.
 
         If prediction summaries are generated, those summaries are saved in
-        separate .pkl files (and optional .mat files). See docstring for
-        predict() for additional detail.
+        separate files. See docstring for predict() for additional detail.
 
         Args:
             valid_pred and valid_summary: dicts as returned by
@@ -2932,7 +3067,7 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        self._validate_ckpt_version(version)
+        self._assert_ckpt_version(version)
 
         print('\t\tSaving %s checkpoint.' % str.upper(version))
         ckpt_path = self._get_ckpt_path_stem(version)
@@ -2947,14 +3082,21 @@ class RecurrentWhisperer(object):
         self.adaptive_grad_norm_clip.save(ckpt_dir)
 
     def _get_ckpt_dir(self, version):
-        # E.g., self.lvl_dir
-        return getattr(self, '%s_dir' % version)
+
+        # E.g., self._subdirs['lvl']'
+        return self._subdirs[version]
 
     def _get_ckpt_path_stem(self, version):
-        # E.g., self.lvl_ckpt_path
+
+        # E.g., self._paths['lvl_ckpt_path']
         # Actual checkpoint path will append step and extension
         # (for that, use _get_ckpt_path, as relevant for restoring from ckpt)
-        return getattr(self, '%s_ckpt_path' % version)
+        return self._paths['%s_ckpt_path' % version]
+
+    @staticmethod
+    def _assert_ckpt_version(version):
+        assert version in ['seso', 'ltl', 'lvl'], \
+            'Unsupported version: %s' % str(version)
 
     @staticmethod
     def _assert_version_is_ltl_or_lvl(version):
@@ -2962,9 +3104,9 @@ class RecurrentWhisperer(object):
             'Unsupported version: %s' % str(version)
 
     @staticmethod
-    def _validate_ckpt_version(version):
-        assert version in ['seso', 'ltl', 'lvl'], \
-            'Unsupported version: %s' % str(version)
+    def _assert_filetype(filetype):
+        assert filetype in ['h5', 'npz', 'json', 'mat', 'pkl'],\
+            'Unsupported filetype from extension: %s' % extension
 
     # *************************************************************************
     # Restoring from model checkpoints ****************************************
@@ -3000,7 +3142,7 @@ class RecurrentWhisperer(object):
 
         # Validate version here. Existence of checkpoint is validated in
         # restore_from_checkpoint(...).
-        cls._validate_ckpt_version(version)
+        cls._assert_ckpt_version(version)
 
         hps_dict = cls.load_hyperparameters(run_dir)
         log_dir = hps_dict['log_dir']
@@ -3016,12 +3158,10 @@ class RecurrentWhisperer(object):
             if run_dir[-1] == '/':
                 run_dir = run_dir[:-1]
 
-            paths = cls.get_paths(run_dir)
-
             # These are now relative to run_dir (which is local)
             log_dir, run_hash = os.path.split(run_dir)
 
-            ckpt_dir = paths['%s_dir' % version]
+            ckpt_dir = cls._build_subdir(run_dir, version)
             ckpt_path = cls._get_ckpt_path(ckpt_dir, do_update_base_path=True)
 
         # Build model but don't initialize any parameters, and don't restore
@@ -3043,7 +3183,7 @@ class RecurrentWhisperer(object):
             as: 'seso', 'ltl', or 'lvl'.
         '''
 
-        self._validate_ckpt_version(version)
+        self._assert_ckpt_version(version)
         ckpt_dir = self._get_ckpt_dir(version)
 
         # This might be equivalent.
@@ -3079,7 +3219,7 @@ class RecurrentWhisperer(object):
             AssertionError if no checkpoint exists.
         '''
 
-        self._validate_ckpt_version(version)
+        self._assert_ckpt_version(version)
 
         if checkpoint_path is None:
             # Find ckpt path and recurse
@@ -3125,8 +3265,36 @@ class RecurrentWhisperer(object):
         return ckpt_path
 
     # *************************************************************************
-    # Saving: predictions and summaries ***************************************
+    # Saving and loading: predictions and summaries ***************************
     # *************************************************************************
+
+    @classmethod
+    def exists_train_predictions(cls, run_dir, version='lvl'):
+        return cls._exists_file(run_dir,
+            train_or_valid_str='train',
+            predictions_or_summary_str='predictions',
+            version=version)
+
+    @classmethod
+    def exists_train_summary(cls, run_dir, version='lvl'):
+        return cls._exists_file(run_dir,
+            train_or_valid_str='train',
+            predictions_or_summary_str='summary',
+            version=version)
+
+    @classmethod
+    def exists_valid_predictions(cls, run_dir, version='lvl'):
+        return cls._exists_file(run_dir,
+            train_or_valid_str='valid',
+            predictions_or_summary_str='predictions',
+            version=version)
+
+    @classmethod
+    def exists_valid_summary(cls, run_dir, version='lvl'):
+        return cls._exists_file(run_dir,
+            train_or_valid_str='valid',
+            predictions_or_summary_str='summary',
+            version=version)
 
     def save_predictions_and_summary(self, data, train_or_valid_str, version):
         ''' Saves model predictions and a prediction summary, regardless of the
@@ -3153,11 +3321,91 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        self._validate_ckpt_version(version)
+        self._assert_ckpt_version(version)
 
         pred, summary = self.predict(data)
         self._save_pred(pred, train_or_valid_str, version=version)
         self._save_summary(summary, train_or_valid_str, version=version)
+
+    @classmethod
+    def load_train_predictions(cls, run_dir,
+        version='lvl',
+        filetype='npz'):
+        '''Loads predictions made over the training data by a specified
+        checkpoint of the model.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            dict containing saved predictions.
+        '''
+        return cls._load_pred_or_summary_helper(run_dir,
+            train_or_valid_str='train',
+            predictions_or_summary_str='predictions',
+            version=version,
+            filetype=filetype)
+
+    @classmethod
+    def load_train_summary(cls, run_dir,
+        version='lvl',
+        filetype='npz'):
+        '''Loads summary of the model predictions made over the training
+         data by a specified checkpoint of the model.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            dict containing saved summaries.
+        '''
+        return cls._load_pred_or_summary_helper(run_dir,
+            train_or_valid_str='train',
+            predictions_or_summary_str='summary',
+            version=version,
+            filetype=filetype)
+
+    @classmethod
+    def load_valid_predictions(cls, run_dir,
+        version='lvl',
+        filetype='npz'):
+        '''Loads predictions made over the validation data by a specified
+        checkpoint of the model.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            dict containing saved predictions.
+        '''
+        return cls._load_pred_or_summary_helper(run_dir,
+            train_or_valid_str='valid',
+            predictions_or_summary_str='predictions',
+            version=version,
+            filetype=filetype)
+
+    @classmethod
+    def load_valid_summary(cls, run_dir,
+        version='lvl',
+        filetype='npz'):
+        '''Loads summary of the model predictions made over the validation
+         data by a specified checkpoint of the model.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            dict containing saved summaries.
+        '''
+        return cls._load_pred_or_summary_helper(run_dir,
+            train_or_valid_str='valid',
+            predictions_or_summary_str='summary',
+            version=version,
+            filetype=filetype)
 
     def _maybe_save_pred_and_summary(self, train_or_valid_str,
         data=None,    # Either provide data, ...
@@ -3165,7 +3413,7 @@ class RecurrentWhisperer(object):
         summary=None, # and summary.
         version='lvl'):
         '''Saves model predictions and/or a prediction summary. Which are
-        saved, if any, depends on the hyperparamers. See docstring to
+        saved, if any, depends on the hyperparameters. See docstring to
         save_predictions_and_summary(...).'''
 
         self._assert_version_is_ltl_or_lvl(version)
@@ -3202,88 +3450,6 @@ class RecurrentWhisperer(object):
             self._save_summary(
                 summary, train_or_valid_str, version=version)
 
-    def _save_pred(self,
-        predictions,
-        train_or_valid_str,
-        version='lvl'):
-        '''Saves all model predictions in .pkl files (and optionally in .mat
-        files as well).
-
-        Args:
-            predictions: dict containing model predictions.
-
-            train_or_valid_str: either 'train' or 'valid', indicating whether
-            data contains training data or validation data, respectively.
-
-        Returns:
-            None.
-        '''
-        if predictions is not None:
-
-            print('\tSaving %s predictions (%s).' %
-                (version, train_or_valid_str))
-
-            # E.g., 'train_predictions' or 'valid_predictions'
-            filename_no_extension = train_or_valid_str + '_predictions'
-
-            self._save_pred_or_summary_helper(
-                predictions, filename_no_extension, version=version)
-
-    def _save_summary(self,
-        summary,
-        train_or_valid_str,
-        version='lvl'):
-
-        if summary is not None:
-
-            print('\t\tSaving %s summary (%s).' %
-                (str.upper(version), train_or_valid_str))
-
-            # E.g., 'train_summary' or 'valid_summary'
-            filename_no_extension = train_or_valid_str + '_summary'
-
-            self._save_pred_or_summary_helper(
-                summary, filename_no_extension, version=version)
-
-    def _save_done_file(self):
-        '''Save an empty .done file (indicating that the training procedure
-        ran to completion.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        '''
-        print('\tSaving .done file...')
-
-        save_path = self.done_path
-        file = open(save_path, 'wb')
-        file.write('')
-        file.close()
-
-    def _save_pred_or_summary_helper(self,
-        data_to_save,
-        filename_no_extension,
-        version='lvl'):
-        '''Pickle and save data as .pkl file. Optionally also save the data as
-        a .mat file.
-
-            Args:
-                data_to_save: any pickle-able object to be pickled and saved.
-
-            Returns:
-                None.
-        '''
-
-        save_dir = self._get_ckpt_dir(version)
-        pkl_path = os.path.join(save_dir, filename_no_extension)
-        self._save_pkl(data_to_save, pkl_path)
-
-        if self.hps.do_save_mat_files:
-            mat_path = os.path.join(save_dir, filename_no_extension)
-            self._save_mat(data_to_save, pkl_path)
-
     def _do_save_pred(self, train_or_valid_str, version='lvl'):
         ''' Determines whether or not to save a set of predictions depending
         on hyperparameter settings.
@@ -3293,7 +3459,7 @@ class RecurrentWhisperer(object):
 
         # E.g., do_save_lvl_train_predictions
         key = 'do_save_%s_%s_predictions' % (version, train_or_valid_str)
-        return self.hps[key]
+        return self.is_done and self.hps[key]
 
         raise ValueError('Unsupported train_or_valid_str (%s) or version (%s).'
             (train_or_valid_str, version))
@@ -3309,211 +3475,147 @@ class RecurrentWhisperer(object):
         key = 'do_save_%s_%s_summary' % (version, train_or_valid_str)
         return self.hps[key]
 
+    def _save_pred(self,
+        predictions,
+        train_or_valid_str,
+        version='lvl',
+        filetype=None):
+        '''Saves all model predictions to disk.
+
+        Args:
+            predictions: dict containing model predictions.
+
+            train_or_valid_str: either 'train' or 'valid', indicating whether
+            data contains training data or validation data, respectively.
+
+        Returns:
+            None.
+        '''
+        if predictions is not None:
+
+            print('\tSaving %s predictions (%s).' %
+                (version, train_or_valid_str))
+
+            self._save_pred_or_summary_helper(predictions,
+                train_or_valid_str=train_or_valid_str,
+                predictions_or_summary_str='predictions',
+                version=version,
+                filetype=filetype)
+
+    def _save_summary(self,
+        summary,
+        train_or_valid_str,
+        version='lvl',
+        filetype='npz'):
+
+        if summary is not None:
+
+            print('\t\tSaving %s summary (%s).' %
+                (str.upper(version), train_or_valid_str))
+
+            self._save_pred_or_summary_helper(summary,
+                train_or_valid_str=train_or_valid_str,
+                predictions_or_summary_str='summary',
+                version=version,
+                filetype=filetype)
+
+    def _save_done_file(self):
+        '''Save an empty .done file (indicating that the training procedure
+        ran to completion.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+        print('\tSaving .done file...')
+
+        save_path = self._paths['done_path']
+        file = open(save_path, 'wb')
+        file.write('')
+        file.close()
+
+    def _save_pred_or_summary_helper(self,
+        data_to_save,
+        train_or_valid_str='train',
+        predictions_or_summary_str='predictions',
+        version='lvl',
+        filetype='npz'):
+        ''' Save data in a specified file format.
+
+            Args:
+                data_to_save: dict containing predictions or a summary thereof.
+
+                filename: destination filename including extension.
+
+            Returns:
+                None.
+        '''
+
+        if filetype is None:
+            if predictions_or_summary_str == 'predictions':
+                filetype = self.hps.predictions_filetype
+            elif predictions_or_summary_str == 'summary':
+                filetype = self.hps.summary_filetype
+
+        save_path = self._build_file_path(self.run_dir,
+            train_or_valid_str=train_or_valid_str,
+            predictions_or_summary_str=predictions_or_summary_str,
+            version=version,
+            filetype=filetype)
+
+        if filetype == 'h5':
+            self._save_h5(data_to_save, save_path)
+        elif filetype == 'npz':
+            self._save_npz(data_to_save, save_path)
+        elif filetype == 'json':
+            self._save_json(data_to_save, save_path)
+        elif filetype == 'mat':
+            self._save_mat(data_to_save, save_path)
+        elif filetype == 'pkl':
+            self._save_pkl(data_to_save, save_path)
+
+    @classmethod
+    def _load_pred_or_summary_helper(cls,
+        run_dir,
+        train_or_valid_str='train',
+        predictions_or_summary_str='predictions',
+        version='lvl',
+        filetype='npz'):
+
+        path_to_file = cls._build_file_path(run_dir,
+            train_or_valid_str=train_or_valid_str,
+            predictions_or_summary_str=predictions_or_summary_str,
+            version=version,
+            filetype='npz')
+
+        if filetype == 'h5':
+            return cls._load_h5(path_to_file)
+        elif filetype == 'npz':
+            return cls._load_npz(path_to_file)
+        elif filetype == 'json':
+            return cls._load_json(path_to_file)
+        elif filetype == 'pkl':
+            return cls._load_pkl(path_to_file)
+
     @staticmethod
-    def _save_pkl(data_to_save, save_path_no_extension):
+    def _save_pkl(data_to_save, path_to_file):
         '''Pickle and save data as .pkl file.
 
         Args:
             data_to_save: any pickle-able object to be pickled and saved.
 
-            save_path_no_extension: path at which to save the data,
-            including an extensionless filename.
+            path_to_file: path at which to save the data,
+            including filename and extension.
 
         Returns:
             None.
         '''
 
-        save_path = save_path_no_extension + '.pkl'
-        file = open(save_path, 'wb')
+        file = open(path_to_file, 'wb')
         file.write(cPickle.dumps(data_to_save))
         file.close()
-
-    @staticmethod
-    def _save_mat(data_to_save, save_path_no_extension):
-        '''Save data as .mat file.
-
-        Args:
-            save_path_no_extension: path at which to save the data,
-            including an extensionless filename.
-
-            data_to_save: dict containing data to be saved.
-
-        Returns:
-            None.
-        '''
-
-        save_path = save_path_no_extension + '.mat'
-        spio.savemat(save_path, data_to_save)
-
-    # *************************************************************************
-    # Loading and Restoring: predictions and summaries ************************
-    # *************************************************************************
-
-    # TO DO: Simplify using version arg (although perhaps not critical, since
-    # seso predictions/summary aren't critical and don't exist in previous
-    # workflows [since they are new to RW as of this branch]).
-
-    @classmethod
-    def exists_lvl_train_predictions(cls, run_dir):
-        return cls._exists_lvl(run_dir, 'train', 'predictions')
-
-    @classmethod
-    def load_lvl_train_predictions(cls, run_dir):
-        '''Loads all model predictions made over the training data by the lvl
-        model.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-        Returns:
-            dict containing saved predictions.
-        '''
-        return cls._load_lvl_helper(
-            run_dir, 'train', 'predictions')
-
-    @classmethod
-    def exists_lvl_train_summary(cls, run_dir):
-        return cls._exists_lvl(run_dir, 'train', 'summary')
-
-    @classmethod
-    def load_lvl_train_summary(cls, run_dir):
-        '''Loads summary of the model predictions made over the training data
-        by the lvl model.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-        Returns:
-            dict containing saved summaries.
-        '''
-        return cls._load_lvl_helper(run_dir, 'train', 'summary')
-
-    @classmethod
-    def exists_lvl_valid_predictions(cls, run_dir):
-        return cls._exists_lvl(run_dir, 'valid', 'predictions')
-
-    @classmethod
-    def load_lvl_valid_predictions(cls, run_dir):
-        '''Loads all model predictions from train_predictions.pkl.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-        Returns:
-            train_predictions:
-                dict containing saved predictions on the training data by the
-                lvl model.
-        '''
-
-        return cls._load_lvl_helper(run_dir, 'valid', 'predictions')
-
-    @classmethod
-    def exists_lvl_valid_summary(cls, run_dir):
-        return cls._exists_lvl(run_dir, 'valid', 'summary')
-
-    @classmethod
-    def load_lvl_valid_summary(cls, run_dir):
-        '''Loads summary of the model predictions made over the validation
-         data by the lvl model.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-        Returns:
-            dict containing saved summaries.
-        '''
-        return cls._load_lvl_helper(run_dir, 'valid', 'summary')
-
-    @classmethod
-    def _get_lvl_path(cls,
-        run_dir,
-        train_or_valid_str,
-        predictions_or_summary_str):
-        ''' Builds paths to the various files saved when the model achieves a
-        new lowest validation loss (lvl).
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-            train_or_valid_str: either 'train' or 'valid', indicating whether
-            to load predictions/summary from the training data or validation
-            data, respectively.
-
-            predictions_or_summary_str: either 'predictions' or 'summary',
-            indicating whether to load model predictions or summaries thereof,
-            respectively.
-
-        Returns:
-            string containing the path to the desired file.
-        '''
-
-        paths = cls.get_paths(run_dir)
-        filename = train_or_valid_str + '_' + \
-            predictions_or_summary_str + '.pkl'
-        path_to_file = os.path.join(paths['lvl_dir'], filename)
-
-        return path_to_file
-
-    @classmethod
-    def _load_lvl_helper(cls,
-        run_dir,
-        train_or_valid_str,
-        predictions_or_summary_str):
-        '''Loads previously saved model predictions or summaries thereof.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-            train_or_valid_str: either 'train' or 'valid', indicating whether
-            to load predictions/summary from the training data or validation
-            data, respectively.
-
-            predictions_or_summary_str: either 'predictions' or 'summary',
-            indicating whether to load model predictions or summaries thereof,
-            respectively.
-
-        Returns:
-            dict containing saved data.
-        '''
-
-        path_to_file = cls._get_lvl_path(
-            run_dir, train_or_valid_str, predictions_or_summary_str)
-
-        return cls._load_pkl(path_to_file)
-
-    @classmethod
-    def _exists_lvl(cls,
-        run_dir,
-        train_or_valid_str,
-        predictions_or_summary_str):
-        '''Checks if previously saved model predictions or summaries exist.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-            train_or_valid_str: either 'train' or 'valid', indicating whether
-            to load predictions/summary from the training data or validation
-            data, respectively.
-
-            predictions_or_summary_str: either 'predictions' or 'summary',
-            indicating whether to load model predictions or summaries thereof,
-            respectively.
-
-        Returns:
-            True if the lvl file exists.
-        '''
-
-        path_to_file = cls._get_lvl_path(
-            run_dir, train_or_valid_str, predictions_or_summary_str)
-
-        return os.path.exists(path_to_file)
 
     @staticmethod
     def _load_pkl(path_to_file):
@@ -3534,3 +3636,276 @@ class RecurrentWhisperer(object):
             raise IOError('%s not found.' % path_to_file)
 
         return data
+
+    @staticmethod
+    def _save_npz(data_to_save, path_to_file):
+        '''Save data in Numpy .npz format.
+
+        Args:
+            data_to_save: Dict with values as numpy arrays or dicts that
+            recursively satisfy this requirement (e.g., dict of numpy arrays).
+
+            path_to_file: path at which to save the data,
+            including filename and extension.
+
+        Returns:
+            None.
+        '''
+        flat_data = Hyperparameters.flatten(data_to_save)
+        np.savez(path_to_file, **flat_data)
+
+    @staticmethod
+    def _load_npz(path_to_file):
+
+        flat_data = dict(np.load(path_to_file, allow_pickle=True))
+        data = Hyperparameters.unflatten(flat_data)
+        return data
+
+    @staticmethod
+    def _save_mat(data_to_save, save_path):
+        '''Save data as .mat file.
+
+        Args:
+            save_path: path at which to save the data, including filename and
+            extension.
+
+            data_to_save: dict containing data to be saved.
+
+        Returns:
+            None.
+        '''
+
+        spio.savemat(save_path, data_to_save)
+
+    ''' Work in progress, largely untested:'''
+
+    @staticmethod
+    def _save_h5(data_to_save, path_to_file):
+        '''Save data as HDF5 dataset.
+
+        Args:
+            data_to_save: Dict with values as numpy arrays or dicts that
+            recursively satisfy this requirement (e.g., dict of numpy arrays).
+
+            path_to_file: path at which to save the data,
+            including filename and extension.
+
+        Returns:
+            None.
+        '''
+        flat_data = Hyperparameters.flatten(data_to_save)
+        with h5py.File(path_to_file, 'w') as file:
+            for key, val in flat_data.iteritems():
+                assert '/' not in key, \
+                    'data keys cannot contain \'/\': %s' % key
+                file.create_dataset(key, data=val, compression=None)
+
+    @staticmethod
+    def _load_h5(data_to_save, path_to_file):
+
+        with h5py.File(path_to_file, 'r') as file:
+            for key, val in file.items():
+                flat_data[key] = val
+        data = Hyperparameters.unflatten(flat_data)
+        return data
+
+    @staticmethod
+    def _save_json(data_to_save, path_to_file):
+        '''Save data in JSON (.json) format.
+
+        Args:
+            data_to_save: Dict with values as python data types.
+
+            path_to_file: path at which to save the data,
+            including filename and extension.
+
+        Returns:
+            None.
+        '''
+        file = open(path_to_file, 'wb')
+        json.dump(data_to_save, file)
+        file.close()
+
+    @staticmethod
+    def _load_json(path_to_file):
+
+        with open(path_to_file, 'r') as file:
+            data = json.load(file)
+
+        return data
+
+    # Recently updated, largely untested.
+
+    @classmethod
+    def _exists_file(cls, run_dir,
+        train_or_valid_str='train',
+        predictions_or_summary_str='predictions',
+        version='lvl',
+        filetype='npz'):
+        '''Checks if previously saved model predictions or summary exists.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+            train_or_valid_str: either 'train' or 'valid', indicating whether
+            to load predictions/summary from the training data or validation
+            data, respectively.
+
+            predictions_or_summary_str: either 'predictions' or 'summary',
+            indicating whether to load model predictions or summaries thereof,
+            respectively.
+
+        Returns:
+            True if the file exists.
+        '''
+
+        path_to_file = cls._build_file_path(run_dir,
+            train_or_valid_str=train_or_valid_str,
+            predictions_or_summary_str=predictions_or_summary_str,
+            version=version,
+            filetype='npz')
+
+        return os.path.exists(path_to_file)
+
+    # *************************************************************************
+    # Internal run directory management ***************************************
+    # *************************************************************************
+
+    @classmethod
+    def _build_paths(cls, run_dir):
+        '''Generates all paths relevant for saving and loading model data.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+        Returns:
+            dict containing all paths relevant for saving and loading model
+            data. Keys are strings, with suffixes '_dir' and '_path' referring
+            to directories and filenames, respectively.
+        '''
+
+        subdirs = cls._build_subdirs(run_dir)
+        hps_dir = cls._build_hps_dir(run_dir)
+        seso_dir = subdirs['seso']
+        ltl_dir = subdirs['ltl']
+        lvl_dir = subdirs['lvl']
+        events_dir = subdirs['events']
+
+        file_paths = {
+            'run_script_path': os.path.join(run_dir, 'run.sh'),
+
+            'hps_path': cls._build_hps_path(run_dir, hps_dir=hps_dir),
+            'hps_yaml_path': os.path.join(hps_dir, 'hyperparameters.yml'),
+
+            'model_log_path': os.path.join(events_dir, 'model.log'),
+            'loggers_log_path': os.path.join(events_dir, 'dependencies.log'),
+            'done_path': cls._build_done_path(run_dir, events_dir=events_dir),
+
+            'seso_ckpt_path': os.path.join(seso_dir, 'checkpoint.ckpt'),
+            'ltl_ckpt_path': os.path.join(ltl_dir, 'ltl.ckpt'),
+            'lvl_ckpt_path': os.path.join(lvl_dir, 'lvl.ckpt'),
+            }
+
+        return subdirs, file_paths
+
+    @classmethod
+    def _build_subdirs(cls, run_dir):
+
+        D = {
+            'hps': cls._build_hps_dir(run_dir),
+            'seso': cls._build_seso_dir(run_dir),
+            'ltl': cls._build_ltl_dir(run_dir),
+            'lvl': cls._build_lvl_dir(run_dir),
+            'events': cls._build_subdir(run_dir, 'events'),
+            'fps': cls._build_subdir(run_dir, 'fps'),
+        }
+
+        return D
+
+    @classmethod
+    def _build_subdir(cls, run_dir, subdir):
+
+        return os.path.join(run_dir, subdir)
+
+    @classmethod
+    def _build_hps_path(cls, run_dir, hps_dir=None):
+        if hps_dir is None:
+            hps_dir = cls._build_hps_dir(run_dir)
+        return os.path.join(hps_dir, 'hyperparameters.pkl')
+
+    @classmethod
+    def _build_done_path(cls, run_dir, events_dir=None):
+        if events_dir is None:
+            events_dir = cls._build_subdir(run_dir, 'events')
+        return os.path.join(events_dir, 'training.done')
+
+    @classmethod
+    def _build_file_path(cls, run_dir,
+        train_or_valid_str='train',
+        predictions_or_summary_str='predictions',
+        version='lvl',
+        filetype='npz'):
+        ''' Builds paths to the various files that can be saved/loaded during
+        and after training. This does not pertain to files created during
+        directory setup and model construction.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+            train_or_valid_str: either 'train' or 'valid', indicating whether
+            to load predictions/summary from the training data or validation
+            data, respectively.
+
+            predictions_or_summary_str: either 'predictions' or 'summary',
+            indicating whether to load model predictions or summaries thereof,
+            respectively.
+
+        Returns:
+            string containing the path to the desired file.
+        '''
+
+        cls._assert_ckpt_version(version)
+        cls._assert_filetype(filetype)
+
+        assert predictions_or_summary_str in ['predictions', 'summary'],\
+            ('Unsupported predictions_or_summary_str: %s' %
+                predictions_or_summary_str)
+
+        path_to_subdir = cls._build_subdir(run_dir, version)
+        filename = '%s_%s.%s' % (
+            train_or_valid_str,
+            predictions_or_summary_str,
+            filetype)
+        path_to_file = os.path.join(path_to_subdir, filename)
+
+        return path_to_file
+
+    @classmethod
+    def _build_hps_dir(cls, run_dir):
+        return cls._build_subdir(run_dir, 'hps')
+
+    @classmethod
+    def _build_seso_dir(cls, run_dir):
+        return cls._build_subdir(run_dir, 'seso')
+
+    @classmethod
+    def _build_ltl_dir(cls, run_dir):
+        return cls._build_subdir(run_dir, 'ltl')
+
+    @classmethod
+    def _build_lvl_dir(cls, run_dir):
+        return cls._build_subdir(run_dir, 'lvl')
+
+    @classmethod
+    def _build_fig_dir(cls, run_dir, version='seso'):
+
+        cls._assert_ckpt_version(version)
+        subdir = cls._build_subdir(run_dir, version)
+        return os.path.join(subdir, 'figs')
+
+    # ************************************************************************
+    # ************************************************************************
+    # ************************************************************************
