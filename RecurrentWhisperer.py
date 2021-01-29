@@ -511,6 +511,11 @@ class RecurrentWhisperer(object):
         return {
             'name': 'RecurrentWhisperer',
 
+            'log_dir': '/tmp/rnn_logs/',
+            'run_script': None,
+            'n_folds': None,
+            'fold_idx': None,
+
             # Termination criteria
             'min_loss': None,
             'max_train_time': None,
@@ -534,7 +539,7 @@ class RecurrentWhisperer(object):
             'n_epochs_per_lvl_update': 100,
             'n_epochs_per_visualization_update': 100,
 
-            # Visualizations
+            # Save-every-so-often Visualizations
             'do_generate_pretraining_visualizations': False,  # (pre-training)
             'do_save_pretraining_visualizations': False,
 
@@ -544,12 +549,6 @@ class RecurrentWhisperer(object):
             'do_generate_final_visualizations': True,         # (post-training)
             'do_save_final_visualizations': True,
 
-            'fig_filetype': 'pdf',
-            'fig_dpi': 600,
-            'do_print_visualizations_timing': False,
-
-            'predictions_filetype': 'npz',
-            'summary_filetype': 'npz',
 
             # Save-every-so-often (seso) checkpoints
             'do_save_ckpt': True,
@@ -574,6 +573,13 @@ class RecurrentWhisperer(object):
             'do_save_lvl_visualizations': True,
             'max_lvl_ckpt_to_keep': 1,
 
+            'fig_filetype': 'pdf',
+            'fig_dpi': 600,
+            'do_print_visualizations_timing': False,
+
+            'predictions_filetype': 'npz',
+            'summary_filetype': 'npz',
+
             # GPU / CPU device management
             'device_type': 'gpu',
             'device_id': 0,
@@ -583,11 +589,6 @@ class RecurrentWhisperer(object):
             'allow_gpu_growth': True,
             'allow_soft_placement': True,
             'log_device_placement': False,
-
-            'log_dir': '/tmp/rnn_logs/',
-            'run_script': None,
-            'n_folds': None,
-            'fold_idx': None,
         }
 
     @staticmethod
@@ -1800,7 +1801,7 @@ class RecurrentWhisperer(object):
             if data is None:
                 return False
 
-            if version == 'final':
+            if version == 'seso':
                 return self.hps.do_generate_final_visualizations
             elif version == 'lvl':
                 return False
@@ -1812,7 +1813,7 @@ class RecurrentWhisperer(object):
             if data is None:
                 return False
 
-            if version == 'final':
+            if version == 'seso':
                 return self.hps.do_generate_final_visualizations
             elif version == 'lvl':
                 return self.hps.do_generate_lvl_visualizations
@@ -1824,7 +1825,7 @@ class RecurrentWhisperer(object):
             if data is None:
                 return False
 
-            if version == 'final':
+            if version == 'seso':
                 return False
 
             return self._do_save_pred('train', version)
@@ -1834,13 +1835,15 @@ class RecurrentWhisperer(object):
             if data is None:
                 return False
 
-            if version == 'final':
+            if version == 'seso':
                 return False
 
             return self._do_save_pred('valid', version)
 
         def _do_save_visualizations(version):
-            if version == 'final':
+
+            hps = self.hps
+            if version == 'seso':
                 return hps.do_save_final_visualizations
             elif version == 'ltl':
                 return hps.do_save_ltl_visualizations
@@ -2350,8 +2353,7 @@ class RecurrentWhisperer(object):
     def n_figs(self):
         return len(self.figs)
 
-    def _maybe_update_visualizations(self, data, pred=None,
-        train_or_valid_str='train',
+    def _maybe_update_visualizations(self, train_data, valid_data,
         version='seso'):
         '''Updates visualizations if the current epoch number indicates that
         an update is due. Saves those visualization to Tensorboard or to
@@ -2360,12 +2362,9 @@ class RecurrentWhisperer(object):
         respectively.)
 
         Args:
-            data:
+            train_data:
 
-            pred:
-
-            train_or_valid_str: either 'train' or 'valid', indicating whether
-            data contains training data or validation data, respectively.
+            valid_data:
 
             version:
 
@@ -2383,17 +2382,27 @@ class RecurrentWhisperer(object):
                 np.mod(epoch, hps.n_epochs_per_visualization_update) == 0 and \
                 hps.do_generate_training_visualizations
 
+        def update_helper(data, train_or_valid_str, version, do_save):
+
+            pred, summary = self.predict(data,
+                train_or_valid_str=train_or_valid_str)
+
+            self.update_visualizations(
+                data, pred, train_or_valid_str, version,
+                do_save=do_save)
+
         if do_pretraining(hps, self._epoch):
-
-            self.update_visualizations(
-                data, pred, train_or_valid_str, version,
-                do_save=self.hps.do_save_pretraining_visualizations)
-
+            do_save = hps.do_save_pretraining_visualizations
+            do_update = True
         elif do_training(hps, self._epoch):
+            do_save = hps.do_save_training_visualizations
+            do_update = True
+        else:
+            do_update = False
 
-            self.update_visualizations(
-                data, pred, train_or_valid_str, version,
-                do_save=self.hps.do_save_training_visualizations)
+        if do_update:
+            update_helper(train_data, 'train', version, do_save)
+            update_helper(valid_data, 'valid', version, do_save)
 
     def update_visualizations(self, data, pred, train_or_valid_str, version,
         do_save=True, # Save individual figures (indep of Tensorboard)
@@ -3457,12 +3466,15 @@ class RecurrentWhisperer(object):
         Returns: bool indicating whether or not to perform the save.
         '''
 
+        # Never use LTL model with validation data.
+        # Accordingly, there is no hps.do_save_LTL_valid_predictions
+        if version == 'ltl' and train_or_valid_str == 'valid':
+            return False
+
         # E.g., do_save_lvl_train_predictions
         key = 'do_save_%s_%s_predictions' % (version, train_or_valid_str)
-        return self.is_done and self.hps[key]
 
-        raise ValueError('Unsupported train_or_valid_str (%s) or version (%s).'
-            (train_or_valid_str, version))
+        return self.is_done and self.hps[key]
 
     def _do_save_summary(self, train_or_valid_str, version='lvl'):
         ''' Determines whether or not to save a summary of predictions
@@ -3470,6 +3482,11 @@ class RecurrentWhisperer(object):
 
         Returns: bool indicating whether or not to perform the save.
         '''
+
+        # Never use LTL model with validation data.
+        # Accordingly, there is no hps.do_save_LTL_valid_summary
+        if version == 'ltl' and train_or_valid_str == 'valid':
+            return False
 
         # E.g., do_save_lvl_train_summary
         key = 'do_save_%s_%s_summary' % (version, train_or_valid_str)
@@ -3901,9 +3918,17 @@ class RecurrentWhisperer(object):
 
     @classmethod
     def _build_fig_dir(cls, run_dir, version='seso'):
+        '''
+        'seso': /run_dir/figs/
+        'ltl': /run_dir/ltl/figs/
+        'lvl': /run_dir/lvl/figs/
+        '''
 
         cls._assert_ckpt_version(version)
-        subdir = cls._build_subdir(run_dir, version)
+        if version == 'seso':
+            subdir = run_dir
+        else:
+            subdir = cls._build_subdir(run_dir, version)
         return os.path.join(subdir, 'figs')
 
     # ************************************************************************
