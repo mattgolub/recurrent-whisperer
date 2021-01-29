@@ -1438,9 +1438,27 @@ class RecurrentWhisperer(object):
             -periodically updating visualization
             -periodically saving model checkpoints
 
+        There are three supported modes of operation:
+        1. Generate on-the-fly training data (new data for each gradient step).
+           Here, call train(train_data=None, valid_data=None), i.e., train().
+           You must provide an implementation of generate_data().
+        2. Provide a single, fixed set of training data. This is done by
+           calling train(train_data).
+        3. Provide, single, fixed set of training data (as in 2) and a single,
+           fixed set of validation data. This is done by calling
+           train(train_data, valid_data).
+
+        The specific mode invoked determines, along with user options in
+        self.hps, whether SESO, LTL, and/or LVL updates are generated and
+        saved throughout training. Each update can optionally save a model
+        checkpoint, predictions, prediction summaries, and/or visualization.
+        All modes support save-every-so-often (SESO) and lowest-training-loss
+        (LTL) updates. Only mode 3 supports the lowest-validation-loss (LVL)
+        updates.
+
         By convention, this call is the first time this object sees any data
-        (train and valid, or as generated batch-by-batch by
-        _get_data_batches(...)).
+        (train_data / valid_data, or as generated batch-by-batch by
+        generate_data()).
 
         Args:
             train_data (optional): dict containing the training data. If not
@@ -1456,12 +1474,18 @@ class RecurrentWhisperer(object):
         '''
 
         N_EPOCH_SPLITS = 7 # Number of segments to time for profiling
+
+        do_generate_training_data = train_data is None
         do_check_lvl = valid_data is not None
 
         if self._is_training_complete(self._ltl, do_check_lvl):
             # If restoring from a completed run, do not enter training loop
             # and do not save a new checkpoint.
             return
+
+        if do_generate_training_data:
+            # For on-the-fly data generation
+            train_data = self.generate_data('train')
 
         self._setup_training(train_data, valid_data)
         self.timer.split('_setup_training')
@@ -1484,7 +1508,11 @@ class RecurrentWhisperer(object):
 
             # *****************************************************************
 
-            data_batches = self._get_data_batches(train_data)
+            if do_generate_training_data:
+                # For on-the-fly data generation
+                train_data = self.generate_data('train')
+
+            data_batches, _ = self._split_data_into_batches(train_data)
             epoch_timer.split('data')
 
             # *****************************************************************
@@ -2011,7 +2039,9 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        predictions, summary = self.predict(valid_data)
+        predictions, summary = self.predict(valid_data,
+            train_or_valid_str='valid')
+
         print('\tValidation loss: %.2e' % summary['loss'])
 
         self._maybe_save_lvl_checkpoint(predictions, summary, train_data)
@@ -2040,8 +2070,22 @@ class RecurrentWhisperer(object):
                 self.update_validation(train_data, valid_data)
 
     # *************************************************************************
-    # Batch management ********************************************************
+    # Data and batch management ***********************************************
     # *************************************************************************
+
+    def generate_data(self, train_or_valid_str='train'):
+        ''' Optionally generate data on-the-fly (e.g., during training), rather
+        than relying on fixed sets of training and validation data. This is only called by train(...) when called using train_data=None.
+
+        Args:
+            train_or_valid_str:
+
+        Returns:
+            data: dict containing the generated data.
+        '''
+        raise StandardError(
+            '%s must be implemented by RecurrentWhisperer subclass'
+             % sys._getframe().f_code.co_name)
 
     def _get_batch_size(self, batch_data):
         '''Returns the number of training examples in a batch of training data.
@@ -2052,46 +2096,6 @@ class RecurrentWhisperer(object):
         Returns:
             int specifying the number of examples in batch_data.
         '''
-        raise StandardError(
-            '%s must be implemented by RecurrentWhisperer subclass'
-             % sys._getframe().f_code.co_name)
-
-    def _get_data_batches(self, data=None):
-        ''' Splits data into batches OR generates data batches on the fly.
-
-        Args:
-            data (optional): a set of data examples to be randomly split into
-            batches (e.g., using _split_data_into_batches(...)). Type can be
-            subclass dependent (e.g., dict, list, custom class). If not
-            provided, _generate_data_batches() will be used (and thus must be
-            implemented in the subclass). Default: None.
-
-        Returns:
-            data_list: list of dicts, where each dict contains one batch of
-            data.
-            '''
-
-        if data is None:
-            return self._generate_data_batches(data)
-        else:
-            # Cleaner currently to not return idx_list, since otherwise would
-            # require output argument handling in train().
-            data_batches, idx_list = self._split_data_into_batches(data)
-            return data_batches
-
-    def _generate_data_batches(self, data):
-        ''' Generates one epoch of data batches for use when data are
-        generated (or augmented) on-the-fly during training.
-
-        Args:
-            data (optional): for use in generating augmented data. See
-            docstring in _get_data_batches().
-
-        Returns:
-            data_list: list of dicts, where each dict contains one batch of
-            data.
-        '''
-
         raise StandardError(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
@@ -2383,6 +2387,9 @@ class RecurrentWhisperer(object):
                 hps.do_generate_training_visualizations
 
         def update_helper(data, train_or_valid_str, version, do_save):
+
+            if data is None:
+                return
 
             pred, summary = self.predict(data,
                 train_or_valid_str=train_or_valid_str)
@@ -3332,7 +3339,8 @@ class RecurrentWhisperer(object):
 
         self._assert_ckpt_version(version)
 
-        pred, summary = self.predict(data)
+        pred, summary = self.predict(data,
+            train_or_valid_str=train_or_valid_str)
         self._save_pred(pred, train_or_valid_str, version=version)
         self._save_summary(summary, train_or_valid_str, version=version)
 
@@ -3449,7 +3457,8 @@ class RecurrentWhisperer(object):
                 'Summary must be provided if pred is provided.'
 
         if do_generate_pred:
-            pred, summary = self.predict(data)
+            pred, summary = self.predict(data,
+                train_or_valid_str=train_or_valid_str)
 
         if do_save_pred:
             self._save_pred(
