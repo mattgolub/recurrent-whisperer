@@ -71,12 +71,12 @@ class RecurrentWhisperer(object):
 
     Required only if generating (or augmenting) data on-the-fly during
     training:
-    _generate_data_batches(...)
+    generate_data(...)
 
     Required only if do_batch_predictions:
     _combine_prediction_batches(...)
 
-    Not required, but helpful in some cases:
+    Not required, but can provide additional helpful functionality:
     _setup_training(...)
     _update_valid_tensorboard_summaries
     _update_visualizations(...)
@@ -543,6 +543,7 @@ class RecurrentWhisperer(object):
             'do_generate_pretraining_visualizations': False,  # (pre-training)
             'do_save_pretraining_visualizations': False,
 
+            # These correspond with n_epochs_per_visualization_update
             'do_generate_training_visualizations': True,      # (peri-training)
             'do_save_training_visualizations': True,
 
@@ -555,7 +556,9 @@ class RecurrentWhisperer(object):
             'max_seso_ckpt_to_keep': 1,
 
             # Lowest-training-loss (LTL):
-            # checkpoints, predictions, summary, visualizations
+            # Checkpoint and prediction summary are saved as often as every
+            # n_epochs_per_ltl_update. Predictions and visualizations are saved
+            # only once at the end of training upon restoring the LTL model.
             'do_save_ltl_ckpt': True,
             'do_save_ltl_train_summary': True,
             'do_save_ltl_train_predictions': True,
@@ -564,6 +567,10 @@ class RecurrentWhisperer(object):
             'max_ltl_ckpt_to_keep': 1,
 
             # Lowest-validation-loss (LVL) checkpoints
+            # Only relevant if valid_data is provided to train(...).
+            # Checkpoint and summary are saved as often as every
+            # n_epochs_per_lvl_update. Predictions and visualizations are saved
+            # only once at the end of training upon restoring the LVL model.
             'do_save_lvl_ckpt': True,
             'do_save_lvl_train_predictions': True,
             'do_save_lvl_train_summary': True,
