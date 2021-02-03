@@ -80,7 +80,6 @@ class RecurrentWhisperer(object):
     _setup_training(...)
     _update_valid_tensorboard_summaries
     _update_visualizations(...)
-
     '''
 
     def __init__(self, **kwargs):
@@ -182,8 +181,8 @@ class RecurrentWhisperer(object):
                 do_save_tensorboard_images: bool indicating whether or not to
                 save visualizations to Tensorboard Images. Default: True.
 
-                do_save_ckpt: bool indicating whether or not to save model
-                checkpoints. Default: True.
+                do_save_seso_ckpt: bool indicating whether or not to save model
+                checkpoints. SESO = save-every-so-often. Default: True.
 
                 do_save_ltl_ckpt: bool indicating whether or not to save model
                 checkpoints specifically when a new lowest training loss is
@@ -552,7 +551,7 @@ class RecurrentWhisperer(object):
 
 
             # Save-every-so-often (seso) checkpoints
-            'do_save_ckpt': True,
+            'do_save_seso_ckpt': True,
             'max_seso_ckpt_to_keep': 1,
 
             # Lowest-training-loss (LTL):
@@ -1479,20 +1478,11 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-
-        N_EPOCH_SPLITS = 7 # Number of segments to time for profiling
-
-        do_generate_training_data = train_data is None
-        do_check_lvl = valid_data is not None
-
-        if self._is_training_complete(self._ltl, do_check_lvl):
+        self._do_check_lvl = valid_data is not None
+        if self._is_training_complete(self._ltl):
             # If restoring from a completed run, do not enter training loop
             # and do not save a new checkpoint.
             return
-
-        if do_generate_training_data:
-            # For on-the-fly data generation
-            train_data = self.generate_data('train')
 
         self._setup_training(train_data, valid_data)
         self.timer.split('_setup_training')
@@ -1506,60 +1496,14 @@ class RecurrentWhisperer(object):
         done = False
         while not done:
 
-            self._print_epoch_state()
-
-            epoch_timer = Timer(N_EPOCH_SPLITS,
-                name='Epoch',
-                do_retrospective=True)
-            epoch_timer.start()
-
-            # *****************************************************************
-
-            if do_generate_training_data:
-                # For on-the-fly data generation
-                train_data = self.generate_data('train')
-
-            data_batches, _ = self._split_data_into_batches(train_data)
-            epoch_timer.split('data')
-
-            # *****************************************************************
-
-            batch_summaries = self._train_epoch(data_batches)
-
-            ''' Note, these updates are intentionally placed before any
-            possible checkpointing for the epoch. This placement is critical
-            for reproducible training trajectories when restoring (i.e., for
-            robustness to unexpected restarts). See note in
-            _print_run_summary(). '''
-            self._update_learning_rate()
-            self._update_grad_clipping()
-            self._increment_epoch()
-            epoch_timer.split('train')
-
-            # *****************************************************************
-
+            self._initialize_epoch()
+            train_pred, train_summary = self._train_epoch(train_data)
             self._maybe_update_validation(train_data, valid_data)
-            epoch_timer.split('validation')
-
-            # *****************************************************************
-
             self._maybe_update_visualizations(train_data, valid_data)
-            epoch_timer.split('visualize')
-
-            # *****************************************************************
-
-            self._maybe_save_ltl_checkpoint(batch_summaries)
+            self._maybe_save_ltl_checkpoint(train_pred, train_summary)
             self._maybe_save_seso_checkpoint()
-            epoch_timer.split('save')
-
-            # *****************************************************************
-
-            done = self._is_training_complete(self.epoch_loss, do_check_lvl)
-            epoch_timer.split('other', stop=True)
-
-            # *****************************************************************
-
-            self._print_epoch_summary(batch_summaries, timer=epoch_timer)
+            done = self._is_training_complete(self.epoch_loss)
+            self._print_epoch_summary(train_summary)
 
         self.timer.split('train')
 
@@ -1570,7 +1514,7 @@ class RecurrentWhisperer(object):
 
     def _setup_training(self, train_data, valid_data=None):
         '''Performs any tasks that must be completed before entering the
-        training loop in self.train.
+        training loop in self.train().
 
         Args:
             train_data: dict containing the training data.
@@ -1582,33 +1526,74 @@ class RecurrentWhisperer(object):
         '''
         pass
 
-    def _train_epoch(self, data_batches):
+    def _initialize_epoch(self):
+
+        # Number of segments to time for profiling
+        N_EPOCH_SPLITS = 8
+
+        self._print_epoch_state()
+
+        self._epoch_timer = Timer(N_EPOCH_SPLITS,
+            name='Epoch',
+            do_retrospective=True)
+        self._epoch_timer.start()
+
+    def _train_epoch(self, train_data=None):
         '''Performs training steps across an epoch of training data batches.
 
         Args:
-            data_batches: list of dicts, where each dict contains a batch of
-            training data.
+            train_data: dict containing the training data. If not provided
+            (i.e., train_data=None), the subclass implementation of
+            _split_data_into_batches(...) must generate training data on the
+            fly. Default: None.
 
         Returns:
-            epoch_loss: float indicating the average loss across the epoch of
-            training batches.
+            predictions: dict containing model predictions based on data. Key/
+            value pairs will be specific to the subclass implementation.
+
+            summary: dict containing high-level summaries of the predictions.
+            Key/value pairs will be specific to the subclass implementation.
+            Must contain key: 'loss' whose value is a scalar indicating the
+            evaluation of the overall objective function being minimized
+            during training.
         '''
-        n_batches = len(data_batches)
-        batch_summaries = []
+
+        if train_data is None:
+            # For on-the-fly data generation
+            train_data = self.generate_data('train')
+
+        data_batches, batch_indices = self._split_data_into_batches(train_data)
+        self._epoch_timer.split('data')
+
+        pred_list = []
+        summary_list = []
 
         for batch_data in data_batches:
-            batch_summary = self._train_batch(batch_data)
-            batch_summary['batch_size'] = self._get_batch_size(batch_data)
-            batch_summaries.append(batch_summary)
+
+            batch_pred, batch_summary = self._train_batch(batch_data)
+            # batch_summary['batch_size'] = self._get_batch_size(batch_data)
+
+            pred_list.append(batch_pred)
+            summary_list.append(batch_summary)
+
+        predictions, summary = self._combine_prediction_batches(
+            pred_list, summary_list, batch_indices)
 
         self.prev_loss = self.epoch_loss
-        self.epoch_loss = self._compute_epoch_average(
-            batch_summaries, 'loss')
+        self.epoch_loss = summary['loss']
+        self.epoch_grad_norm = summary['grad_global_norm']
 
-        self.epoch_grad_norm = self._compute_epoch_average(
-            batch_summaries, 'grad_global_norm')
+        ''' Note, these updates are intentionally placed before any
+        possible checkpointing for the epoch. This placement is critical
+        for reproducible training trajectories when restoring (i.e., for
+        robustness to unexpected restarts). See note in
+        _print_run_summary(). '''
+        self._update_learning_rate()
+        self._update_grad_clipping()
+        self._increment_epoch()
+        self._epoch_timer.split('train')
 
-        return batch_summaries
+        return predictions, summary
 
     def _update_learning_rate(self):
 
@@ -1632,15 +1617,11 @@ class RecurrentWhisperer(object):
         print('\t' * n_indent, end='')
         print('Learning rate: %.2e' % self.adaptive_learning_rate())
 
-    def _print_epoch_summary(self, batch_summaries, timer=None, n_indent=1):
+    def _print_epoch_summary(self, train_summary, n_indent=1):
         ''' Prints an summary describing one epoch of training.
 
         Args:
-            batch_summaries: list with elements being the dicts returned by
-            _train_batch across an epoch of batches.
-
-            timer (optional): a Timer object containing timed splits for the
-            various functions executed during one epoch of training.
+            train_summary: dict as returned by _train_batch()
 
         Returns:
             None.
@@ -1669,15 +1650,10 @@ class RecurrentWhisperer(object):
             loss_improvement = self.prev_loss - self.epoch_loss
 
         indent = '\t' * n_indent
-
         print('%sTraining loss: %.2e' % (indent, self.epoch_loss))
         print('%sImprovement: %.2e' % (indent, loss_improvement))
         print('%sLogging to: %s' % (indent, self.run_dir))
-
-        if timer is not None:
-            # Line 3
-            timer.print(do_single_line=True, n_indent=n_indent)
-
+        self._epoch_timer.print(do_single_line=True, n_indent=n_indent)
         print('')
 
     def _print_run_summary(self):
@@ -1705,7 +1681,10 @@ class RecurrentWhisperer(object):
             pairs will be specific to the subclass implementation.
 
         Returns:
-            batch_summary: dict containing summary data from this training
+            predictions: dict containing model predictions based on data. Key/
+            value pairs will be specific to the subclass implementation.
+
+            summary: dict containing summary data from this training
             step. Minimally, this includes the following key/val pairs:
 
                 'loss': scalar float evaluation of the loss function over the
@@ -1715,12 +1694,20 @@ class RecurrentWhisperer(object):
                 gradient of the loss function with respect to all trainable
                 variables, taken over the data batch (i.e., an evaluation of
                 self.grad_global_norm).
+
+        Note:
+            Training predictions are never used by RecurrentWhisperer.
+            Thus, if your subclass does not use them, it is safe to return them
+            as None, which may reduce computation (although the predictions
+            often come almost for free when running both the forwards and
+            backwards passed through the model for gradient computations.
+
         '''
         raise StandardError(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def _is_training_complete(self, epoch_loss, do_check_lvl=True):
+    def _is_training_complete(self, epoch_loss):
         '''Determines whether the training optimization procedure should
         terminate. Termination criteria, governed by hyperparameters, are
         thresholds on the following:
@@ -1738,41 +1725,44 @@ class RecurrentWhisperer(object):
             bool indicating whether any of the termination criteria have been
             met.
         '''
+
         hps = self.hps
+
+        complete = False
 
         if self.is_done(self.run_dir):
             print('Stopping optimization: found .done file.')
-            return True
+            complete = True
 
-        if epoch_loss is np.inf:
+        elif epoch_loss is np.inf:
             print('\nStopping optimization: loss is Inf!')
-            return True
+            complete = True
 
-        if np.isnan(epoch_loss):
+        elif np.isnan(epoch_loss):
             print('\nStopping optimization: loss is NaN!')
-            return True
+            complete = True
 
-        if hps.min_loss is not None and epoch_loss <= hps.min_loss:
+        elif hps.min_loss is not None and epoch_loss <= hps.min_loss:
             print ('\nStopping optimization: loss meets convergence criteria.')
-            return True
+            complete = True
 
-        if self.adaptive_learning_rate.is_finished(do_check_step=False):
+        elif self.adaptive_learning_rate.is_finished(do_check_step=False):
             print ('\nStopping optimization: minimum learning rate reached.')
-            return True
+            complete = True
 
-        if self.adaptive_learning_rate.is_finished(do_check_rate=False):
+        elif self.adaptive_learning_rate.is_finished(do_check_rate=False):
             print('\nStopping optimization:'
                   ' reached maximum number of training epochs.')
-            return True
+            complete = True
 
-        if hps.max_train_time is not None and \
+        elif hps.max_train_time is not None and \
             self._train_time > hps.max_train_time:
 
             print ('\nStopping optimization: training time exceeds '
                 'maximum allowed.')
-            return True
+            complete = True
 
-        if do_check_lvl:
+        elif self._do_check_lvl:
             # Check whether lvl has been given a value (after being
             # initialized to np.inf), and if so, check whether that value has
             # improved recently.
@@ -1784,9 +1774,13 @@ class RecurrentWhisperer(object):
                       ' reached maximum number of training epochs'
                       ' without improvement to the lowest validation loss.')
 
-                return True
+                complete = True
 
-        return False
+        if hasattr(self, '_epoch_timer'):
+            # Skip on first call before entering training loop.
+            self._epoch_timer.split('other', stop=True)
+
+        return complete
 
     def _close_training(self, train_data=None, valid_data=None):
         ''' Optionally saves a final checkpoint, then loads the LVL model and
@@ -1805,7 +1799,7 @@ class RecurrentWhisperer(object):
         print('\nClosing training:')
 
         # Save checkpoint upon completing training
-        if hps.do_save_ckpt:
+        if hps.do_save_seso_ckpt:
             self._save_checkpoint(version='seso')
 
         # Save .done file. Critically placed after saving final checkpoint,
@@ -1976,26 +1970,25 @@ class RecurrentWhisperer(object):
 
         if do_batch:
 
-            batches_list, idx_list = self._split_data_into_batches(data)
+            batches_list, batch_indices = self._split_data_into_batches(data)
             n_batches = len(batches_list)
             pred_list = []
             summary_list = []
-            for batch_idx in range(n_batches):
+            for cnt, batch_data in enumerate(batches_list):
 
-                batch_data = batches_list[batch_idx]
                 batch_size = self._get_batch_size(batch_data)
 
                 print('\t\tPredict: batch %d of %d (%d trials)'
-                      % (batch_idx+1, n_batches, batch_size))
+                      % (cnt+1, n_batches, batch_size))
 
-                batch_predictions, batch_summary = self._predict_batch(
+                batch_pred, batch_summary = self._predict_batch(
                     batch_data, train_or_valid_str=train_or_valid_str)
 
-                pred_list.append(batch_predictions)
+                pred_list.append(batch_pred)
                 summary_list.append(batch_summary)
 
             predictions, summary = self._combine_prediction_batches(
-                pred_list, summary_list, idx_list)
+                pred_list, summary_list, batch_indices)
 
         else:
             predictions, summary = self._predict_batch(
@@ -2076,6 +2069,8 @@ class RecurrentWhisperer(object):
             if np.mod(self._epoch, n) == 0:
                 self.update_validation(train_data, valid_data)
 
+        self._epoch_timer.split('lvl')
+
     # *************************************************************************
     # Data and batch management ***********************************************
     # *************************************************************************
@@ -2117,12 +2112,12 @@ class RecurrentWhisperer(object):
             data: dict containing the to-be-split data.
 
         Returns:
-            data_list: list of dicts, where each dict contains one batch of
+            data_batches: list of dicts, where each dict contains one batch of
             data.
 
-            idx_list: list, where each element, idx_list[i], is a list of the
-            trial indices for the corresponding batch of data in data_list[i].
-            This is used to recombine the trials back into their original
+            batch_indices: list, where each element, idx_list[i], is a list of
+            the trial indices for the corresponding batch of data in data_list[
+            i]. This is used to recombine the trials back into their original
             (i.e., pre-batching) order by _combine_prediction_batches().
         '''
 
@@ -2415,12 +2410,22 @@ class RecurrentWhisperer(object):
             do_update = False
 
         if do_update:
+
+            # For on-the-fly data generation
+            if train_data is None:
+                train_data = self.generate_data('train')
+
             update_helper(train_data, 'train', version, do_save)
             update_helper(valid_data, 'valid', version, do_save)
 
+        if hasattr(self, '_epoch_timer'):
+            # Skip on first call before entering training loop.
+            self._epoch_timer.split('visualize')
+
     def update_visualizations(self, data, pred, train_or_valid_str, version,
         do_save=True, # Save individual figures (indep of Tensorboard)
-        do_update_tensorboard=None):
+        do_update_tensorboard=None, # default: hps.do_save_tensorboard_images
+        ):
 
         self._setup_visualizations_timer()
 
@@ -3005,12 +3010,12 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        if self.hps.do_save_ckpt and \
-            np.mod(self._epoch, self.hps.n_epochs_per_seso_update) == 0:
-
+        if self._do_save_seso_checkpoint:
             self._save_checkpoint(version='seso')
 
-    def _maybe_save_ltl_checkpoint(self, batch_summaries):
+        self._epoch_timer.split('seso')
+
+    def _maybe_save_ltl_checkpoint(self, train_pred, train_summary):
 
         # Currently this is modified from _maybe_save_lvl_checkpoint.
         # More code sharing would be nice, but there are some complexities.
@@ -3024,19 +3029,18 @@ class RecurrentWhisperer(object):
 
         version = 'ltl'
 
-        if self._epoch == 0 or \
-            (self.epoch_loss < self._ltl and \
-                self._epoch >= self._epoch_next_ltl_check):
+        if self._do_save_ltl_checkpoint(self.epoch_loss):
 
-            print('\tAchieved lowest training loss.')
             self._update_loss_records(self.epoch_loss, version=version)
 
             if self.hps.do_save_ltl_ckpt:
                 self._save_checkpoint(version=version)
 
             if self.hps.do_save_ltl_train_summary:
-                train_summary = self._combine_batch_summaries(batch_summaries)
+                # train_summary = self._combine_batch_summaries(batch_summaries)
                 self._save_summary(train_summary, 'train', version=version)
+
+        self._epoch_timer.split(version)
 
     def _maybe_save_lvl_checkpoint(self,
         valid_pred,
@@ -3059,24 +3063,104 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
+
+        version = 'lvl'
         valid_loss = valid_summary['loss']
 
-        if (self._epoch==0 or valid_loss < self._lvl):
+        if self._do_save_lvl_checkpoint(valid_loss):
 
-            print('\t\tAchieved lowest validation loss.')
-            self._update_loss_records(valid_loss, version='lvl')
+            self._update_loss_records(valid_loss, version=version)
 
             if self.hps.do_save_lvl_ckpt:
-                self._save_checkpoint(version='lvl')
+                self._save_checkpoint(version=version)
 
             self._maybe_save_pred_and_summary('train',
                 data=train_data,
-                version='lvl')
+                version=version)
 
             self._maybe_save_pred_and_summary('valid',
                 pred=valid_pred,
                 summary=valid_summary,
-                version='lvl')
+                version=version)
+
+        self._epoch_timer.split(version)
+
+    # *************************************************************************
+    # Forward thinking, not yet using these ***********************************
+    # *************************************************************************
+    def _maybe_save_checkpoint(self, data, pred, summary, version):
+        '''Saves a model checkpoint if the current validation loss is lower
+        than all previously evaluated validation losses. Optionally, this will
+        also generate and save model predictions over the training and
+        validation data.
+
+        If prediction summaries are generated, those summaries are saved in
+        separate files. See docstring for predict() for additional detail.
+
+        Args:
+            valid_pred and valid_summary: dicts as returned by
+            predict(valid_data).
+
+            train_data: dict containing the training data.
+
+        Returns:
+            None.
+        '''
+
+        loss = summary['loss']
+
+        if self._do_save_checkpoint(loss, version):
+
+            self._update_loss_records(valid_loss, version=version)
+
+            if self.hps.do_save_lvl_ckpt:
+                self._save_checkpoint(version=version)
+
+            self._maybe_save_pred_and_summary('train',
+                data=train_data,
+                version=version)
+
+            self._maybe_save_pred_and_summary('valid',
+                pred=valid_pred,
+                summary=valid_summary,
+                version=version)
+
+        self._epoch_timer.split(version)
+
+    ''' Currently there's a bit of asymmetry: ltl and lvl check
+    hps.do_save_*_ckpt upstream, but hps.do_save_seso_ckpt is checked here. '''
+    @property
+    def _do_save_seso_checkpoint(self):
+
+        n = self._epoch
+        n_per_update = self.hps.n_epochs_per_seso_update
+
+        return self.hps.do_save_seso_ckpt and np.mod(n, n_per_update) == 0
+
+    def _do_save_ltl_checkpoint(self, train_loss):
+
+        epoch = self._epoch
+
+        if epoch == 0 or \
+            (train_loss < self._ltl and epoch >= self._epoch_next_ltl_check):
+
+            print('\tAchieved lowest training loss.')
+            return True
+
+        else:
+            return False
+
+    def _do_save_lvl_checkpoint(self, valid_loss):
+
+        if self._epoch == 0 or valid_loss < self._lvl:
+            print('\t\tAchieved lowest validation loss.')
+            return True
+        else:
+            return False
+
+    # *************************************************************************
+    # *************************************************************************
+    # *************************************************************************
 
     def _save_checkpoint(self, version):
         '''Saves a model checkpoint, along with data for restoring the adaptive
