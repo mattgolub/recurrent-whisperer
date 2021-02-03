@@ -80,6 +80,7 @@ class RecurrentWhisperer(object):
     _setup_training(...)
     _update_valid_tensorboard_summaries
     _update_visualizations(...)
+    _update_predictions_with_metadata(...)
     '''
 
     def __init__(self, **kwargs):
@@ -1487,8 +1488,7 @@ class RecurrentWhisperer(object):
         self._setup_training(train_data, valid_data)
         self.timer.split('_setup_training')
 
-        # Visualizations generated from untrained network
-        self._maybe_update_visualizations(train_data, valid_data)
+        self._maybe_update_visualizations_pretraining(train_data, valid_data)
         self.timer.split('_init_visualizations')
 
         # Training loop
@@ -1497,17 +1497,46 @@ class RecurrentWhisperer(object):
         while not done:
 
             self._initialize_epoch()
-            train_pred, train_summary = self._train_epoch(train_data)
-            self._maybe_update_validation(train_data, valid_data)
-            self._maybe_update_visualizations(train_data, valid_data)
-            self._maybe_save_ltl_checkpoint(train_pred, train_summary)
+
+            epoch_train_data = self._prepare_epoch_data(train_data)
+            train_pred, train_summary = self._train_epoch(epoch_train_data)
+
+            self._epoch_timer.split('train')
+
             self._maybe_save_seso_checkpoint()
+            self._epoch_timer.split('seso')
+
+            self._maybe_save_ltl_checkpoint(train_pred, train_summary)
+            self._epoch_timer.split('ltl')
+
+            if self._do_predict_validation(valid_data):
+                valid_pred, valid_summary = self.predict(valid_data)
+            else:
+                valid_pred = valid_summary = None
+
+            epoch_results = {
+                'train_data': epoch_train_data,
+                'train_pred': train_pred,
+                'train_summary': train_summary,
+                'valid_data': valid_data,
+                'valid_pred': valid_pred,
+                'valid_summary': valid_summary
+            }
+
+            self._maybe_update_validation(**epoch_results)
+            self._epoch_timer.split('lvl')
+
+            self._maybe_update_visualizations(**epoch_results)
+            self._epoch_timer.split('visualize')
+
             done = self._is_training_complete(self.epoch_loss)
+            self._epoch_timer.split('other', stop=True)
+
             self._print_epoch_summary(train_summary)
 
         self.timer.split('train')
 
-        self._close_training(train_data, valid_data)
+        self._close_training(**epoch_results)
         self.timer.split('_close_training')
 
         self._print_run_summary()
@@ -1538,7 +1567,15 @@ class RecurrentWhisperer(object):
             do_retrospective=True)
         self._epoch_timer.start()
 
-    def _train_epoch(self, train_data=None):
+    def _prepare_epoch_data(self, train_data):
+
+        if train_data is None:
+            # For on-the-fly data generation
+            return self.generate_data('train')
+        else:
+            return train_data
+
+    def _train_epoch(self, train_data):
         '''Performs training steps across an epoch of training data batches.
 
         Args:
@@ -1558,11 +1595,8 @@ class RecurrentWhisperer(object):
             during training.
         '''
 
-        if train_data is None:
-            # For on-the-fly data generation
-            train_data = self.generate_data('train')
-
-        data_batches, batch_indices = self._split_data_into_batches(train_data)
+        data_batches, batch_indices = self._split_data_into_batches(
+            train_data)
         self._epoch_timer.split('data')
 
         pred_list = []
@@ -1579,6 +1613,8 @@ class RecurrentWhisperer(object):
         predictions, summary = self._combine_prediction_batches(
             pred_list, summary_list, batch_indices)
 
+        self._update_predictions_with_metadata(train_data, predictions)
+
         self.prev_loss = self.epoch_loss
         self.epoch_loss = summary['loss']
         self.epoch_grad_norm = summary['grad_global_norm']
@@ -1591,7 +1627,6 @@ class RecurrentWhisperer(object):
         self._update_learning_rate()
         self._update_grad_clipping()
         self._increment_epoch()
-        self._epoch_timer.split('train')
 
         return predictions, summary
 
@@ -1775,10 +1810,6 @@ class RecurrentWhisperer(object):
                       ' without improvement to the lowest validation loss.')
 
                 complete = True
-
-        if hasattr(self, '_epoch_timer'):
-            # Skip on first call before entering training loop.
-            self._epoch_timer.split('other', stop=True)
 
         return complete
 
@@ -1997,6 +2028,8 @@ class RecurrentWhisperer(object):
         assert ('loss' in summary),\
             ('summary must minimally contain key: \'loss\', but does not.')
 
+        self._update_predictions_with_metadata(data, predictions)
+
         return predictions, summary
 
     def _predict_batch(self, batch_data, train_or_valid_str='valid'):
@@ -2021,35 +2054,51 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
+    def _update_predictions_with_metadata(self, data, pred):
+        ''' Optionally copy metadata from data to pred. All operations are to
+        be done in place, and nothing is returned.
+
+        Args:
+            data:
+            pred:
+
+        Returns:
+            None.
+        '''
+        pass
+
     # *************************************************************************
     # Validation **************************************************************
     # *************************************************************************
 
-    def update_validation(self, train_data, valid_data):
+    def update_validation(self,
+        train_pred, train_summary, valid_pred, valid_summary):
         '''Evaluates the validation data, updates the corresponding
         Tensorboard summaries are updated, and if the validation loss
         indicates a new minimum, a model checkpoint is saved.
 
         Args:
-            train_data: dict containing the training data.
-
-            valid_data: dict containing the validation data.
 
         Returns:
             None.
         '''
 
-        predictions, summary = self.predict(valid_data,
-            train_or_valid_str='valid')
+        print('\tValidation loss: %.2e' % valid_summary['loss'])
 
-        print('\tValidation loss: %.2e' % summary['loss'])
-
-        self._maybe_save_lvl_checkpoint(predictions, summary, train_data)
+        self._maybe_save_lvl_checkpoint(
+            train_pred, train_summary,
+            valid_pred, valid_summary)
 
         if self.hps.do_save_tensorboard_summaries:
-            self._update_valid_tensorboard_summaries(summary)
+            self._update_valid_tensorboard_summaries(valid_summary)
 
-    def _maybe_update_validation(self, train_data, valid_data):
+    def _maybe_update_validation(self,
+        train_data=None,
+        train_pred=None,
+        train_summary=None,
+        valid_data=None,
+        valid_pred=None,
+        valid_summary=None):
         '''Evaluates the validation data if the current epoch number indicates
         that such an update is due.
 
@@ -2062,14 +2111,23 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        if valid_data is None:
-            pass
-        else:
-            n = self.hps.n_epochs_per_lvl_update
-            if np.mod(self._epoch, n) == 0:
-                self.update_validation(train_data, valid_data)
+        if train_pred and valid_pred and self._do_update_validation:
+            self.update_validation(
+                train_pred, train_summary, valid_pred, valid_summary)
 
-        self._epoch_timer.split('lvl')
+    def _do_predict_validation(self, valid_data=None):
+        ''' Returns true if validation predictions or prediction summary
+        is needed at the current epoch. '''
+
+        if valid_data is None:
+            return False
+
+        return self._do_update_validation or self._do_update_visualizations
+
+    @property
+    def _do_update_validation(self):
+        n = self.hps.n_epochs_per_lvl_update
+        return np.mod(self._epoch, n) == 0
 
     # *************************************************************************
     # Data and batch management ***********************************************
@@ -2242,7 +2300,8 @@ class RecurrentWhisperer(object):
             values are to be averaged.
 
         Returns:
-            avg: float or numpy array containing the batch-size-weighted average of the batch_summaries[i][key] values. Shape matches that
+            avg: float or numpy array containing the batch-size-weighted
+            average of the batch_summaries[i][key] values. Shape matches that
             of each batch_summaries[i][key] value (typically a scalar).
         '''
 
@@ -2337,30 +2396,36 @@ class RecurrentWhisperer(object):
         # Make sure whatever happens next doesn't affect timing of last save.
         self._visualizations_timer.split('Transition from saving.')
 
-    @staticmethod
-    def refresh_figs():
-        ''' Refreshes all matplotlib figures.
+    def _maybe_update_visualizations_pretraining(self,
+        train_data, valid_data):
 
-        Args:
-            None.
+        # Visualizations generated from untrained network
+        if self._do_update_pretraining_visualizations:
 
-        Returns:
-            None.
-        '''
-        if os.environ.get('DISPLAY','') == '':
-            # If executing on a server with no graphical back-end
-            pass
-        else:
-            plt.ion()
-            plt.show()
-            plt.pause(1e-10)
+            epoch_train_data = self._prepare_epoch_data(train_data)
+            train_pred, train_summary = self.predict(
+                train_data, train_or_valid_str='train')
 
-    @property
-    def n_figs(self):
-        return len(self.figs)
+            if valid_data:
+                valid_pred, valid_summary = self.predict(
+                    valid_data, train_or_valid_str='valid')
+            else:
+                valid_pred = valid_summary = None
 
-    def _maybe_update_visualizations(self, train_data, valid_data,
-        version='seso'):
+            epoch_results = {
+                'train_data': train_data,
+                'train_pred': train_pred,
+                'train_summary': train_summary,
+                'valid_data': valid_data,
+                'valid_pred': valid_pred,
+                'valid_summary': valid_summary
+            }
+
+            self.update_visualizations(
+                do_save=self.hps.do_save_pretraining_visualizations,
+                **epoch_results)
+
+    def _maybe_update_visualizations(self, **kwargs):
         '''Updates visualizations if the current epoch number indicates that
         an update is due. Saves those visualization to Tensorboard or to
         individual figure files, depending on hyperparameters
@@ -2369,71 +2434,53 @@ class RecurrentWhisperer(object):
 
         Args:
             train_data:
-
+            train_pred:
+            train_summary:
             valid_data:
-
+            valid_pred:
+            valid_summary:
             version:
 
         Returns:
             None.
         '''
 
-        hps = self.hps
-
-        def do_pretraining(hps, epoch):
-            return epoch == 0 and hps.do_generate_pretraining_visualizations
-
-        def do_training(hps, epoch):
-            return epoch > 0 and \
-                np.mod(epoch, hps.n_epochs_per_visualization_update) == 0 and \
-                hps.do_generate_training_visualizations
-
-        def update_helper(data, train_or_valid_str, version, do_save):
-
-            if data is None:
-                return
-
-            pred, summary = self.predict(data,
-                train_or_valid_str=train_or_valid_str)
-
-            self.update_visualizations(
-                data, pred, train_or_valid_str, version,
-                do_save=do_save)
-
-        if do_pretraining(hps, self._epoch):
-            do_save = hps.do_save_pretraining_visualizations
-            do_update = True
-        elif do_training(hps, self._epoch):
-            do_save = hps.do_save_training_visualizations
-            do_update = True
+        if self._do_update_pretraining_visualizations:
+            do_save = self.hps.do_save_pretraining_visualizations
+        elif self._do_update_training_visualizations:
+            do_save = self.hps.do_save_training_visualizations
         else:
-            do_update = False
+            return
 
-        if do_update:
+        self.update_visualizations(do_save=do_save, **kwargs)
 
-            # For on-the-fly data generation
-            if train_data is None:
-                train_data = self.generate_data('train')
-
-            update_helper(train_data, 'train', version, do_save)
-            update_helper(valid_data, 'valid', version, do_save)
-
-        if hasattr(self, '_epoch_timer'):
-            # Skip on first call before entering training loop.
-            self._epoch_timer.split('visualize')
-
-    def update_visualizations(self, data, pred, train_or_valid_str, version,
+    def update_visualizations(self,
+        train_data=None,
+        train_pred=None,
+        train_summary=None,
+        valid_data=None,
+        valid_pred=None,
+        valid_summary=None,
+        version='seso',
         do_save=True, # Save individual figures (indep of Tensorboard)
         do_update_tensorboard=None, # default: hps.do_save_tensorboard_images
         ):
 
         self._setup_visualizations_timer()
 
-        self._update_visualizations(
-            data=data,
-            pred=pred,
-            train_or_valid_str=train_or_valid_str,
-            version=version)
+        if train_data and train_pred:
+            self._update_visualizations(
+                data=train_data,
+                pred=train_pred,
+                train_or_valid_str='train',
+                version=version)
+
+        if valid_data and valid_pred:
+            self._update_visualizations(
+                data=valid_data,
+                pred=valid_pred,
+                train_or_valid_str='valid',
+                version=version)
 
         if do_update_tensorboard is None:
             do_update_tensorboard = self.hps.do_save_tensorboard_images
@@ -2496,6 +2543,58 @@ class RecurrentWhisperer(object):
 
         if self.hps.do_print_visualizations_timing:
             self._visualizations_timer.print()
+
+    @property
+    def _do_update_visualizations(self):
+        return self._do_update_pretraining_visualizations or \
+            self._do_update_training_visualizations
+
+    @property
+    def _do_update_pretraining_visualizations(self):
+
+        hps = self.hps
+
+        if not hps.do_generate_pretraining_visualizations:
+            # Avoid getting epoch from TF graph
+            return False
+
+        return self._epoch == 0
+
+    @property
+    def _do_update_training_visualizations(self):
+
+        hps = self.hps
+
+        if not hps.do_generate_training_visualizations:
+            # Avoid getting epoch from TF graph
+            return False
+
+        epoch = self._epoch
+
+        return  epoch > 0 and \
+            np.mod(epoch, hps.n_epochs_per_visualization_update) == 0
+
+    @staticmethod
+    def refresh_figs():
+        ''' Refreshes all matplotlib figures.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+        if os.environ.get('DISPLAY','') == '':
+            # If executing on a server with no graphical back-end
+            pass
+        else:
+            plt.ion()
+            plt.show()
+            plt.pause(1e-10)
+
+    @property
+    def n_figs(self):
+        return len(self.figs)
 
     # *************************************************************************
     # Exposed directory access ************************************************
@@ -3013,8 +3112,6 @@ class RecurrentWhisperer(object):
         if self._do_save_seso_checkpoint:
             self._save_checkpoint(version='seso')
 
-        self._epoch_timer.split('seso')
-
     def _maybe_save_ltl_checkpoint(self, train_pred, train_summary):
 
         # Currently this is modified from _maybe_save_lvl_checkpoint.
@@ -3037,15 +3134,13 @@ class RecurrentWhisperer(object):
                 self._save_checkpoint(version=version)
 
             if self.hps.do_save_ltl_train_summary:
-                # train_summary = self._combine_batch_summaries(batch_summaries)
                 self._save_summary(train_summary, 'train', version=version)
 
-        self._epoch_timer.split(version)
-
     def _maybe_save_lvl_checkpoint(self,
+        train_pred,
+        train_summary,
         valid_pred,
-        valid_summary,
-        train_data):
+        valid_summary):
         '''Saves a model checkpoint if the current validation loss is lower
         than all previously evaluated validation losses. Optionally, this will
         also generate and save model predictions over the training and
@@ -3055,6 +3150,9 @@ class RecurrentWhisperer(object):
         separate files. See docstring for predict() for additional detail.
 
         Args:
+            train_pred and train_summary: dicts as returned by
+            _train_epoch(train_data) or predict(train_data).
+
             valid_pred and valid_summary: dicts as returned by
             predict(valid_data).
 
@@ -3075,15 +3173,14 @@ class RecurrentWhisperer(object):
                 self._save_checkpoint(version=version)
 
             self._maybe_save_pred_and_summary('train',
-                data=train_data,
+                pred=train_pred,
+                summary=train_summary,
                 version=version)
 
             self._maybe_save_pred_and_summary('valid',
                 pred=valid_pred,
                 summary=valid_summary,
                 version=version)
-
-        self._epoch_timer.split(version)
 
     # *************************************************************************
     # Forward thinking, not yet using these ***********************************
@@ -3565,16 +3662,17 @@ class RecurrentWhisperer(object):
 
         Returns: bool indicating whether or not to perform the save.
         '''
+        if self.is_done:
+            # Never use LTL model with validation data.
+            # Accordingly, there is no hps.do_save_LTL_valid_predictions
+            if train_or_valid_str == 'valid' and version == 'ltl':
+                return False
 
-        # Never use LTL model with validation data.
-        # Accordingly, there is no hps.do_save_LTL_valid_predictions
-        if version == 'ltl' and train_or_valid_str == 'valid':
+            # E.g., do_save_lvl_train_predictions
+            key = 'do_save_%s_%s_predictions' % (version, train_or_valid_str)
+            return self.hps[key]
+        else:
             return False
-
-        # E.g., do_save_lvl_train_predictions
-        key = 'do_save_%s_%s_predictions' % (version, train_or_valid_str)
-
-        return self.is_done and self.hps[key]
 
     def _do_save_summary(self, train_or_valid_str, version='lvl'):
         ''' Determines whether or not to save a summary of predictions
@@ -3585,7 +3683,7 @@ class RecurrentWhisperer(object):
 
         # Never use LTL model with validation data.
         # Accordingly, there is no hps.do_save_LTL_valid_summary
-        if version == 'ltl' and train_or_valid_str == 'valid':
+        if train_or_valid_str == 'valid' and version == 'ltl':
             return False
 
         # E.g., do_save_lvl_train_summary
