@@ -40,8 +40,7 @@ from Hyperparameters import Hyperparameters
 from Timer import Timer
 
 class RecurrentWhisperer(object):
-    '''A general class template for training recurrent neural networks using
-    TensorFlow. This class provides functionality for:
+    '''Base class for training recurrent neural networks or other deep learning models using TensorFlow. This class provides functionality for:
 
     1) Training a recurrent neural network using modern techniques for
     encouraging stable training, such as adaptive learning rates and adaptive
@@ -548,7 +547,6 @@ class RecurrentWhisperer(object):
 
             'do_generate_final_visualizations': True,         # (post-training)
             'do_save_final_visualizations': True,
-
 
             # Save-every-so-often (seso) checkpoints
             'do_save_seso_ckpt': True,
@@ -1514,8 +1512,9 @@ class RecurrentWhisperer(object):
 
             if self._do_predict_validation:
                 # ...if using validation data and due for an update this epoch
-                valid_pred, valid_summary = self.predict(
-                    valid_data, train_or_valid_str='valid')
+                valid_pred, valid_summary = self.predict(valid_data,
+                    train_or_valid_str='valid',
+                    is_final=False)
 
                 # ... if validation loss is better than previously seen
                 self._maybe_save_lvl_checkpoint(
@@ -1946,7 +1945,8 @@ class RecurrentWhisperer(object):
         if do_train_pred or do_train_vis:
 
             train_pred, train_summary = self.predict(train_data,
-                train_or_valid_str='train')
+                train_or_valid_str='train',
+                is_final=self._is_final(version))
 
             if do_train_pred:
                 self._save_pred(train_pred, 'train', version=version)
@@ -1960,7 +1960,8 @@ class RecurrentWhisperer(object):
         if do_valid_pred or do_valid_vis:
 
             valid_pred, valid_summary = self.predict(valid_data,
-                train_or_valid_str='valid')
+                train_or_valid_str='valid',
+                is_final=self._is_final(version))
 
             if do_valid_pred:
                 self._save_pred(valid_pred, 'valid', version=version)
@@ -1999,7 +2000,10 @@ class RecurrentWhisperer(object):
             important for large models and/or large datasets relative to
             memory resources. Default: falls back to hps.do_batch_predictions.
 
-            is_final (optional): bool indicating
+            is_final (optional, advanced): bool indicating whether the model
+            state is LTL, LVL, or similar. This option is not used in
+            RecurrentWhisperer, but can be helpful in subclasses that may want
+            customized predictions computed once training is complete.
 
         Returns:
             predictions: dict containing model predictions based on data. Key/
@@ -2031,7 +2035,7 @@ class RecurrentWhisperer(object):
 
                 batch_size = self._get_batch_size(batch_data)
 
-                print('\t\tPredict: batch %d of %d (%d trials)'
+                print('\tPredict: batch %d of %d (%d trials)'
                       % (cnt+1, n_batches, batch_size))
 
                 batch_pred, batch_summary = self._predict_batch(
@@ -2364,12 +2368,14 @@ class RecurrentWhisperer(object):
         if self._do_update_pretraining_visualizations:
 
             epoch_train_data = self._prepare_epoch_data(train_data)
-            train_pred, train_summary = self.predict(
-                epoch_train_data, train_or_valid_str='train')
+            train_pred, train_summary = self.predict(epoch_train_data,
+                train_or_valid_str='train',
+                is_final=False)
 
             if valid_data:
-                valid_pred, valid_summary = self.predict(
-                    valid_data, train_or_valid_str='valid')
+                valid_pred, valid_summary = self.predict(valid_data,
+                    train_or_valid_str='valid',
+                    is_final=False)
             else:
                 valid_pred = valid_summary = None
 
@@ -2911,6 +2917,15 @@ class RecurrentWhisperer(object):
 
         self.session.run(ops, feed_dict=feed_dict)
 
+    def _is_final(cls, version='seso'):
+        ''' Helper function for determining behavior of predict() based on the
+        current state of the model.
+        '''
+
+        # for 'seso', want predictions & visualizations to match their
+        # 'seso' counterparts generated throughout training
+        return version in ['ltl' or 'lvl']
+
     # *************************************************************************
     # TF Variables access and updates *****************************************
     # *************************************************************************
@@ -3139,9 +3154,6 @@ class RecurrentWhisperer(object):
         if self.hps.do_save_tensorboard_summaries:
             self._update_valid_tensorboard_summaries(valid_summary)
 
-    # *************************************************************************
-    # Forward thinking, not yet using these ***********************************
-    # *************************************************************************
     def _maybe_save_checkpoint(self, data, pred, summary, version):
         '''Saves a model checkpoint if the current validation loss is lower
         than all previously evaluated validation losses. Optionally, this will
@@ -3182,7 +3194,10 @@ class RecurrentWhisperer(object):
         self._epoch_timer.split(version)
 
     ''' Currently there's a bit of asymmetry: ltl and lvl check
-    hps.do_save_*_ckpt upstream, but hps.do_save_seso_ckpt is checked here. '''
+    hps.do_save_*_ckpt upstream, but hps.do_save_seso_ckpt is checked here.
+    That's because LTL and LVL have more complicated checks and multiple tasks
+    that depend on multiple checks. '''
+
     @property
     def _do_save_seso_checkpoint(self):
 
@@ -3230,7 +3245,7 @@ class RecurrentWhisperer(object):
 
         self._assert_ckpt_version(version)
 
-        print('\t\tSaving %s checkpoint.' % str.upper(version))
+        print('\tSaving %s checkpoint.' % version.upper())
         ckpt_path = self._get_ckpt_path_stem(version)
 
         self._update_train_time()
@@ -3457,14 +3472,42 @@ class RecurrentWhisperer(object):
             predictions_or_summary_str='summary',
             version=version)
 
+    @classmethod
+    def _exists_file(cls, run_dir,
+        train_or_valid_str='train',
+        predictions_or_summary_str='predictions',
+        version='lvl',
+        filetype='npz'):
+        '''Checks if previously saved model predictions or summary exists.
+
+        Args:
+            run_dir: string containing the path to the directory where the
+            model run was saved. See definition in __init__()
+
+            train_or_valid_str: either 'train' or 'valid', indicating whether
+            to load predictions/summary from the training data or validation
+            data, respectively.
+
+            predictions_or_summary_str: either 'predictions' or 'summary',
+            indicating whether to load model predictions or summaries thereof,
+            respectively.
+
+        Returns:
+            True if the file exists.
+        '''
+
+        path_to_file = cls._build_file_path(run_dir,
+            train_or_valid_str=train_or_valid_str,
+            predictions_or_summary_str=predictions_or_summary_str,
+            version=version,
+            filetype='npz')
+
+        return os.path.exists(path_to_file)
+
     def save_predictions_and_summary(self, data, train_or_valid_str, version):
         ''' Saves model predictions and a prediction summary, regardless of the
         hyperparameters. This is provided for external convenience, and is
         never used internally.
-
-        Prediction summaries are saved in a separate .pkl file from the
-        predictions themselves. See docstring for predict() for additional
-        detail.
 
         Args:
             data: dict containing the data over which predictions are
@@ -3485,7 +3528,9 @@ class RecurrentWhisperer(object):
         self._assert_ckpt_version(version)
 
         pred, summary = self.predict(data,
-            train_or_valid_str=train_or_valid_str)
+            train_or_valid_str=train_or_valid_str,
+            is_final=self._is_final(version))
+
         self._save_pred(pred, train_or_valid_str, version=version)
         self._save_summary(summary, train_or_valid_str, version=version)
 
@@ -3603,7 +3648,8 @@ class RecurrentWhisperer(object):
 
         if do_generate_pred:
             pred, summary = self.predict(data,
-                train_or_valid_str=train_or_valid_str)
+                train_or_valid_str=train_or_valid_str,
+                is_final=self._is_final(version))
 
         if do_save_pred:
             self._save_pred(
@@ -3682,8 +3728,8 @@ class RecurrentWhisperer(object):
 
         if summary is not None:
 
-            print('\t\tSaving %s summary (%s).' %
-                (str.upper(version), train_or_valid_str))
+            print('\tSaving %s summary (%s).' %
+                (version.upper(), train_or_valid_str))
 
             self._save_pred_or_summary_helper(summary,
                 train_or_valid_str=train_or_valid_str,
@@ -3905,40 +3951,6 @@ class RecurrentWhisperer(object):
             data = json.load(file)
 
         return data
-
-    # Recently updated, largely untested.
-
-    @classmethod
-    def _exists_file(cls, run_dir,
-        train_or_valid_str='train',
-        predictions_or_summary_str='predictions',
-        version='lvl',
-        filetype='npz'):
-        '''Checks if previously saved model predictions or summary exists.
-
-        Args:
-            run_dir: string containing the path to the directory where the
-            model run was saved. See definition in __init__()
-
-            train_or_valid_str: either 'train' or 'valid', indicating whether
-            to load predictions/summary from the training data or validation
-            data, respectively.
-
-            predictions_or_summary_str: either 'predictions' or 'summary',
-            indicating whether to load model predictions or summaries thereof,
-            respectively.
-
-        Returns:
-            True if the file exists.
-        '''
-
-        path_to_file = cls._build_file_path(run_dir,
-            train_or_valid_str=train_or_valid_str,
-            predictions_or_summary_str=predictions_or_summary_str,
-            version=version,
-            filetype='npz')
-
-        return os.path.exists(path_to_file)
 
     # *************************************************************************
     # Internal run directory management ***************************************
