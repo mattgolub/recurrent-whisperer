@@ -1311,7 +1311,9 @@ class RecurrentWhisperer(object):
             (fig_width, fig_height) = fig.canvas.get_width_height()
             tb_fig_name = self._tensorboard_image_name(fig_name)
 
-            with tf.device(self.device):
+            # Don't use precious GPU memory for these images, which are just
+            # used for storage--they aren't computed on.
+            with tf.device(self.cpu_device):
 
                 images['placeholders'][fig_name] = tf.placeholder(
                     tf.uint8, (1, fig_height, fig_width, 3))
@@ -1469,7 +1471,7 @@ class RecurrentWhisperer(object):
         Args:
             train_data (optional): dict containing the training data. If not
             provided (i.e., train_data=None), the subclass implementation of
-            _get_data_batches(...) must generate training data on the fly.
+            generate_data(...) must generate training data on the fly.
             Default: None.
 
             valid_data (optional): dict containing the validation data.
@@ -1478,14 +1480,13 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        self._do_check_lvl = valid_data is not None
+        self._setup_training(train_data, valid_data)
+        self.timer.split('_setup_training')
+
         if self._is_training_complete(self._ltl):
             # If restoring from a completed run, do not enter training loop
             # and do not save a new checkpoint.
             return
-
-        self._setup_training(train_data, valid_data)
-        self.timer.split('_setup_training')
 
         self._maybe_update_visualizations_pretraining(train_data, valid_data)
         self.timer.split('_init_visualizations')
@@ -1493,13 +1494,16 @@ class RecurrentWhisperer(object):
         # Training loop
         print('Entering training loop.')
         done = False
+
         while not done:
 
             self._initialize_epoch()
 
+            # Profiling for data prep is managed elsewhere.
+            # It's complicated in the case of on-the-fly data generation.
             epoch_train_data = self._prepare_epoch_data(train_data)
-            train_pred, train_summary = self._train_epoch(epoch_train_data)
 
+            train_pred, train_summary = self._train_epoch(epoch_train_data)
             self._epoch_timer.split('train')
 
             self._maybe_save_seso_checkpoint()
@@ -1508,24 +1512,31 @@ class RecurrentWhisperer(object):
             self._maybe_save_ltl_checkpoint(train_pred, train_summary)
             self._epoch_timer.split('ltl')
 
-            if self._do_predict_validation(valid_data):
-                valid_pred, valid_summary = self.predict(valid_data)
+            if self._do_predict_validation:
+                # ...if using validation data and due for an update this epoch
+                valid_pred, valid_summary = self.predict(
+                    valid_data, train_or_valid_str='valid')
+
+                # ... if validation loss is better than previously seen
+                self._maybe_save_lvl_checkpoint(
+                    train_pred=train_pred,
+                    train_summary=train_summary,
+                    valid_pred=valid_pred,
+                    valid_summary=valid_summary)
+
+                self._epoch_timer.split('lvl')
+
             else:
                 valid_pred = valid_summary = None
 
-            epoch_results = {
-                'train_data': epoch_train_data,
-                'train_pred': train_pred,
-                'train_summary': train_summary,
-                'valid_data': valid_data,
-                'valid_pred': valid_pred,
-                'valid_summary': valid_summary
-            }
-
-            self._maybe_update_validation(**epoch_results)
-            self._epoch_timer.split('lvl')
-
-            self._maybe_update_visualizations(**epoch_results)
+            self._maybe_update_visualizations(
+                train_data=epoch_train_data,
+                train_pred=train_pred,
+                train_summary=train_summary,
+                valid_data=valid_data,
+                valid_pred=valid_pred,
+                valid_summary=valid_summary,
+                version='seso')
             self._epoch_timer.split('visualize')
 
             done = self._is_training_complete(self.epoch_loss)
@@ -1557,7 +1568,7 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        pass
+        self._has_valid_data = valid_data is not None
 
     def _initialize_epoch(self):
 
@@ -1609,8 +1620,6 @@ class RecurrentWhisperer(object):
         for batch_data in data_batches:
 
             batch_pred, batch_summary = self._train_batch(batch_data)
-            # batch_summary['batch_size'] = self._get_batch_size(batch_data)
-
             pred_list.append(batch_pred)
             summary_list.append(batch_summary)
 
@@ -1799,7 +1808,7 @@ class RecurrentWhisperer(object):
                 'maximum allowed.')
             complete = True
 
-        elif self._do_check_lvl:
+        elif self._has_valid_data:
             # Check whether lvl has been given a value (after being
             # initialized to np.inf), and if so, check whether that value has
             # improved recently.
@@ -1839,6 +1848,10 @@ class RecurrentWhisperer(object):
         # but before doing a bunch of other stuff that might fail. This way,
         # if anything below does fail, the .done file will be present,
         # indicating safe to interpret checkpoint model as final.
+        # Also, subclass implementations of predict(), update_visualizations(),
+        # etc can check self.is_done to do certain expensive things just once
+        # at the end of training, rather than on every call throughout
+        # training.
         self._save_done_file()
 
         self.save_final_results(train_data, valid_data, version='seso')
@@ -1958,11 +1971,16 @@ class RecurrentWhisperer(object):
                     valid_data, valid_pred, 'valid', version,
                     do_save=_do_save_visualizations(version))
 
+    _batch_size_key = 'batch_size'
+
     # *************************************************************************
     # Prediction **************************************************************
     # *************************************************************************
 
-    def predict(self, data, train_or_valid_str='valid', do_batch=None):
+    def predict(self, data,
+        train_or_valid_str='valid',
+        do_batch=None,
+        is_final=False):
         ''' Runs a forward pass through the model using given input data. If
         the input data are larger than the batch size, the data are processed
         sequentially in multiple batches.
@@ -1980,6 +1998,8 @@ class RecurrentWhisperer(object):
             batches and then sequentially process those batches. This can be
             important for large models and/or large datasets relative to
             memory resources. Default: falls back to hps.do_batch_predictions.
+
+            is_final (optional): bool indicating
 
         Returns:
             predictions: dict containing model predictions based on data. Key/
@@ -2058,58 +2078,13 @@ class RecurrentWhisperer(object):
     # Validation **************************************************************
     # *************************************************************************
 
-    def update_validation(self,
-        train_pred, train_summary, valid_pred, valid_summary):
-        '''Evaluates the validation data, updates the corresponding
-        Tensorboard summaries are updated, and if the validation loss
-        indicates a new minimum, a model checkpoint is saved.
-
-        Args:
-
-        Returns:
-            None.
-        '''
-
-        print('\tValidation loss: %.2e' % valid_summary['loss'])
-
-        self._maybe_save_lvl_checkpoint(
-            train_pred, train_summary,
-            valid_pred, valid_summary)
-
-        if self.hps.do_save_tensorboard_summaries:
-            self._update_valid_tensorboard_summaries(valid_summary)
-
-    def _maybe_update_validation(self,
-        train_data=None,
-        train_pred=None,
-        train_summary=None,
-        valid_data=None,
-        valid_pred=None,
-        valid_summary=None):
-        '''Evaluates the validation data if the current epoch number indicates
-        that such an update is due.
-
-        Args:
-            train_data: dict containing the training data.
-
-            valid_data: dict containing the validation data.
-
-        Returns:
-            None.
-        '''
-
-        if train_pred and valid_pred and self._do_update_validation:
-            self.update_validation(
-                train_pred, train_summary, valid_pred, valid_summary)
-
-    def _do_predict_validation(self, valid_data=None):
+    @property
+    def _do_predict_validation(self):
         ''' Returns true if validation predictions or prediction summary
         is needed at the current epoch. '''
 
-        if valid_data is None:
-            return False
-
-        return self._do_update_validation or self._do_update_visualizations
+        return self._has_valid_data and \
+            (self._do_update_validation or self._do_update_visualizations)
 
     @property
     def _do_update_validation(self):
@@ -2196,8 +2171,7 @@ class RecurrentWhisperer(object):
         Args:
             data: dict containing the to-be-subselected data.
 
-            batch_idx:  that specifies the subselection
-            of the data (e.g., an array-like of trial indices).
+            batch_idx: array-like of trial indices.
 
         Returns:
             subselected_data: dict containing the subselected data.
@@ -2255,7 +2229,7 @@ class RecurrentWhisperer(object):
                 the batch_summaries.
         '''
 
-        BATCH_SIZE_KEY = 'batch_size'
+        BATCH_SIZE_KEY = cls._batch_size_key
         summary = {}
 
         # Average everything except batch_size
@@ -2292,7 +2266,7 @@ class RecurrentWhisperer(object):
             of each batch_summaries[i][key] value (typically a scalar).
         '''
 
-        BATCH_SIZE_KEY = 'batch_size'
+        BATCH_SIZE_KEY = cls._batch_size_key
         batch_vals = []
         batch_sizes = []
 
@@ -2391,7 +2365,7 @@ class RecurrentWhisperer(object):
 
             epoch_train_data = self._prepare_epoch_data(train_data)
             train_pred, train_summary = self.predict(
-                train_data, train_or_valid_str='train')
+                epoch_train_data, train_or_valid_str='train')
 
             if valid_data:
                 valid_pred, valid_summary = self.predict(
@@ -2399,18 +2373,14 @@ class RecurrentWhisperer(object):
             else:
                 valid_pred = valid_summary = None
 
-            epoch_results = {
-                'train_data': train_data,
-                'train_pred': train_pred,
-                'train_summary': train_summary,
-                'valid_data': valid_data,
-                'valid_pred': valid_pred,
-                'valid_summary': valid_summary
-            }
-
             self.update_visualizations(
-                do_save=self.hps.do_save_pretraining_visualizations,
-                **epoch_results)
+                train_data=epoch_train_data,
+                train_pred=train_pred,
+                train_summary=train_summary,
+                valid_data=valid_data,
+                valid_pred=valid_pred,
+                valid_summary=valid_summary,
+                do_save=self.hps.do_save_pretraining_visualizations)
 
     def _maybe_update_visualizations(self, **kwargs):
         '''Updates visualizations if the current epoch number indicates that
@@ -3100,22 +3070,23 @@ class RecurrentWhisperer(object):
             self._save_checkpoint(version='seso')
 
     def _maybe_save_ltl_checkpoint(self, train_pred, train_summary):
+        ''' Saves a model checkpoint if the current training loss is lower than
+        all previously evaluated training losses.
 
-        # Currently this is modified from _maybe_save_lvl_checkpoint.
-        # More code sharing would be nice, but there are some complexities.
-        # Namely, predictions across the training data are not currently
-        # returned by _train_epoch(), and it may be cumbersome or
-        # computationally disadvantageous to change that. Thus, saving ltl
-        # predictions would currently require running predict(train_data).
-        # But that is redundant because a forward pass was already evaluated
-        # by _train_epoch(). For now, we just won't support saving ltl
-        # predictions.
+        Args:
+            train_pred and train_summary: dicts as returned by
+            predict(train_data).
+
+        Returns:
+            None.
+        '''
 
         version = 'ltl'
+        train_loss = self.epoch_loss
 
-        if self._do_save_ltl_checkpoint(self.epoch_loss):
+        if self._do_save_ltl_checkpoint(train_loss):
 
-            self._update_loss_records(self.epoch_loss, version=version)
+            self._update_loss_records(train_loss, version=version)
 
             if self.hps.do_save_ltl_ckpt:
                 self._save_checkpoint(version=version)
@@ -3133,17 +3104,12 @@ class RecurrentWhisperer(object):
         also generate and save model predictions over the training and
         validation data.
 
-        If prediction summaries are generated, those summaries are saved in
-        separate files. See docstring for predict() for additional detail.
-
         Args:
             train_pred and train_summary: dicts as returned by
-            _train_epoch(train_data) or predict(train_data).
+            predict(train_data).
 
             valid_pred and valid_summary: dicts as returned by
             predict(valid_data).
-
-            train_data: dict containing the training data.
 
         Returns:
             None.
@@ -3154,6 +3120,7 @@ class RecurrentWhisperer(object):
 
         if self._do_save_lvl_checkpoint(valid_loss):
 
+            print('\tValidation loss: %.2e' % valid_loss)
             self._update_loss_records(valid_loss, version=version)
 
             if self.hps.do_save_lvl_ckpt:
@@ -3168,6 +3135,9 @@ class RecurrentWhisperer(object):
                 pred=valid_pred,
                 summary=valid_summary,
                 version=version)
+
+        if self.hps.do_save_tensorboard_summaries:
+            self._update_valid_tensorboard_summaries(valid_summary)
 
     # *************************************************************************
     # Forward thinking, not yet using these ***********************************
