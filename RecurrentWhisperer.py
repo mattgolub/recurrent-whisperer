@@ -1238,12 +1238,15 @@ class RecurrentWhisperer(object):
             be created. This defines organizational structure within
             Tensorbaord.
 
-            ops_dict: dictionary with string names as keys and TF objects as values. Names will be used as panel labels in Tensorboard.
+            ops_dict: dictionary with string names as keys and TF objects as
+            values. Names will be used as panel labels in Tensorboard.
 
-            summary_fcn (optional): The Tensorflow summary function to be applied to TF objects in ops dict. Default: tf.summary_scalar
+            summary_fcn (optional): The Tensorflow summary function to be
+            applied to TF objects in ops dict. Default: tf.summary_scalar
 
         Returns:
-            A merged TF summary that, once executed via session.run(...), can be sent to Tensorboard via add_summary(...).
+            A merged TF summary that, once executed via session.run(...), can
+            be sent to Tensorboard via add_summary(...).
         '''
 
         summaries = []
@@ -1946,7 +1949,7 @@ class RecurrentWhisperer(object):
 
             train_pred, train_summary = self.predict(train_data,
                 train_or_valid_str='train',
-                is_final=self._is_final(version))
+                is_final=True)
 
             if do_train_pred:
                 self._save_pred(train_pred, 'train', version=version)
@@ -1954,14 +1957,16 @@ class RecurrentWhisperer(object):
 
             if do_train_vis:
                 self.update_visualizations(
-                    train_data, train_pred, 'train', version,
+                    train_data=train_data,
+                    train_pred=train_pred,
+                    version=version,
                     do_save=_do_save_visualizations(version))
 
         if do_valid_pred or do_valid_vis:
 
             valid_pred, valid_summary = self.predict(valid_data,
                 train_or_valid_str='valid',
-                is_final=self._is_final(version))
+                is_final=True)
 
             if do_valid_pred:
                 self._save_pred(valid_pred, 'valid', version=version)
@@ -1969,7 +1974,9 @@ class RecurrentWhisperer(object):
 
             if do_valid_vis:
                 self.update_visualizations(
-                    valid_data, valid_pred, 'valid', version,
+                    valid_data=valid_data,
+                    valid_pred=valid_pred,
+                    version=version,
                     do_save=_do_save_visualizations(version))
 
     _batch_size_key = 'batch_size'
@@ -2306,7 +2313,74 @@ class RecurrentWhisperer(object):
     # Visualizations **********************************************************
     # *************************************************************************
 
-    def _update_visualizations(self, data, pred, train_or_valid_str, version):
+    def update_visualizations(self,
+        train_data=None,
+        train_pred=None,
+        train_summary=None,
+        valid_data=None,
+        valid_pred=None,
+        valid_summary=None,
+        version='seso',
+        do_save=True, # Save individual figures (indep of Tensorboard)
+        do_update_tensorboard=None, # default: hps.do_save_tensorboard_images
+        ):
+
+        self._setup_visualizations_timer()
+
+        if train_data and train_pred:
+            self._update_visualizations(
+                data=train_data,
+                pred=train_pred,
+                train_or_valid_str='train',
+                version=version)
+
+        if valid_data and valid_pred:
+            self._update_visualizations(
+                data=valid_data,
+                pred=valid_pred,
+                train_or_valid_str='valid',
+                version=version)
+
+        self.save_visualizations(
+            do_save_figs=do_save,
+            do_update_tensorboard=do_update_tensorboard,
+            version=version)
+
+        self._maybe_print_visualizations_timing()
+
+    def save_visualizations(self,
+        version='seso',
+        do_save_figs=True,
+        do_update_tensorboard=None):
+        '''Saves individual figures to this run's figure directory. This is
+        independent of Tensorboard Images.
+
+        Args:
+            version:
+
+            do_save_figs (optional): bool indicating whether to save
+            individual figure files in the figure directory corresponding to
+            version. Default: True.
+
+            do_update_tensorboard (optional): bool indicating whether to save
+            figures to tensorboard images. Default:
+            hps.do_save_tensorboard_images.
+
+        Returns:
+            None.
+        '''
+
+        if do_update_tensorboard is None:
+            do_update_tensorboard = self.hps.do_save_tensorboard_images
+
+        if do_update_tensorboard:
+            self._update_tensorboard_images()
+
+        if do_save_figs:
+            self._save_figs(version)
+
+    def _update_visualizations(self,
+        data, pred, train_or_valid_str, version):
         '''Updates visualizations in self.figs.
 
         Args:
@@ -2325,41 +2399,6 @@ class RecurrentWhisperer(object):
             None.
         '''
         pass
-
-    def save_visualizations(self, version='seso'):
-        '''Saves individual figures to this run's figure directory. This is
-        independent of Tensorboard Images.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        '''
-        hps = self.hps
-        fig_dir = self._build_fig_dir(self.run_dir, version=version)
-
-        for fig_name, fig in self.figs.iteritems():
-
-            self._visualizations_timer.split('Saving: %s' % fig_name)
-
-            file_path_no_ext = os.path.join(fig_dir, fig_name)
-            figs_dir_i, file_name_no_ext = os.path.split(file_path_no_ext)
-            file_name = file_name_no_ext + '.' + hps.fig_filetype
-            file_path = os.path.join(figs_dir_i, file_name)
-
-            # This fig's dir may have additional directory structure beyond
-            # the already existing .../figs/ directory. Make it.
-            if not os.path.isdir(figs_dir_i):
-                os.makedirs(figs_dir_i)
-
-            fig.savefig(file_path,
-                bbox_inches='tight',
-                format=hps.fig_filetype,
-                dpi=hps.fig_dpi)
-
-        # Make sure whatever happens next doesn't affect timing of last save.
-        self._visualizations_timer.split('Transition from saving.')
 
     def _maybe_update_visualizations_pretraining(self,
         train_data, valid_data):
@@ -2386,6 +2425,7 @@ class RecurrentWhisperer(object):
                 valid_data=valid_data,
                 valid_pred=valid_pred,
                 valid_summary=valid_summary,
+                version='seso',
                 do_save=self.hps.do_save_pretraining_visualizations)
 
     def _maybe_update_visualizations(self, **kwargs):
@@ -2417,44 +2457,32 @@ class RecurrentWhisperer(object):
 
         self.update_visualizations(do_save=do_save, **kwargs)
 
-    def update_visualizations(self,
-        train_data=None,
-        train_pred=None,
-        train_summary=None,
-        valid_data=None,
-        valid_pred=None,
-        valid_summary=None,
-        version='seso',
-        do_save=True, # Save individual figures (indep of Tensorboard)
-        do_update_tensorboard=None, # default: hps.do_save_tensorboard_images
-        ):
+    def _save_figs(self, version='seso'):
 
-        self._setup_visualizations_timer()
+        hps = self.hps
+        fig_dir = self._build_fig_dir(self.run_dir, version=version)
 
-        if train_data and train_pred:
-            self._update_visualizations(
-                data=train_data,
-                pred=train_pred,
-                train_or_valid_str='train',
-                version=version)
+        for fig_name, fig in self.figs.iteritems():
 
-        if valid_data and valid_pred:
-            self._update_visualizations(
-                data=valid_data,
-                pred=valid_pred,
-                train_or_valid_str='valid',
-                version=version)
+            self._visualizations_timer.split('Saving: %s' % fig_name)
 
-        if do_update_tensorboard is None:
-            do_update_tensorboard = self.hps.do_save_tensorboard_images
+            file_path_no_ext = os.path.join(fig_dir, fig_name)
+            figs_dir_i, file_name_no_ext = os.path.split(file_path_no_ext)
+            file_name = file_name_no_ext + '.' + hps.fig_filetype
+            file_path = os.path.join(figs_dir_i, file_name)
 
-        if do_update_tensorboard:
-            self._update_tensorboard_images()
+            # This fig's dir may have additional directory structure beyond
+            # the already existing .../figs/ directory. Make it.
+            if not os.path.isdir(figs_dir_i):
+                os.makedirs(figs_dir_i)
 
-        if do_save:
-            self.save_visualizations(version=version)
+            fig.savefig(file_path,
+                bbox_inches='tight',
+                format=hps.fig_filetype,
+                dpi=hps.fig_dpi)
 
-        self._maybe_print_visualizations_timing()
+        # Make sure whatever happens next doesn't affect timing of last save.
+        self._visualizations_timer.split('Transition from saving.')
 
     def _get_fig(self, fig_name,
         width=6.4,
@@ -2917,15 +2945,6 @@ class RecurrentWhisperer(object):
 
         self.session.run(ops, feed_dict=feed_dict)
 
-    def _is_final(cls, version='seso'):
-        ''' Helper function for determining behavior of predict() based on the
-        current state of the model.
-        '''
-
-        # for 'seso', want predictions & visualizations to match their
-        # 'seso' counterparts generated throughout training
-        return version in ['ltl' or 'lvl']
-
     # *************************************************************************
     # TF Variables access and updates *****************************************
     # *************************************************************************
@@ -3113,7 +3132,8 @@ class RecurrentWhisperer(object):
         train_pred,
         train_summary,
         valid_pred,
-        valid_summary):
+        valid_summary,
+        is_final=False):
         '''Saves a model checkpoint if the current validation loss is lower
         than all previously evaluated validation losses. Optionally, this will
         also generate and save model predictions over the training and
@@ -3144,17 +3164,20 @@ class RecurrentWhisperer(object):
             self._maybe_save_pred_and_summary('train',
                 pred=train_pred,
                 summary=train_summary,
-                version=version)
+                version=version,
+                is_final=is_final)
 
             self._maybe_save_pred_and_summary('valid',
                 pred=valid_pred,
                 summary=valid_summary,
-                version=version)
+                version=version,
+                is_final=is_final)
 
         if self.hps.do_save_tensorboard_summaries:
             self._update_valid_tensorboard_summaries(valid_summary)
 
-    def _maybe_save_checkpoint(self, data, pred, summary, version):
+    def _maybe_save_checkpoint(self, data, pred, summary, version,
+        is_final=False):
         '''Saves a model checkpoint if the current validation loss is lower
         than all previously evaluated validation losses. Optionally, this will
         also generate and save model predictions over the training and
@@ -3184,12 +3207,14 @@ class RecurrentWhisperer(object):
 
             self._maybe_save_pred_and_summary('train',
                 data=train_data,
-                version=version)
+                version=version,
+                is_final=is_final)
 
             self._maybe_save_pred_and_summary('valid',
                 pred=valid_pred,
                 summary=valid_summary,
-                version=version)
+                version=version,
+                is_final=is_final)
 
         self._epoch_timer.split(version)
 
@@ -3504,7 +3529,8 @@ class RecurrentWhisperer(object):
 
         return os.path.exists(path_to_file)
 
-    def save_predictions_and_summary(self, data, train_or_valid_str, version):
+    def save_predictions_and_summary(self, data, train_or_valid_str, version,
+        is_final=True):
         ''' Saves model predictions and a prediction summary, regardless of the
         hyperparameters. This is provided for external convenience, and is
         never used internally.
@@ -3529,7 +3555,7 @@ class RecurrentWhisperer(object):
 
         pred, summary = self.predict(data,
             train_or_valid_str=train_or_valid_str,
-            is_final=self._is_final(version))
+            is_final=is_final)
 
         self._save_pred(pred, train_or_valid_str, version=version)
         self._save_summary(summary, train_or_valid_str, version=version)
@@ -3618,7 +3644,8 @@ class RecurrentWhisperer(object):
         data=None,    # Either provide data, ...
         pred=None,    # or provide both pred
         summary=None, # and summary.
-        version='lvl'):
+        version='lvl',
+        is_final=False):
         '''Saves model predictions and/or a prediction summary. Which are
         saved, if any, depends on the hyperparameters. See docstring to
         save_predictions_and_summary(...).'''
@@ -3649,7 +3676,7 @@ class RecurrentWhisperer(object):
         if do_generate_pred:
             pred, summary = self.predict(data,
                 train_or_valid_str=train_or_valid_str,
-                is_final=self._is_final(version))
+                is_final=is_final)
 
         if do_save_pred:
             self._save_pred(
