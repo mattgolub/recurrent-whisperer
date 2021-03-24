@@ -1592,7 +1592,7 @@ class RecurrentWhisperer(object):
         else:
             return train_data
 
-    def _train_epoch(self, train_data):
+    def _train_epoch(self, train_data, verbose=False):
         '''Performs training steps across an epoch of training data batches.
 
         Args:
@@ -1619,7 +1619,14 @@ class RecurrentWhisperer(object):
         pred_list = []
         summary_list = []
 
-        for batch_data in data_batches:
+        n_batches = len(data_batches)
+        for cnt, batch_data in enumerate(data_batches):
+
+            if verbose:
+
+                batch_size = self._get_batch_size(batch_data)
+                print('\tTraining on batch %d of %d (size=%d).' %
+                    (cnt+1, n_batches, batch_size))
 
             batch_pred, batch_summary = self._train_batch(batch_data)
             pred_list.append(batch_pred)
@@ -2936,7 +2943,7 @@ class RecurrentWhisperer(object):
         update_ops = self.records['update_ops']
 
         feed_dict = {
-            placeholders[version]: loss,
+            placeholders[version]: self._format_loss(loss, version),
             placeholders[epoch_key]: epoch}
         ops = [
             update_ops[version],
@@ -2944,6 +2951,13 @@ class RecurrentWhisperer(object):
             ]
 
         self.session.run(ops, feed_dict=feed_dict)
+
+    def _format_loss(self, loss, version):
+        ''' Intermediary for formatting an LVL or LTL loss before it gets
+        logged into records. Included for optional complexity that subclasses
+        may require.
+        '''
+        return loss
 
     # *************************************************************************
     # TF Variables access and updates *****************************************
@@ -3061,15 +3075,25 @@ class RecurrentWhisperer(object):
     # *************************************************************************
 
     @classmethod
-    def load_hyperparameters(cls, run_dir):
+    def load_hyperparameters(cls, run_dir, do_get_mtime=False):
         '''Load previously saved Hyperparameters.
 
         Args:
             run_dir: string containing the path to the directory where the
             model run was saved. See definition in __init__()
 
+            do_get_mtime (optional): bool indicating whether or not to return
+            the system file modification time for the Hyperparameters file.
+            Default: False.
+
         Returns:
-            dict containing the loaded hyperparameters.
+
+            hps_dict:
+                dict containing the loaded hyperparameters.
+
+            mtime (optional):
+                float system file modification time for the hyperparameters
+                file. Only returned if do_get_mtime is True.
         '''
 
         hps_path = cls._build_hps_path(run_dir)
@@ -3079,7 +3103,11 @@ class RecurrentWhisperer(object):
         else:
             raise IOError('%s not found.' % hps_path)
 
-        return hps_dict
+        if do_get_mtime:
+            mtime = os.path.getmtime(hps_path)
+            return hps_dict, mtime
+        else:
+            return hps_dict
 
     @classmethod
     def exists_hyperparameters(cls, run_dir):
@@ -3562,6 +3590,7 @@ class RecurrentWhisperer(object):
 
     @classmethod
     def load_train_predictions(cls, run_dir,
+        do_get_mtime=False,
         version='lvl',
         filetype='npz'):
         '''Loads predictions made over the training data by a specified
@@ -3577,11 +3606,13 @@ class RecurrentWhisperer(object):
         return cls._load_pred_or_summary_helper(run_dir,
             train_or_valid_str='train',
             predictions_or_summary_str='predictions',
+            do_get_mtime=do_get_mtime,
             version=version,
             filetype=filetype)
 
     @classmethod
     def load_train_summary(cls, run_dir,
+        do_get_mtime=False,
         version='lvl',
         filetype='npz'):
         '''Loads summary of the model predictions made over the training
@@ -3597,11 +3628,13 @@ class RecurrentWhisperer(object):
         return cls._load_pred_or_summary_helper(run_dir,
             train_or_valid_str='train',
             predictions_or_summary_str='summary',
+            do_get_mtime=do_get_mtime,
             version=version,
             filetype=filetype)
 
     @classmethod
     def load_valid_predictions(cls, run_dir,
+        do_get_mtime=False,
         version='lvl',
         filetype='npz'):
         '''Loads predictions made over the validation data by a specified
@@ -3617,11 +3650,13 @@ class RecurrentWhisperer(object):
         return cls._load_pred_or_summary_helper(run_dir,
             train_or_valid_str='valid',
             predictions_or_summary_str='predictions',
+            do_get_mtime=do_get_mtime,
             version=version,
             filetype=filetype)
 
     @classmethod
     def load_valid_summary(cls, run_dir,
+        do_get_mtime=False,
         version='lvl',
         filetype='npz'):
         '''Loads summary of the model predictions made over the validation
@@ -3637,6 +3672,7 @@ class RecurrentWhisperer(object):
         return cls._load_pred_or_summary_helper(run_dir,
             train_or_valid_str='valid',
             predictions_or_summary_str='summary',
+            do_get_mtime=do_get_mtime,
             version=version,
             filetype=filetype)
 
@@ -3774,7 +3810,7 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        print('\tSaving .done file...')
+        print('\tSaving .done file.')
 
         save_path = self._paths['done_path']
         file = open(save_path, 'wb')
@@ -3826,6 +3862,7 @@ class RecurrentWhisperer(object):
         run_dir,
         train_or_valid_str='train',
         predictions_or_summary_str='predictions',
+        do_get_mtime=False,
         version='lvl',
         filetype='npz'):
 
@@ -3836,13 +3873,19 @@ class RecurrentWhisperer(object):
             filetype='npz')
 
         if filetype == 'h5':
-            return cls._load_h5(path_to_file)
+            result = cls._load_h5(path_to_file)
         elif filetype == 'npz':
-            return cls._load_npz(path_to_file)
+            result = cls._load_npz(path_to_file)
         elif filetype == 'json':
-            return cls._load_json(path_to_file)
+            result = cls._load_json(path_to_file)
         elif filetype == 'pkl':
-            return cls._load_pkl(path_to_file)
+            result = cls._load_pkl(path_to_file)
+
+        if do_get_mtime:
+            mtime = os.path.getmtime(path_to_file)
+            return result, mtime
+        else:
+            return result
 
     @staticmethod
     def _save_pkl(data_to_save, path_to_file):
