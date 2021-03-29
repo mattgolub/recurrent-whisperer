@@ -1348,6 +1348,7 @@ class RecurrentWhisperer(object):
         '''
 
         self._visualizations_timer.split('Tensorboard setup')
+        print('\tUpdating Tensorboard images.')
 
         figs = self.figs
 
@@ -1513,23 +1514,11 @@ class RecurrentWhisperer(object):
             self._maybe_save_ltl_checkpoint(train_pred, train_summary)
             self._epoch_timer.split('ltl')
 
-            if self._do_predict_validation:
-                # ...if using validation data and due for an update this epoch
-                valid_pred, valid_summary = self.predict(valid_data,
-                    train_or_valid_str='valid',
-                    is_final=False)
-
-                # ... if validation loss is better than previously seen
-                self._maybe_save_lvl_checkpoint(
-                    train_pred=train_pred,
-                    train_summary=train_summary,
-                    valid_pred=valid_pred,
-                    valid_summary=valid_summary)
-
-                self._epoch_timer.split('lvl')
-
-            else:
-                valid_pred = valid_summary = None
+            valid_pred, valid_summary = self._maybe_save_lvl_checkpoint(
+                valid_data=valid_data,
+                train_pred=train_pred,
+                train_summary=train_summary)
+            self._epoch_timer.split('lvl')
 
             self._maybe_update_visualizations(
                 train_data=epoch_train_data,
@@ -1668,7 +1657,7 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        print('Epoch %d (step %d):' % (self._epoch, self._step))
+        print('Epoch %d (step %d):' % (self._epoch+1, self._step+1))
         print('\t' * n_indent, end='')
         print('Learning rate: %.2e' % self.adaptive_learning_rate())
 
@@ -1853,14 +1842,14 @@ class RecurrentWhisperer(object):
         if hps.do_save_seso_ckpt:
             self._save_checkpoint(version='seso')
 
-        # Save .done file. Critically placed after saving final checkpoint,
-        # but before doing a bunch of other stuff that might fail. This way,
-        # if anything below does fail, the .done file will be present,
-        # indicating safe to interpret checkpoint model as final.
-        # Also, subclass implementations of predict(), update_visualizations(),
-        # etc can check self.is_done to do certain expensive things just once
-        # at the end of training, rather than on every call throughout
-        # training.
+        ''' Save .done file. Critically placed after saving final checkpoint,
+        but before doing a bunch of other stuff that might fail. This way,
+        if anything below does fail, the .done file will be present,
+        indicating safe to interpret checkpoint model as final.
+        Also, subclass implementations of predict(), update_visualizations(),
+        etc can check self.is_done to do certain expensive things just once
+        at the end of training, rather than on every call throughout
+        training.'''
         self._save_done_file()
 
         self.save_final_results(train_data, valid_data, version='seso')
@@ -1936,7 +1925,7 @@ class RecurrentWhisperer(object):
 
         self._assert_ckpt_version(version)
 
-        do_train_pred = _do_valid_predictions(version, train_data)
+        do_train_pred = _do_train_predictions(version, train_data)
         do_train_vis = _do_train_visualizations(version, train_data)
 
         do_valid_pred = _do_valid_predictions(version, valid_data)
@@ -2099,7 +2088,7 @@ class RecurrentWhisperer(object):
     @property
     def _do_predict_validation(self):
         ''' Returns true if validation predictions or prediction summary
-        is needed at the current epoch. '''
+        are needed at the current epoch. '''
 
         return self._has_valid_data and \
             (self._do_update_validation or self._do_update_visualizations)
@@ -2405,7 +2394,8 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        pass
+        print('\tGenerating %s %s visualizations.' %
+            (version.upper(), train_or_valid_str))
 
     def _maybe_update_visualizations_pretraining(self,
         train_data, valid_data):
@@ -2468,6 +2458,8 @@ class RecurrentWhisperer(object):
 
         hps = self.hps
         fig_dir = self._build_fig_dir(self.run_dir, version=version)
+
+        print('\tSaving %s visualizations.' % version.upper())
 
         for fig_name, fig in self.figs.iteritems():
 
@@ -3156,11 +3148,7 @@ class RecurrentWhisperer(object):
             if self.hps.do_save_ltl_train_summary:
                 self._save_summary(train_summary, 'train', version=version)
 
-    def _maybe_save_lvl_checkpoint(self,
-        train_pred,
-        train_summary,
-        valid_pred,
-        valid_summary,
+    def _maybe_save_lvl_checkpoint(self, valid_data, train_pred, train_summary,
         is_final=False):
         '''Saves a model checkpoint if the current validation loss is lower
         than all previously evaluated validation losses. Optionally, this will
@@ -3168,41 +3156,57 @@ class RecurrentWhisperer(object):
         validation data.
 
         Args:
+            valid_data: dict containing validation data.
+
             train_pred and train_summary: dicts as returned by
             predict(train_data).
 
-            valid_pred and valid_summary: dicts as returned by
-            predict(valid_data).
-
         Returns:
-            None.
+            valid_pred, valid_summary:
+                if using validation data and due for an update this epoch:
+                    dicts as returned by predict(valid_data).
+                otherwise:
+                    Both are None.
         '''
 
-        version = 'lvl'
-        valid_loss = valid_summary['loss']
+        # ...if using validation data and due for an update this epoch
+        if self._do_predict_validation:
 
-        if self._do_save_lvl_checkpoint(valid_loss):
+            valid_pred, valid_summary = self.predict(valid_data,
+                train_or_valid_str='valid',
+                is_final=is_final)
 
+            # ... if validation loss is better than previously seen
+            version = 'lvl'
+            valid_loss = valid_summary['loss']
             print('\tValidation loss: %.2e' % valid_loss)
-            self._update_loss_records(valid_loss, version=version)
 
-            if self.hps.do_save_lvl_ckpt:
-                self._save_checkpoint(version=version)
+            if self._do_save_lvl_checkpoint(valid_loss):
 
-            self._maybe_save_pred_and_summary('train',
-                pred=train_pred,
-                summary=train_summary,
-                version=version,
-                is_final=is_final)
+                print('\t\tAchieved lowest validation loss.')
+                self._update_loss_records(valid_loss, version=version)
 
-            self._maybe_save_pred_and_summary('valid',
-                pred=valid_pred,
-                summary=valid_summary,
-                version=version,
-                is_final=is_final)
+                if self.hps.do_save_lvl_ckpt:
+                    self._save_checkpoint(version=version)
 
-        if self.hps.do_save_tensorboard_summaries:
-            self._update_valid_tensorboard_summaries(valid_summary)
+                self._maybe_save_pred_and_summary('train',
+                    pred=train_pred,
+                    summary=train_summary,
+                    version=version,
+                    is_final=is_final)
+
+                self._maybe_save_pred_and_summary('valid',
+                    pred=valid_pred,
+                    summary=valid_summary,
+                    version=version,
+                    is_final=is_final)
+
+            if self.hps.do_save_tensorboard_summaries:
+                self._update_valid_tensorboard_summaries(valid_summary)
+        else:
+            valid_pred = valid_summary = None
+
+        return valid_pred, valid_summary
 
     def _maybe_save_checkpoint(self, data, pred, summary, version,
         is_final=False):
@@ -3275,7 +3279,6 @@ class RecurrentWhisperer(object):
     def _do_save_lvl_checkpoint(self, valid_loss):
 
         if self._epoch == 0 or valid_loss < self._lvl:
-            print('\t\tAchieved lowest validation loss.')
             return True
         else:
             return False
