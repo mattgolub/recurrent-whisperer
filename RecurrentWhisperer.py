@@ -2038,8 +2038,8 @@ class RecurrentWhisperer(object):
 
                 batch_size = self._get_batch_size(batch_data)
 
-                print('\tPredict: batch %d of %d (%d trials)'
-                      % (cnt+1, n_batches, batch_size))
+                print('\tPredict: %s batch %d of %d (%d trials)'
+                      % (train_or_valid_str, cnt+1, n_batches, batch_size))
 
                 batch_pred, batch_summary = self._predict_batch(
                     batch_data, train_or_valid_str=train_or_valid_str)
@@ -2742,6 +2742,15 @@ class RecurrentWhisperer(object):
 
         done_path = cls._build_done_path(run_dir)
         return os.path.exists(done_path)
+
+    @classmethod
+    def get_hps_path(cls, run_dir, hps_dir=None):
+        return cls._build_hps_path(run_dir, hps_dir=hps_dir)
+
+    @classmethod
+    def get_hps_mtime(cls, run_dir, hps_dir=None):
+        hps_path = cls._build_hps_path(run_dir, hps_dir=hps_dir)
+        return os.path.getmtime(hps_path)
 
     # *************************************************************************
     # Scalar access and updates ***********************************************
