@@ -21,6 +21,26 @@ class Hyperparameters(object):
     '''A general class for managing a model's hyperparameters, default
     settings, and hashes for organizing model checkpoint directories.
 
+    Example usage:
+
+    hps = Hyperparameters(
+        <instance hps dict>,
+        <default hash hps dict>,
+        <default non-hash hps dict>)
+
+    # You can now access an hp either by:
+    hps.<hp name>
+    # or
+    hps[<hp name>]
+
+    # You can update an hp either by:
+    hps.<hp name> = <new value>
+    hps[<hp name>] = <new value>
+
+    # DO NOT UPDATE AN HP VIA CLASS INTERNALS:
+    hps.__dict__[<hp name>] = <new value> # DO NOT DO THIS
+    hps.integrated_hps[<hp name>] = <new value> # DO NOT DO THIS
+
     '''
 
     _delimiter = ':'
@@ -39,7 +59,7 @@ class Hyperparameters(object):
         Args:
             hps: dict containing hyperparameter names as keys and
             corresponding settings as values. These settings are used to
-            override default values. All values must be also included in either
+            override default values. All keys must be also included in either
             default_hash_hps or default_non_hash_hps. Default: None.
 
             default_hash_hps: dict containing hyperparameters and their
@@ -70,6 +90,9 @@ class Hyperparameters(object):
             default_non_hash_hps is not specified.
         '''
 
+        # FUTURE WORK: separate the underlying data structure from the rest
+        # of the class functionality.
+
         # Use deepcopy to make sure that no future interactions affect the
         # source of these defaults. This may be a bit overkill, since deepcopy
         # is also used in integrate_hps(), but better safe than sorry.
@@ -91,8 +114,19 @@ class Hyperparameters(object):
 
         self._hash_len = hash_len
         self._verbose = verbose
+
+        ''' Create a class attribute for every key in the integrated_hps dict.
+        These attributes are updated
+        '''
         for key, val in self.integrated_hps.iteritems():
-            setattr(self, key, val)
+            # setattr(self, key, val)
+            self.__setattr__(key, val, debug=False)
+
+        # If this worked, at least it will throw an error if someone attempts
+        # to update via hps.attr_name = val. Then can probably clean up by
+        # dynamically adding a setter method...but it doesn't work yet.
+        # for key in self.integrated_hps:
+        #     setattr(self, key, property(lambda self: self.integrated_hps[key]))
 
     # ************************************************************************
     # Exposed functions ******************************************************
@@ -505,23 +539,13 @@ class Hyperparameters(object):
 
         return Hyperparameters._getitem(self.integrated_hps, key)
 
-    @staticmethod
-    def _getitem(D, key):
-        # Helper function to recursively traverse into dict D.
-        if ':' in key:
-
-            dict_name, rem_name = \
-                Hyperparameters._parse_colon_delimited_hp_name(key)
-
-            return Hyperparameters._getitem(D[dict_name], rem_name)
-
-        else:
-
-            return D[key]
-
     def __setitem__(self, key, value):
         '''Assigns an individual hyperparameter value, with support for
-        colon-delimited hyperparameter names.
+        colon-delimited hyperparameter names. This is responsible for the
+        functionality:
+
+        hps = Hyperparameters(...)
+        hps['hp_name'] = value
 
         Args:
             key: A string indicating the name of the hyperparameter to be
@@ -547,24 +571,6 @@ class Hyperparameters(object):
         else:
             setattr(self, key, value)
 
-    @staticmethod
-    def _setitem(D, key, value):
-        # Helper function to recursively traverse into dict D.
-        if ':' in key:
-
-            dict_name, rem_name = \
-                Hyperparameters._parse_delimited_hp_name(key)
-
-            if not dict_name in D.keys():
-
-                D[dict_name] = dict()
-
-            Hyperparameters._setitem(D[dict_name], rem_name, value)
-
-        else:
-
-            D[key] = value
-
     def __str__(self):
 
         def print_helper(D, n_indent=0):
@@ -584,6 +590,89 @@ class Hyperparameters(object):
         str = print_helper(self.integrated_hps)
 
         return str
+
+    # def __getattr__(self, name):
+    #     ''' Failed attempt to link each key in integrated_hps to a class
+    #     attribute. This just ignites an infinite recursion.
+    #     '''
+    #     if name in self.integrated_hps:
+    #         return self.integrated_hps[name]
+    #     else:
+    #         return super(Hyperparameters, self).__getattr__(name)
+
+    def __setattr__(self, name, value, debug=True):
+        ''' Updates integrated_hps if name is a top-level HP key.
+
+        Note: this does not support comma delimited name. This is generally not
+        a problem because the following simply does not parse:
+
+            hps.comma:delimited:hp:name = value
+
+        But, the following does parse. This is not supported and will throw an
+        error.
+
+            hps.__setattr__('comma:delimited:hp:name', value) # AssertionError
+
+        '''
+        if hasattr(self, 'integrated_hps'):
+
+            assert ':' not in name, \
+                ('Comma-delimited name not supported in '
+                'Hyperparameters.__setattr__(name, value)')
+
+            if name in self.integrated_hps:
+                Hyperparameters._setitem(self.integrated_hps, name, value)
+
+        super(Hyperparameters, self).__setattr__(name, value)
+
+    @staticmethod
+    def _getitem(D, key):
+        ''' Helper function to support comma delimiting in key via recursive
+        traversal of D.
+
+        Args:
+            D: dict.
+            key: string.
+        '''
+
+        if ':' in key:
+
+            dict_name, rem_name = \
+                Hyperparameters._parse_delimited_hp_name(key)
+
+            return Hyperparameters._getitem(D[dict_name], rem_name)
+
+        else:
+
+            return D[key]
+
+    @staticmethod
+    def _setitem(D, key, value):
+        ''' Helper function to support comma delimiting in key via recursive
+        traversal of D.
+
+        ALWAYS use this instead of integrate_hps[key] = value
+
+        Args:
+            D: dict.
+            key: string.
+            value: anything.
+
+        '''
+        if ':' in key:
+
+            dict_name, rem_name = \
+                Hyperparameters._parse_delimited_hp_name(key)
+
+            if not dict_name in D.keys():
+
+                D[dict_name] = dict()
+
+            Hyperparameters._setitem(D[dict_name], rem_name, value)
+
+        else:
+
+            D[key] = value
 
     # ************************************************************************
     # Internal helper functions **********************************************
@@ -834,7 +923,6 @@ class Hyperparameters(object):
         if self._verbose:
             print(s)
 
-
 def test():
     ''' Test suite for some (but not yet all) of Hyperparameters'
     functionality.
@@ -1007,17 +1095,3 @@ def test():
 
     test3()
     print()
-
-''' To Do: Get things working again. Then, ...
-
-Create hp_dict class to manage all dict-based functions with appropriate
-support for recursions and possibly colon-delimited access:
-
-    __str__ --> print_helper
-    _getitem
-    _setitem
-    _sorted_str_from_dict
-
-class hp_dict(dict):
-
-'''
