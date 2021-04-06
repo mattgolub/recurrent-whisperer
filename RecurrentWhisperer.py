@@ -355,6 +355,7 @@ class RecurrentWhisperer(object):
         would be to draw all random numbers needed for a run upon starting or
         restoring a run.'''
 
+        self._version = 'seso'
         self.prev_loss = None
         self.epoch_loss = None
         self.adaptive_learning_rate = AdaptiveLearningRate(**hps.alr_hps)
@@ -3485,6 +3486,8 @@ class RecurrentWhisperer(object):
             # Resume training timer from value at last save.
             self.train_time_offset = self.session.run(
                 self.records['ops']['train_time'])
+
+        self._version = version.lower()
 
     @classmethod
     def _get_ckpt_path(cls, ckpt_dir, do_update_base_path=False):
