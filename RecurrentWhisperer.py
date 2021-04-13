@@ -81,10 +81,35 @@ class RecurrentWhisperer(object):
     _update_visualizations(...)
     '''
 
-    def __init__(self, **kwargs):
+    def __init__(self, data_specs=None, **kwargs):
         '''Creates a RecurrentWhisperer object.
 
         Args:
+
+            data_specs (optional): Any object.
+
+                Contains data specifications that the model may need during
+                construction, before a call to train() when the model first
+                sees the training data (and possibly validation data).
+                RecurrentWhisperer never looks inside data_specs, so the
+                structure and contents are entirely up the the subclass that
+                may use them.
+
+                Importantly, data_specs are not placed into and saved by the
+                Hyperparameters object. Thus, one can use data_specs for more
+                cumbersome objects that don't play well with the
+                Hyperparameters class (e.g., lists, dicts, etc). As a result,
+                data_specs does not influence the Hyperparameters hash. Thus,
+                the contents should be reproducible based on information in
+                the subclass hyperparameters.
+
+                One example use case is an object containing the sizes of
+                various aspects of the data, which might be required for
+                sizing the components of a model. One could also include a path
+                to the data via _default_non_hash_hyperparameters(). Here, the
+                data_specs would be entirely reproducible given the data path,
+                so the hyperparameters would always uniquely specify the model.
+
             A set of optional keyword arguments for overriding default
             hyperparameter values. Hyperparameters are grouped into 2
             categories--those that affect the trajectory of training (e.g.,
@@ -339,6 +364,8 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
+
+        self.data_specs = data_specs
 
         hps = self.setup_hps(kwargs)
 
