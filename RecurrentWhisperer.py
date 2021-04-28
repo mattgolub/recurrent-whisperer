@@ -1296,7 +1296,7 @@ class RecurrentWhisperer(object):
         '''
         pass
 
-    def _setup_tensorboard_images(self):
+    def _setup_tensorboard_images(self, figs=None):
         '''Sets up Tensorboard Images. Called within first call to
         _update_tensorboard_images(). Requires the following have already been
         called:
@@ -1311,7 +1311,9 @@ class RecurrentWhisperer(object):
             None.
         '''
         hps = self.hps
-        figs = self.figs
+
+        if figs is None:
+            figs = self.figs
 
         if len(figs) == 0:
             # If no figs have been created, there's nothing to do here.
@@ -1361,7 +1363,9 @@ class RecurrentWhisperer(object):
 
         self.tensorboard['images'] = images
 
-    def _update_tensorboard_images(self):
+    def _update_tensorboard_images(self,
+        figs=None, # optionally pass in a subset of self.figs
+        ):
         ''' Imports figures into Tensorboard Images. Only called if:
                 do_save_tensorboard_images and
                     (do_generate_training_visualizations or
@@ -1378,7 +1382,8 @@ class RecurrentWhisperer(object):
         self._visualizations_timer.split('Tensorboard setup')
         print('\tUpdating Tensorboard images.')
 
-        figs = self.figs
+        if figs is None:
+            figs = self.figs
 
         if len(figs) == 0:
             # If no figs have been created, there's nothing to do here.
@@ -2373,6 +2378,7 @@ class RecurrentWhisperer(object):
         self._maybe_print_visualizations_timing()
 
     def save_visualizations(self,
+        figs=None, # optionally pass in a subset of self.figs
         version='seso',
         do_save_figs=True,
         do_update_tensorboard=None):
@@ -2398,10 +2404,10 @@ class RecurrentWhisperer(object):
             do_update_tensorboard = self.hps.do_save_tensorboard_images
 
         if do_update_tensorboard:
-            self._update_tensorboard_images()
+            self._update_tensorboard_images(figs=figs)
 
         if do_save_figs:
-            self._save_figs(version)
+            self._save_figs(figs=figs, version=version)
 
     def _update_visualizations(self,
         data, pred, train_or_valid_str, version):
@@ -2482,14 +2488,19 @@ class RecurrentWhisperer(object):
 
         self.update_visualizations(do_save=do_save, **kwargs)
 
-    def _save_figs(self, version='seso'):
+    def _save_figs(self,
+        figs=None, # optionally pass in a subset of self.figs
+        version='seso'):
 
         hps = self.hps
         fig_dir = self._build_fig_dir(self.run_dir, version=version)
 
+        if figs is None:
+            figs = self.figs
+
         print('\tSaving %s visualizations.' % version.upper())
 
-        for fig_name, fig in self.figs.iteritems():
+        for fig_name, fig in figs.iteritems():
 
             self._visualizations_timer.split('Saving: %s' % fig_name)
 
@@ -3540,6 +3551,28 @@ class RecurrentWhisperer(object):
     # *************************************************************************
 
     @classmethod
+    def get_train_summary_mtime(cls, run_dir, version='lvl', filtetype='npz'):
+
+        summary_path = cls._build_file_path(run_dir,
+            train_or_valid_str='train',
+            predictions_or_summary_str='summary',
+            version=version,
+            filetype=filetype)
+
+        return os.path.getmtime(summary_path)
+
+    @classmethod
+    def get_vaild_summary_mtime(cls, run_dir, version='lvl', filtetype='npz'):
+
+        summary_path = cls._build_file_path(run_dir,
+            train_or_valid_str='valid',
+            predictions_or_summary_str='summary',
+            version=version,
+            filetype=filetype)
+
+        return os.path.getmtime(summary_path)
+
+    @classmethod
     def exists_train_predictions(cls, run_dir, version='lvl'):
         return cls._exists_file(run_dir,
             train_or_valid_str='train',
@@ -3600,6 +3633,7 @@ class RecurrentWhisperer(object):
         return os.path.exists(path_to_file)
 
     def save_predictions_and_summary(self, data, train_or_valid_str, version,
+        predict_train_or_valid_str='valid',
         is_final=True):
         ''' Saves model predictions and a prediction summary, regardless of the
         hyperparameters. This is provided for external convenience, and is
@@ -3611,6 +3645,7 @@ class RecurrentWhisperer(object):
 
             train_or_valid_str: either 'train' or 'valid', indicating whether
             data contains training data or validation data, respectively.
+            The resulting filenames will reflect this.
 
             version: 'ltl', 'lvl', or 'seso' indicating whether the state of
             the model is lowest-training-loss, lowest-validation-loss, or
@@ -3624,7 +3659,7 @@ class RecurrentWhisperer(object):
         self._assert_ckpt_version(version)
 
         pred, summary = self.predict(data,
-            train_or_valid_str=train_or_valid_str,
+            train_or_valid_str=predict_train_or_valid_str,
             is_final=is_final)
 
         self._save_pred(pred, train_or_valid_str, version=version)
@@ -3817,7 +3852,7 @@ class RecurrentWhisperer(object):
         if predictions is not None:
 
             print('\tSaving %s predictions (%s).' %
-                (version, train_or_valid_str))
+                (version.upper(), train_or_valid_str))
 
             self._save_pred_or_summary_helper(predictions,
                 train_or_valid_str=train_or_valid_str,
