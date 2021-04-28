@@ -1355,35 +1355,37 @@ class RecurrentWhisperer(object):
                         images['placeholders'][fig_name],
                         max_outputs=1))
 
-        '''
-        If this is a repeat call to the function, this will orphan an existing
-        TF op :-(.
-        '''
+        # Repeated calls will orphan an existing TF op :-(.
         images['merged_summaries'] = tf.summary.merge(images['summaries'])
 
         self.tensorboard['images'] = images
 
-    def _update_tensorboard_images(self,
-        figs=None, # optionally pass in a subset of self.figs
-        ):
+    def _update_tensorboard_images(self):
         ''' Imports figures into Tensorboard Images. Only called if:
                 do_save_tensorboard_images and
                     (do_generate_training_visualizations or
                         do_generate_lvl_visualizations)
 
         Args:
-            figs: dict with string figure names as keys and
-            matplotlib.pyplot.figure objects as values.
+            None.
 
         Returns:
             None.
         '''
 
+        # Currently, cannot selectively update TB images. Update must be all
+        # or none. This is because session.run(images['merged_summaries'], ...)
+        # requires fed placeholders for all figs. To get around this would
+        # require rebuilt images['merged_summaries'], where only the desired
+        # figures' placeholder are merged. Or, the whole tf.summary.merge
+        # could be sidestepped. Hopefully TF implemented the merge without
+        # creating new ops (or at least new expensive ones). Otherwise the
+        # former approach would waste GPU memory on redundant copies of figs.
+
         self._visualizations_timer.split('Tensorboard setup')
         print('\tUpdating Tensorboard images.')
 
-        if figs is None:
-            figs = self.figs
+        figs = self.figs
 
         if len(figs) == 0:
             # If no figs have been created, there's nothing to do here.
@@ -2404,7 +2406,7 @@ class RecurrentWhisperer(object):
             do_update_tensorboard = self.hps.do_save_tensorboard_images
 
         if do_update_tensorboard:
-            self._update_tensorboard_images(figs=figs)
+            self._update_tensorboard_images()
 
         if do_save_figs:
             self._save_figs(figs=figs, version=version)
