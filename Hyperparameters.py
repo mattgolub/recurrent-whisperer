@@ -18,8 +18,8 @@ from numpy import sort
 import yaml
 
 class Hyperparameters(object):
-    '''A general class for managing a model's hyperparameters, default
-    settings, and hashes for organizing model checkpoint directories.
+    '''A general class for managing a model's hyperparameters, their default
+    values, and hashes for organizing a many-model directory structure.
 
     Example usage:
 
@@ -39,7 +39,7 @@ class Hyperparameters(object):
 
     # DO NOT UPDATE AN HP VIA CLASS INTERNALS:
     hps.__dict__[<hp name>] = <new value> # DO NOT DO THIS
-    hps.integrated_hps[<hp name>] = <new value> # DO NOT DO THIS
+    hps._integrated_hps[<hp name>] = <new value> # DO NOT DO THIS
 
     '''
 
@@ -109,24 +109,24 @@ class Hyperparameters(object):
 
         # dict containing all hyperparameters set to defaults, except as
         # overridden by values in hps.
-        self.integrated_hps = self.integrate_hps(
+        self._integrated_hps = self.integrate_hps(
             self.default_hps, self.update_hps)
 
         self._hash_len = hash_len
         self._verbose = verbose
 
-        ''' Create a class attribute for every key in the integrated_hps dict.
+        ''' Create a class attribute for every key in the _integrated_hps dict.
         These attributes are updated
         '''
-        for key, val in self.integrated_hps.iteritems():
+        for key, val in self._integrated_hps.iteritems():
             # setattr(self, key, val)
             self.__setattr__(key, val, debug=False)
 
         # If this worked, at least it will throw an error if someone attempts
         # to update via hps.attr_name = val. Then can probably clean up by
         # dynamically adding a setter method...but it doesn't work yet.
-        # for key in self.integrated_hps:
-        #     setattr(self, key, property(lambda self: self.integrated_hps[key]))
+        # for key in self._integrated_hps:
+        #     setattr(self, key, property(lambda self: self._integrated_hps[key]))
 
     # ************************************************************************
     # Exposed functions ******************************************************
@@ -256,7 +256,7 @@ class Hyperparameters(object):
 
         1.  Overriding default hps.
 
-                integrated_hps = integrate_hps(default_hps, input_hps)
+                _integrated_hps = integrate_hps(default_hps, input_hps)
 
             This is the use case found in Hyperparameters.__init__(). Here,
             default_hps contains the set of all possible hyperparameters along
@@ -272,7 +272,7 @@ class Hyperparameters(object):
         2.  Integrating a superclass' default hyperparameters with the
             hyperparameters of a subclass:
 
-                integrated_hps = integrate_hps(super_hps, subclass_hps)
+                _integrated_hps = integrate_hps(super_hps, subclass_hps)
 
             Subclass hyperparameters will override defaults specified by this
             superclass, and possibly add new hyperparameters not present in
@@ -284,29 +284,29 @@ class Hyperparameters(object):
             update_hps: dict containing updates (overrides + additions) to hps.
 
         Returns:
-            integrated_hps: dict containing the integrated hyperparameters.
+            _integrated_hps: dict containing the integrated hyperparameters.
         '''
 
         # copy needed to prevent infinite recursive links between data
         # structures in recursive models. deepcopy may be overkill.
-        integrated_hps = deepcopy(hps)
+        _integrated_hps = deepcopy(hps)
         update_hps = deepcopy(update_hps)
 
         for key, val in update_hps.iteritems():
 
-            if not isinstance(val, dict) or key not in integrated_hps:
+            if not isinstance(val, dict) or key not in _integrated_hps:
                 # Base case
-                integrated_hps[key] = val
+                _integrated_hps[key] = val
             else:
                 # Recurse
-                integrated_hps[key] = Hyperparameters.integrate_hps(
-                    integrated_hps[key], val)
+                _integrated_hps[key] = Hyperparameters.integrate_hps(
+                    _integrated_hps[key], val)
 
-        return integrated_hps
+        return _integrated_hps
 
     @property
     def hps_to_hash(self):
-        return self._get_hash_hps(self.integrated_hps, self.default_hash_hps)
+        return self._get_hash_hps(self._integrated_hps, self.default_hash_hps)
 
     @property
     def hash(self):
@@ -337,7 +337,7 @@ class Hyperparameters(object):
         Returns:
             string containing the hyperparameters hash.
         '''
-        return self._generate_hash(self.integrated_hps)
+        return self._generate_hash(self._integrated_hps)
 
     def save(self, save_path):
         '''Saves the Hyperparameters object.
@@ -352,7 +352,7 @@ class Hyperparameters(object):
         '''
         self._maybe_print('Saving Hyperparameters.')
         file = open(save_path, 'wb')
-        file.write(cPickle.dumps(self.integrated_hps))
+        file.write(cPickle.dumps(self._integrated_hps))
         file.close()
 
     def save_yaml(self, save_path):
@@ -360,7 +360,7 @@ class Hyperparameters(object):
         # Ideally, make sure everything is bool, int, float, string, etc.
         self._maybe_print('Writing Hyperparameters YAML file.')
         with open(save_path, 'w') as yaml_file:
-            yaml.dump(self.integrated_hps,
+            yaml.dump(self._integrated_hps,
                       yaml_file,
                       default_flow_style=False)
 
@@ -522,7 +522,7 @@ class Hyperparameters(object):
         Returns:
             dict of all hyperparameter names and settings as key, value pairs.
         '''
-        return self.integrated_hps
+        return self._integrated_hps
 
     def __getitem__(self, key):
         '''Provides access to an individual hyperparameter value, with support
@@ -537,7 +537,7 @@ class Hyperparameters(object):
             The hyperparameter value corresponding to the name in key.
         '''
 
-        return Hyperparameters._getitem(self.integrated_hps, key)
+        return Hyperparameters._getitem(self._integrated_hps, key)
 
     def __setitem__(self, key, value):
         '''Assigns an individual hyperparameter value, with support for
@@ -559,49 +559,32 @@ class Hyperparameters(object):
             None.
         '''
 
-        # Update the value in self.integrated_hps
-        Hyperparameters._setitem(self.integrated_hps, key, value)
+        # Update the value in self._integrated_hps
+        Hyperparameters._setitem(self._integrated_hps, key, value)
 
         ''' Update the value stored as a class attribute. This may or may not
         be necessary given how original attributes were setup.'''
         if ':' in key:
             # Replace the entire class attribute dict with the updated one
             dict_name, rem_name = self._parse_delimited_hp_name(key)
-            setattr(self, dict_name, self.integrated_hps[dict_name])
+            setattr(self, dict_name, self._integrated_hps[dict_name])
         else:
             setattr(self, key, value)
 
     def __str__(self):
-
-        def print_helper(D, n_indent=0):
-            str = ''
-            indent = n_indent * '\t'
-            for key in sort(D.keys()):
-                value = D[key]
-
-                str += '%s%s: ' % (indent, key)
-                if isinstance(value, dict):
-                    str += '\n' + print_helper(value, n_indent+1)
-                else:
-                    str += '%s\n' % value.__str__()
-
-            return str
-
-        str = print_helper(self.integrated_hps)
-
-        return str
+        return self.print_sorted_dict(self._integrated_hps)
 
     # def __getattr__(self, name):
-    #     ''' Failed attempt to link each key in integrated_hps to a class
+    #     ''' Failed attempt to link each key in _integrated_hps to a class
     #     attribute. This just ignites an infinite recursion.
     #     '''
-    #     if name in self.integrated_hps:
-    #         return self.integrated_hps[name]
+    #     if name in self._integrated_hps:
+    #         return self._integrated_hps[name]
     #     else:
     #         return super(Hyperparameters, self).__getattr__(name)
 
     def __setattr__(self, name, value, debug=True):
-        ''' Updates integrated_hps if name is a top-level HP key.
+        ''' Updates _integrated_hps if name is a top-level HP key.
 
         Note: this does not support comma delimited name. This is generally not
         a problem because the following simply does not parse:
@@ -614,14 +597,14 @@ class Hyperparameters(object):
             hps.__setattr__('comma:delimited:hp:name', value) # AssertionError
 
         '''
-        if hasattr(self, 'integrated_hps'):
+        if hasattr(self, '_integrated_hps'):
 
             assert ':' not in name, \
                 ('Comma-delimited name not supported in '
                 'Hyperparameters.__setattr__(name, value)')
 
-            if name in self.integrated_hps:
-                Hyperparameters._setitem(self.integrated_hps, name, value)
+            if name in self._integrated_hps:
+                Hyperparameters._setitem(self._integrated_hps, name, value)
 
         super(Hyperparameters, self).__setattr__(name, value)
 
@@ -677,6 +660,65 @@ class Hyperparameters(object):
     # ************************************************************************
     # Internal helper functions **********************************************
     # ************************************************************************
+
+    @classmethod
+    def printable_str_from_dict(cls, D, n_indent=0):
+        ''' Quick and dirty PrettyPrinting of a dict that conforms to the
+        internal API for a Hyperparameters dict (i.e., keys as strings or
+        dicts).
+        '''
+
+        S = ''
+        indent = n_indent * '\t'
+        for key in sort(D.keys()):
+            value = D[key]
+
+            S += '%s%s: ' % (indent, key)
+            if isinstance(value, dict):
+                S += '\n' + cls.printable_str_from_dict(value, n_indent+1)
+            else:
+                S += '%s\n' % str(value)
+
+        return S
+
+    @staticmethod
+    def _sorted_str_from_dict(d):
+        '''Creates a string of the key, value pairs in dict d, sorted by key.
+        Sorting is required to 'uniquify' any set of hyperparameter settings
+        (because two different orderings of the same hyperparameter settings
+        are assumed to result in identical model and fitting behavior).
+
+        Args:
+            d: dict of hyperparameters.
+
+        Returns:
+            string of key, value pairs, sorted by key.
+        '''
+
+        sorted_keys = sort(d.keys())
+        n_keys = len(sorted_keys)
+
+        str_items = ['{']
+        key_idx = 1
+        for key in sorted_keys:
+            val = d[key]
+
+            if isinstance(val, dict):
+                str_val = Hyperparameters._sorted_str_from_dict(val)
+            else:
+                str_val = str(val)
+
+            new_entry = (str(key) + ': ' + str_val)
+            str_items.append(new_entry)
+
+            if key_idx < n_keys:
+                str_items.append(', ')
+
+            key_idx += 1
+
+        str_items.append('}')
+
+        return ''.join(str_items)
 
     @staticmethod
     def _validate_args(hps, default_hash_hps, default_non_hash_hps):
@@ -737,10 +779,13 @@ class Hyperparameters(object):
         # values) If not, user may have mistyped an hp name.
         default_union = default_hash_set.union(default_non_hash_set)
         if not input_set.issubset(default_union):
-            error_msg = str('Attempted to override hyperparameter(s) '
+            error_msg = ('Attempted to override hyperparameter(s) '
                 'with no defined defaults.\n')
             for violating_key in input_set - default_union:
-                error_msg += str('\t%s is not a valid hyperparameter '
+                # if violating_key.startswith(cls._wild_card_prefix):
+                #     pass
+                # else:
+                error_msg += str('\t\'%s\' is not a valid hyperparameter '
                     '(has no specified default).\n' % violating_key)
             raise ValueError(error_msg)
 
@@ -843,45 +888,6 @@ class Hyperparameters(object):
         return hps_hash
 
     @staticmethod
-    def _sorted_str_from_dict(d):
-        '''Creates a string of the key, value pairs in dict d, sorted by key.
-        Sorting is required to 'uniquify' any set of hyperparameter settings
-        (because two different orderings of the same hyperparameter settings
-        are assumed to result in identical model and fitting behavior).
-
-        Args:
-            d: dict of hyperparameters.
-
-        Returns:
-            string of key, value pairs, sorted by key.
-        '''
-
-        sorted_keys = sort(d.keys())
-        n_keys = len(sorted_keys)
-
-        str_items = ['{']
-        key_idx = 1
-        for key in sorted_keys:
-            val = d[key]
-
-            if isinstance(val, dict):
-                str_val = Hyperparameters._sorted_str_from_dict(val)
-            else:
-                str_val = str(val)
-
-            new_entry = (str(key) + ': ' + str_val)
-            str_items.append(new_entry)
-
-            if key_idx < n_keys:
-                str_items.append(', ')
-
-            key_idx += 1
-
-        str_items.append('}')
-
-        return ''.join(str_items)
-
-    @staticmethod
     def _parse_delimited_hp_name(hp_name, delimiter=':'):
         ''' Splits a string into the segments preceding and following the
         first colon. Used to indicate traversing into a sub-dict within a
@@ -922,176 +928,3 @@ class Hyperparameters(object):
         '''
         if self._verbose:
             print(s)
-
-def test():
-    ''' Test suite for some (but not yet all) of Hyperparameters'
-    functionality.
-    '''
-
-    def test_helper(result, correct, name, verbose=False):
-        if result == correct:
-            print('Passed: %s.' % name)
-        else:
-            print('Failed %s.' % name)
-
-        if verbose:
-            print('\nResult:')
-            print(result)
-
-            print('\nCorrect:')
-            print(correct)
-
-    def test1():
-        defaults = {
-            'a': 'a1',
-            'b': {'c': 'c1'},
-            'd': 'd1'
-        }
-
-        non_hash = {
-            'e': {
-                'f': 'f1',
-                'g': 'g1'
-            }
-        }
-
-        inputs = {
-            'a': 'a2', # This overrides a hash default
-            'b': {'c': 'c2'}, # This overrides a hash default
-            'e': {'g': 'g2'} # This overrides a non-hash default
-        }
-
-        correct_integration = {
-            'a': 'a2',
-            'b': {'c': 'c2'},
-            'd': 'd1',
-            'e': {
-                'f': 'f1',
-                'g': 'g2',
-            }
-        }
-
-        # Test integration of hps
-        hps = Hyperparameters(inputs, defaults, non_hash)
-        test_helper(hps.integrated_hps,
-                    correct_integration,
-                    'test 1a: simple nested hp integration with defaults')
-
-        # Test partitioning for hashing
-        test_helper(hps.hps_to_hash,
-                    {'a': 'a2', 'c': 'c2'},
-                    'test 1b: hp partitioning for hashing')
-
-        # Test base case __getattr__ (no recursion necessary)
-        test_helper(hps['a'],
-                    'a2',
-                    'test 1c: base __getattr__ (no recursion)')
-
-        # Test recursive __getattr__
-        test_helper(hps['b:c'],
-                    'c2',
-                    'test 1d: recursive __getattr__')
-
-        # Test recursive __setattr__
-        hps['e:g'] = 'g2'
-        test_helper(hps['e:g'],
-                    'g2',
-                    'test 1e: recursive __setattr__')
-
-        # Test recursive __setattr__ for originally non-existing item
-        # (hopefully this never happens in practice)
-        hps['e:h'] = 'h2'
-        test_helper(hps['e:h'],
-                    'h2',
-                    'test 1f: recursive __setattr__, non-existing item')
-
-    def test2():
-        # More complex integration test
-        defaults = {
-            'a': 'a1',
-            'b': {'c': 'c1'},
-            'd': 'd1',
-            'e': {
-                'f': 'f1',
-                'g': 'g1',
-                'h': 'h1',
-                }
-            }
-        non_hash = {
-            'i': 'i1',
-            'j': {
-                'k': 'k1',
-                'l': 'l1',
-            }
-        }
-
-        inputs = {
-            'd': 'd2', # Simple override
-            'e': {'g': 'g2'}, # Complex hash override, want to only override 'g', but not by simply replacing 'e'
-            'j': {'l': 'l2'}  # Complex non-hash override, want to only override 'l', but not by simply replacing 'j'
-        }
-
-        correct_integration = {
-            'a': 'a1',
-            'b': {'c': 'c1'},
-            'd': 'd2',
-            'e': {
-                'f': 'f1',
-                'g': 'g2',
-                'h': 'h1',
-                },
-            'i': 'i1',
-            'j': {
-                'k': 'k1',
-                'l': 'l2',
-                }
-            }
-
-        hps = Hyperparameters(inputs, defaults, non_hash)
-
-        test_helper(hps.integrated_hps,
-                    correct_integration,
-                    'test 2a: complex hp integration, partial dict overrides.')
-
-        # These will be wrong or throw access errors if implementation is wrong
-        test_helper(hps['e:g'],
-                    'g2',
-                    'test 2b: recursive __getattr__') # should be 'g2'
-        test_helper(hps['j:k'],
-                    'k1',
-                    'test 2c: recursive __getattr__') # should be 'k1'
-
-        # Test partitioning for hashing
-        # should include d and g but NOT l
-        test_helper(hps.hps_to_hash,
-                    {'d': 'd2', 'g': 'g2'},
-                    'test 2d: hp partitioning for hashing')
-
-    def test3():
-        # Test integrate_hps using the sub/super application
-        # See docstring for integrate_hps
-        super_def_hps = {'a': 1, 'b': 2, 'c_hps': {'d': 3, 'e': 4}}
-        sub_def_hps = {'b': 5, 'c_hps': {'d': 6}}
-        correct_result = {'a': 1, 'b': 5, 'c_hps': {'d': 6, 'e': 4}}
-        result = Hyperparameters.integrate_hps(super_def_hps, sub_def_hps)
-
-        test_helper(result,
-                    correct_result,
-                    'test 3a: subclass/superclass hp integration')
-
-        test_helper(super_def_hps,
-                    {'a': 1, 'b': 2, 'c_hps': {'d': 3, 'e': 4}},
-                    'test 3b: integration effects on original superclass hps')
-
-        test_helper(sub_def_hps,
-                    {'b': 5, 'c_hps': {'d': 6}},
-                    'test 3c: integration effects on original subclass hps')
-
-    test1()
-    print()
-
-    test2()
-    print()
-
-    test3()
-    print()
