@@ -45,6 +45,17 @@ class Hyperparameters(object):
 
     _delimiter = ':'
 
+    _wildcard_prefix = '_'
+    ''' A "wildcard" hyperparameter is user specified that need not exist in
+    the defaults and is automatically added to the set of hash hps. This is a
+    sort of back-door for advanced development in models that need more
+    flexibility in allowed hyperparameters that would be allowed by the
+    somewhat rigid requirement that all hyperparameters have prespecified
+    defaults. The motivating use case: A model with a hyperparameter-specified
+    prior distribution. Without this backdoor, all models would need to include
+    the HPs for all possible priors, even though only one prior would be used
+    by a given model.'''
+
     def __init__(self,
                  hps=dict(),
                  default_hash_hps=dict(),
@@ -132,8 +143,8 @@ class Hyperparameters(object):
     # Exposed functions ******************************************************
     # ************************************************************************
 
-    @staticmethod
-    def parse_command_line(default_hps, description=None):
+    @classmethod
+    def parse_command_line(cls, default_hps, description=None):
         '''Parses command-line arguments into a dict of hyperparameters.
 
         Args:
@@ -225,12 +236,12 @@ class Hyperparameters(object):
                 hps_flat[key] = None
 
         # Recursively reconstruct any dicts (based on colon delimiters)
-        hps = Hyperparameters.unflatten(hps_flat)
+        hps = cls.unflatten(hps_flat)
 
         return hps
 
-    @staticmethod
-    def integrate_hps(hps, update_hps):
+    @classmethod
+    def integrate_hps(cls, hps, update_hps):
         '''Integrates two hyperparameter dicts, with update_hps overriding and
         possibly adding novel items to hps.
 
@@ -299,7 +310,7 @@ class Hyperparameters(object):
                 _integrated_hps[key] = val
             else:
                 # Recurse
-                _integrated_hps[key] = Hyperparameters.integrate_hps(
+                _integrated_hps[key] = cls.integrate_hps(
                     _integrated_hps[key], val)
 
         return _integrated_hps
@@ -391,8 +402,8 @@ class Hyperparameters(object):
         with open(yaml_path, 'r') as yaml_file:
             return yaml.load(yaml_file)
 
-    @staticmethod
-    def flatten(D, delimiter=_delimiter):
+    @classmethod
+    def flatten(cls, D, delimiter=_delimiter):
         ''' Flattens a dict: Values that are themselves dicts are recursively
         'flattened' by concatenating keys using colon delimiting.
 
@@ -416,7 +427,7 @@ class Hyperparameters(object):
                  'but found one of type: %s' % str(type(key)))
 
             if isinstance(val, dict):
-                val_flat = Hyperparameters.flatten(val)
+                val_flat = cls.flatten(val)
                 for key2, val2 in val_flat.iteritems():
                     D_flat[key + delimiter + key2] = val2
             else:
@@ -424,8 +435,8 @@ class Hyperparameters(object):
 
         return D_flat
 
-    @staticmethod
-    def unflatten(D_flat, delimiter=_delimiter):
+    @classmethod
+    def unflatten(cls, D_flat, delimiter=_delimiter):
         ''' Unflattens a flattened dict. A flattened dict is a dict with no
         values that are themselves dicts. Nested dicts can be represented in a
         flattened dict using colon-delimited string keys.
@@ -457,7 +468,7 @@ class Hyperparameters(object):
 
             if ':' in key:
                 dict_name, rem_name = \
-                    Hyperparameters._parse_delimited_hp_name(
+                    cls._parse_delimited_hp_name(
                         key, delimiter=delimiter)
                 return {dict_name: assign_leaf(rem_name, val)}
             else:
@@ -472,7 +483,7 @@ class Hyperparameters(object):
             if delimiter in key:
 
                 dict_name, rem_name = \
-                    Hyperparameters._parse_delimited_hp_name(
+                    cls._parse_delimited_hp_name(
                         key, delimiter=delimiter)
 
                 if dict_name in D:
@@ -492,8 +503,8 @@ class Hyperparameters(object):
 
         return D_unflattened
 
-    @staticmethod
-    def remove_list_hps(hps):
+    @classmethod
+    def remove_list_hps(cls, hps):
         # Recursive
         keys_to_del = []
         for key, val in hps.iteritems():
@@ -504,7 +515,7 @@ class Hyperparameters(object):
                 keys_to_del.append(key)
             elif isinstance(val, dict):
                 # Recursion
-                Hyperparameters.remove_list_hps(val)
+                cls.remove_list_hps(val)
 
         for key in keys_to_del:
             del hps[key]
@@ -537,7 +548,7 @@ class Hyperparameters(object):
             The hyperparameter value corresponding to the name in key.
         '''
 
-        return Hyperparameters._getitem(self._integrated_hps, key)
+        return self._getitem(self._integrated_hps, key)
 
     def __setitem__(self, key, value):
         '''Assigns an individual hyperparameter value, with support for
@@ -560,7 +571,7 @@ class Hyperparameters(object):
         '''
 
         # Update the value in self._integrated_hps
-        Hyperparameters._setitem(self._integrated_hps, key, value)
+        self._setitem(self._integrated_hps, key, value)
 
         ''' Update the value stored as a class attribute. This may or may not
         be necessary given how original attributes were setup.'''
@@ -604,12 +615,12 @@ class Hyperparameters(object):
                 'Hyperparameters.__setattr__(name, value)')
 
             if name in self._integrated_hps:
-                Hyperparameters._setitem(self._integrated_hps, name, value)
+                self._setitem(self._integrated_hps, name, value)
 
         super(Hyperparameters, self).__setattr__(name, value)
 
-    @staticmethod
-    def _getitem(D, key):
+    @classmethod
+    def _getitem(cls, D, key):
         ''' Helper function to support comma delimiting in key via recursive
         traversal of D.
 
@@ -621,16 +632,16 @@ class Hyperparameters(object):
         if ':' in key:
 
             dict_name, rem_name = \
-                Hyperparameters._parse_delimited_hp_name(key)
+                cls._parse_delimited_hp_name(key)
 
-            return Hyperparameters._getitem(D[dict_name], rem_name)
+            return cls._getitem(D[dict_name], rem_name)
 
         else:
 
             return D[key]
 
-    @staticmethod
-    def _setitem(D, key, value):
+    @classmethod
+    def _setitem(cls, D, key, value):
         ''' Helper function to support comma delimiting in key via recursive
         traversal of D.
 
@@ -645,13 +656,13 @@ class Hyperparameters(object):
         if ':' in key:
 
             dict_name, rem_name = \
-                Hyperparameters._parse_delimited_hp_name(key)
+                cls._parse_delimited_hp_name(key)
 
             if not dict_name in D.keys():
 
                 D[dict_name] = dict()
 
-            Hyperparameters._setitem(D[dict_name], rem_name, value)
+            cls._setitem(D[dict_name], rem_name, value)
 
         else:
 
@@ -681,8 +692,8 @@ class Hyperparameters(object):
 
         return S
 
-    @staticmethod
-    def _sorted_str_from_dict(d):
+    @classmethod
+    def _sorted_str_from_dict(cls, d):
         '''Creates a string of the key, value pairs in dict d, sorted by key.
         Sorting is required to 'uniquify' any set of hyperparameter settings
         (because two different orderings of the same hyperparameter settings
@@ -704,7 +715,7 @@ class Hyperparameters(object):
             val = d[key]
 
             if isinstance(val, dict):
-                str_val = Hyperparameters._sorted_str_from_dict(val)
+                str_val = cls._sorted_str_from_dict(val)
             else:
                 str_val = str(val)
 
@@ -720,8 +731,8 @@ class Hyperparameters(object):
 
         return ''.join(str_items)
 
-    @staticmethod
-    def _validate_args(hps, default_hash_hps, default_non_hash_hps):
+    @classmethod
+    def _validate_args(cls, hps, default_hash_hps, default_non_hash_hps):
         ''' Checks to ensure the dicts provided to __init__ fit the
         requirements as stated in __init__().
 
@@ -741,9 +752,9 @@ class Hyperparameters(object):
             and default_non_hash_hps.
         '''
 
-        Hyperparameters._validate_keys(hps)
-        Hyperparameters._validate_keys(default_hash_hps)
-        Hyperparameters._validate_keys(default_non_hash_hps)
+        cls._validate_keys(hps)
+        cls._validate_keys(default_hash_hps)
+        cls._validate_keys(default_non_hash_hps)
 
         if not isinstance(hps, dict):
             raise ValueError('hps must be a dict but is not.')
@@ -756,13 +767,14 @@ class Hyperparameters(object):
 
         # Flatten all HP dicts to ensure validation recursively into HPs that
         # are themselves HP dicts..
-        flat_hps = Hyperparameters.flatten(hps)
-        flat_def_hash_hps = Hyperparameters.flatten(default_hash_hps)
-        flat_def_non_hash_hps = Hyperparameters.flatten(default_non_hash_hps)
+        flat_hps = cls.flatten(hps)
+        flat_def_hash_hps = cls.flatten(default_hash_hps)
+        flat_def_non_hash_hps = cls.flatten(default_non_hash_hps)
 
         input_set = set(flat_hps.keys())
         default_hash_set = set(flat_def_hash_hps.keys())
         default_non_hash_set = set(flat_def_non_hash_hps.keys())
+        default_union = default_hash_set.union(default_non_hash_set)
 
         # Check to make sure each default hp is either hash or non-hash
         # (not both).
@@ -776,21 +788,26 @@ class Hyperparameters(object):
                              'hyperparameters.')
 
         # Check to make sure all input_hps are valid (i.e., have default
-        # values) If not, user may have mistyped an hp name.
-        default_union = default_hash_set.union(default_non_hash_set)
-        if not input_set.issubset(default_union):
-            error_msg = ('Attempted to override hyperparameter(s) '
-                'with no defined defaults.\n')
-            for violating_key in input_set - default_union:
-                # if violating_key.startswith(cls._wild_card_prefix):
-                #     pass
-                # else:
+        # values or include _wildcard). Otherwise, user may have mistyped an
+        # hp name, so inform them about it.
+        do_raise = False
+        error_msg = ('Attempted to override hyperparameter(s) '
+            'with no defined defaults.\n')
+
+        # Remove any wildcards -- those need not to have specified defaults
+        for key in input_set:
+            if key in default_union or cls._is_wildcard(key):
+                pass
+            else:
                 error_msg += str('\t\'%s\' is not a valid hyperparameter '
                     '(has no specified default).\n' % violating_key)
+                do_raise = True
+
+        if do_raise:
             raise ValueError(error_msg)
 
-    @staticmethod
-    def _validate_keys(hps):
+    @classmethod
+    def _validate_keys(cls, hps):
         ''' Recursively checks that all keys are strings or dicts, and that
         string keys do not contain the delimiter.
 
@@ -811,10 +828,10 @@ class Hyperparameters(object):
                 ('Hyperparameters keys must be strings, '
                  'but found one of type: %s' % str(type(key)))
 
-            assert Hyperparameters._delimiter not in key, \
+            assert cls._delimiter not in key, \
                 ('Hyperparameter keys cannot contain the delimiter (%s) '
                  'in the current implementation, but found \'%s\'' %
-                 (Hyperparameters._delimiter, key))
+                 (cls._delimiter, key))
             ''' If this becomes problematic, it might be worth reimplementing
             some of this class, where all HP dicts are immediately flattened
             and all internal manipulations are done on these flattened dicts.
@@ -824,18 +841,35 @@ class Hyperparameters(object):
             '''
 
             if isinstance(val, dict):
-                Hyperparameters._validate_keys(val)
+                cls._validate_keys(val)
 
-    @staticmethod
-    def _get_hash_hps(hps, default_hash_hps):
+    @classmethod
+    def _is_wildcard(cls, key):
+        ''' Determine whether a hyperparameter name indicates a "wildcard": a
+        hyperparameter in the user's inputs that need not exist in the
+        defaults and is automatically added to the set of hash hps.
+
+        Args:
+            key: string.
+                Flattened representation of a hyperparameter name.
+
+        Returns:
+            True if key contains _wildcard_prefix as the start of any component
+            of the flattened name.
+        '''
+        return key.startswith(cls._wildcard_prefix) or \
+            cls._delimiter + cls._wildcard_prefix in key
+
+    @classmethod
+    def _get_hash_hps(cls, hps, default_hash_hps):
         '''
         Returns:
             hps_to_hash: dict containing the subset of hyperparameters in
             input_hps that are to be hashed (i.e., keys with non-default
             values that are also keys in default_hash_hps).
         '''
-        flat_hps = Hyperparameters.flatten(hps)
-        flat_defaults = Hyperparameters.flatten(default_hash_hps)
+        flat_hps = cls.flatten(hps)
+        flat_defaults = cls.flatten(default_hash_hps)
 
         keys = flat_hps.keys()
         default_keys = flat_defaults.keys()
@@ -843,6 +877,7 @@ class Hyperparameters(object):
         ''' Because of the checks in _validate_args, we only need to check the
         intersection: Keys that are unique to hps are non-hash hps. Keys that
         are unique to default_hash_hps take default values and are not hashed.
+        Wildcards are an exception and are handled after this loop.
         '''
         keys_to_check = set(keys).intersection(set(default_keys))
 
@@ -864,7 +899,12 @@ class Hyperparameters(object):
             if str(val) != str(flat_defaults[key]):
                 flat_hps_to_hash[key] = val
 
-        hps_to_hash = Hyperparameters.unflatten(flat_hps_to_hash)
+        ''' Add all wildcards. '''
+        for key in keys:
+            if cls._is_wildcard(key):
+                flat_hps_to_hash[key] = flat_hps[key]
+
+        hps_to_hash = cls.unflatten(flat_hps_to_hash)
 
         return hps_to_hash
 

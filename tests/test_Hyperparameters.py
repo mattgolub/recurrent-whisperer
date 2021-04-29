@@ -20,7 +20,7 @@ def test1():
     defaults = {
         'a': 'a1',
         'b': {'c': 'c1'},
-        'd': 'd1'
+        'd': 'd1',
     }
 
     non_hash = {
@@ -46,6 +46,8 @@ def test1():
         }
     }
 
+    correct_hash = {'a': 'a2', 'b': {'c': 'c2'}}
+
     # Test integration of hps
     hps = Hyperparameters(inputs, defaults, non_hash)
     print_test_result(hps._integrated_hps,
@@ -54,7 +56,7 @@ def test1():
 
     # Test partitioning for hashing
     print_test_result(hps.hps_to_hash,
-                {'a': 'a2', 'b': {'c': 'c2'}},
+                correct_hash,
                 'test 1b: hp partitioning for hashing')
 
     # Test base case __getattr__ (no recursion necessary)
@@ -164,22 +166,82 @@ def test3():
                 {'b': 5, 'c_hps': {'d': 6}},
                 'test 3c: integration effects on original subclass hps')
 
+def test4():
+    # Same as test1, but also tests wildcard functionality
+    defaults = {
+        'a': 'a1',
+        'b': {'c': 'c1'},
+        'd': 'd1'
+    }
+
+    non_hash = {
+        'e': {
+            'f': 'f1',
+            'g': 'g1'
+        }
+    }
+
+    inputs = {
+        '_wild1': 'w11',    # WILDCARD (no default, forced to hash)
+        'a': 'a2',          # This overrides a hash default
+        'b': {'c': 'c2'},   # This overrides a hash default
+        'e': {
+            'g': 'g2',      # This overrides a non-hash default
+            '_wild2': 'w21' # WILDCARD (no default, forced to hash)
+        },
+    }
+
+    correct_hash = {
+        '_wild1': 'w11',
+        'a': 'a2',
+        'b': {'c': 'c2'},
+        'e': {
+            '_wild2': 'w21'
+        },
+    }
+
+    correct_integration = {
+        '_wild1': 'w11',
+        'a': 'a2',
+        'b': {'c': 'c2'},
+        'd': 'd1',
+        'e': {
+            'f': 'f1',
+            'g': 'g2',
+            '_wild2': 'w21'
+        },
+    }
+
+    # Test integration of hps
+    hps = Hyperparameters(inputs, defaults, non_hash)
+
+    print_test_result(hps._integrated_hps,
+                correct_integration,
+                'test 4a: integration with wildcard (_)')
+
+    print_test_result(hps.hps_to_hash,
+            correct_hash,
+            'test 4b: ensure wildcards are hashed')
+
 def print_test_result(result, correct, name, verbose=False):
+
     if result == correct:
         print('Passed: %s.' % name)
     else:
         print('Failed %s.' % name)
-        print('\nCorrect result:\n%s' %
-            Hyperparameters.printable_str_from_dict(correct))
-        print('\nHyperparameters result:\n%s' %
-            Hyperparameters.printable_str_from_dict(result))
+        verbose = True
 
     if verbose:
-        print('\nResult:')
-        print(result)
 
-        print('\nCorrect:')
-        print(correct)
+        if isinstance(correct, str):
+            correct_str = correct
+            result_str = result
+        else:
+            correct_str = Hyperparameters.printable_str_from_dict(correct)
+            result_str = Hyperparameters.printable_str_from_dict(result)
+
+        print('\nCorrect result:\n%s' % correct_str)
+        print('\nHyperparameters result:\n%s' % result_str)
 
 def main():
 
@@ -190,6 +252,9 @@ def main():
     print()
 
     test3()
+    print()
+
+    test4()
     print()
 
 if __name__ == '__main__':
