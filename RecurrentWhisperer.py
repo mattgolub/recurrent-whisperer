@@ -1196,7 +1196,7 @@ class RecurrentWhisperer(object):
             self.write_shell_script(
                 run_script_path,
                 self.hps.run_script,
-                self.hps.integrated_hps)
+                self.hps())
 
         # Start training timer from scratch
         self.train_time_offset = 0.0

@@ -222,10 +222,26 @@ class Hyperparameters(object):
         parser = argparse.ArgumentParser(description=description)
         parse_helper(parser, default_hps)
 
-        args = parser.parse_args()
+        args, unknown = parser.parse_known_args()
 
         # This has no dicts (all values are bool, int, float, or str)
         hps_flat = vars(args)
+
+        # Parse unrecognized args, allowing wildcards.
+        # unknown is a list: [key0, val0, key1, val1, ...]
+        n = len(unknown)
+        for key, val in zip(unknown[0:n:2], unknown[1:n:2]):
+
+            assert key.startswith('--'), \
+                ('Unrecognized hyperparameter not specified as keyword arg '
+                '(should start with \'--\'): \'%s\'' % key)
+
+            if cls._is_wildcard(key):
+                hp_name = key[2:] # remove leading '--'
+                hps_flat[hp_name] = val
+
+            else:
+                raise ValueError('Unrecognized hyperparameter: \'%s\'' % key)
 
         # As is, any values that were set to None at the command line will
         # now be 'None' in the dict. Here, change 'None' to None. This is less
@@ -523,6 +539,9 @@ class Hyperparameters(object):
     # ************************************************************************
     # General class access and manipulation **********************************
     # ************************************************************************
+
+    def __call__(self):
+        return self.__dict__()
 
     def __dict__(self):
         '''Returns hyperparameters in a dict.
