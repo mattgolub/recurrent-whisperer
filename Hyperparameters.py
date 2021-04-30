@@ -219,6 +219,79 @@ class Hyperparameters(object):
                         'bool, int, float, str, dict, or None, but was %s '
                         '(key=%s).' % (type(val), key))
 
+        def parse_unknown(L):
+            ''' Parse list of command-line arguments that have no known
+            default values. Wildcards are accepted, and anything else will
+            raise an error. All arguments must be optional, i.e., beginning
+            with '--'.
+
+            Args:
+                L: list of strings
+                    May contain a combination of consecutive key-value pairs,
+                    e.g., [..., <--key>, <val>, ...], as well as key-value
+                    pairs in the same string, e.g., [<--key>=<val>, ...].
+            Returns:
+                Dict containing only wildcard key-value pairs.
+
+            Raises:
+                ValueError if any keys are not specified as wildcards (by
+                _wildcard_prefix). These keys are interpreted as unrecognized
+                hyperparameters.
+            '''
+
+            required_prefix = '--' # This only supports optional arguments
+            sep = '='
+            hps_flat = {}
+
+            idx = 0
+            n = len(unknown)
+            while idx < n:
+
+                n_eq = L[idx].count(sep)
+
+                if n_eq == 0:
+                    # No instances of '='.
+                    # --> L[idx], L[idx+1] are a key-value pair.
+                    assert idx+1 < n, \
+                        ('Expected key-value pair, '
+                        'but argument list terminated with no value.')
+
+                    key = L[idx]
+                    val = L[idx+1]
+                    idx += 2
+
+                elif n_eq == 1:
+                    # One instance of '='.
+                    # --> L[idx] is formatted as <key>=<value>
+                    key, sep, val = L[idx].partition(sep)
+                    idx += 1
+
+                else:
+                    # More than one instance of '='. This is not supported.
+                    raise ValueError(
+                        ('Found multiple instances of \'%s\' '
+                        'in command-line argument: %s' % (sep, L[Idx])))
+
+                assert key.startswith(required_prefix), \
+                    ('Unrecognized hyperparameter: \'%s\' '
+                    'not specified as keyword arg '
+                    '(should start with \'%s\'): ' % (key, required_prefix))
+
+                if cls._is_wildcard(key):
+                    # remove leading '--'
+
+                    # This requires Python 3.9
+                    # hp_name = key.removeprefix(required_prefix)
+
+                    hp_name = key[len(required_prefix):]
+                    hps_flat[hp_name] = val
+
+                else:
+                    raise ValueError(
+                        'Unrecognized hyperparameter: \'%s\'' % key)
+
+            return hps_flat
+
         parser = argparse.ArgumentParser(description=description)
         parse_helper(parser, default_hps)
 
@@ -228,20 +301,7 @@ class Hyperparameters(object):
         hps_flat = vars(args)
 
         # Parse unrecognized args, allowing wildcards.
-        # unknown is a list: [key0, val0, key1, val1, ...]
-        n = len(unknown)
-        for key, val in zip(unknown[0:n:2], unknown[1:n:2]):
-
-            assert key.startswith('--'), \
-                ('Unrecognized hyperparameter not specified as keyword arg '
-                '(should start with \'--\'): \'%s\'' % key)
-
-            if cls._is_wildcard(key):
-                hp_name = key[2:] # remove leading '--'
-                hps_flat[hp_name] = val
-
-            else:
-                raise ValueError('Unrecognized hyperparameter: \'%s\'' % key)
+        hps_flat.update(parse_unknown(unknown))
 
         # As is, any values that were set to None at the command line will
         # now be 'None' in the dict. Here, change 'None' to None. This is less
