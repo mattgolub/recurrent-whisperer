@@ -23,7 +23,8 @@ import numpy.random as npr
 
 # Imports for saving data, predictions, summaries
 import cPickle
-import h5py, json
+import h5py, json, yaml
+
 import scipy.io as spio
 
 if os.environ.get('DISPLAY','') == '':
@@ -742,7 +743,8 @@ class RecurrentWhisperer(object):
                     cmd_list.append(str('--%s' % hp_name))
                     str_val = str(val)
 
-                    # negative numbers misinterpreted by argparse as optional arg. This extra-space hack gets around it.
+                    # negative numbers misinterpreted by argparse as optional
+                    # arg. This extra-space hack gets around it.
                     if str_val[0] == '-':
                         str_val = ' ' + str_val
 
@@ -3385,10 +3387,10 @@ class RecurrentWhisperer(object):
         assert version in ['ltl', 'lvl'], \
             'Unsupported version: %s' % str(version)
 
-    @staticmethod
-    def _assert_filetype(filetype):
-        assert filetype in ['h5', 'npz', 'json', 'mat', 'pkl'],\
-            'Unsupported filetype from extension: %s' % extension
+    @classmethod
+    def _assert_filetype(cls, filetype):
+        assert filetype in cls._supported_filetypes,\
+            'Unsupported filetype with extension: %s' % filetype
 
     # *************************************************************************
     # Restoring from model checkpoints ****************************************
@@ -3935,6 +3937,8 @@ class RecurrentWhisperer(object):
             self._save_mat(data_to_save, save_path)
         elif filetype == 'pkl':
             self._save_pkl(data_to_save, save_path)
+        elif filetype == 'yaml':
+            self._save_yaml(data_to_save, save_path)
 
     @classmethod
     def _load_pred_or_summary_helper(cls,
@@ -3965,6 +3969,8 @@ class RecurrentWhisperer(object):
             return result, mtime
         else:
             return result
+
+    _supported_filetypes = ['h5', 'npz', 'json', 'mat', 'pkl', 'yaml']
 
     @staticmethod
     def _save_pkl(data_to_save, path_to_file):
@@ -4020,6 +4026,23 @@ class RecurrentWhisperer(object):
         '''
         flat_data = Hyperparameters.flatten(data_to_save)
         np.savez(path_to_file, **flat_data)
+
+    @staticmethod
+    def _save_yaml(data_to_save, path_to_file):
+        '''Save data in YAML format.
+
+        Args:
+            data_to_save: Dict with values python data types or dicts that
+            recursively satisfy this requirement (e.g., dict of python types).
+
+            path_to_file: path at which to save the data,
+            including filename and extension.
+
+        Returns:
+            None.
+        '''
+        with open(path_to_file, 'w') as yaml_file:
+            yaml.dump(data_to_save, yaml_file, default_flow_style=False)
 
     @staticmethod
     def _load_npz(path_to_file):
@@ -4081,7 +4104,8 @@ class RecurrentWhisperer(object):
         '''Save data in JSON (.json) format.
 
         Args:
-            data_to_save: Dict with values as python data types.
+            data_to_save: Dict with values python data types or dicts that
+            recursively satisfy this requirement (e.g., dict of python types).
 
             path_to_file: path at which to save the data,
             including filename and extension.
