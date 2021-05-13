@@ -3881,6 +3881,18 @@ class RecurrentWhisperer(object):
                 version=version,
                 filetype=filetype)
 
+            self._save_pred_or_summary_helper(summary,
+                train_or_valid_str=train_or_valid_str,
+                predictions_or_summary_str='summary',
+                version=version,
+                filetype='yaml')
+
+            self._save_pred_or_summary_helper(summary,
+                train_or_valid_str=train_or_valid_str,
+                predictions_or_summary_str='summary',
+                version=version,
+                filetype='json')
+
     def _save_done_file(self):
         '''Save an empty .done file (indicating that the training procedure
         ran to completion.
@@ -4028,23 +4040,6 @@ class RecurrentWhisperer(object):
         np.savez(path_to_file, **flat_data)
 
     @staticmethod
-    def _save_yaml(data_to_save, path_to_file):
-        '''Save data in YAML format.
-
-        Args:
-            data_to_save: Dict with values python data types or dicts that
-            recursively satisfy this requirement (e.g., dict of python types).
-
-            path_to_file: path at which to save the data,
-            including filename and extension.
-
-        Returns:
-            None.
-        '''
-        with open(path_to_file, 'w') as yaml_file:
-            yaml.dump(data_to_save, yaml_file, default_flow_style=False)
-
-    @staticmethod
     def _load_npz(path_to_file):
 
         flat_data = dict(np.load(path_to_file, allow_pickle=True))
@@ -4068,6 +4063,44 @@ class RecurrentWhisperer(object):
         spio.savemat(save_path, data_to_save)
 
     ''' Work in progress, largely untested:'''
+
+    @classmethod
+    def _jsonify(cls, numpy_dict):
+        ''' Converts a dict of Numpy datatypes to a dict of Python datatypes.
+        '''
+        json_dict = {}
+        for key, val in numpy_dict.iteritems():
+
+            if isinstance(val, np.integer):
+                json_dict[key] =  int(val)
+            elif isinstance(val, np.floating):
+                json_dict[key] =  float(val)
+            elif isinstance(val, np.ndarray):
+                json_dict[key] =  val.tolist()
+            elif isinstance (val, dict):
+                json_dict[key] = cls._jsonify(val)
+            else:
+                json_dict[key] = val # just shallow copy non Numpy types
+
+        return json_dict
+
+    @classmethod
+    def _save_yaml(cls, data_to_save, path_to_file):
+        '''Save data in YAML format.
+
+        Args:
+            data_to_save: Dict with values python data types or dicts that
+            recursively satisfy this requirement (e.g., dict of python types).
+
+            path_to_file: path at which to save the data,
+            including filename and extension.
+
+        Returns:
+            None.
+        '''
+        with open(path_to_file, 'w') as yaml_file:
+            yaml.dump(cls._jsonify(data_to_save), yaml_file,
+                default_flow_style=False)
 
     @staticmethod
     def _save_h5(data_to_save, path_to_file):
@@ -4099,8 +4132,8 @@ class RecurrentWhisperer(object):
         data = Hyperparameters.unflatten(flat_data)
         return data
 
-    @staticmethod
-    def _save_json(data_to_save, path_to_file):
+    @classmethod
+    def _save_json(cls, data_to_save, path_to_file):
         '''Save data in JSON (.json) format.
 
         Args:
@@ -4114,7 +4147,7 @@ class RecurrentWhisperer(object):
             None.
         '''
         file = open(path_to_file, 'wb')
-        json.dump(data_to_save, file)
+        json.dump(cls._jsonify(data_to_save), file, indent=4)
         file.close()
 
     @staticmethod
