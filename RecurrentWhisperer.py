@@ -3881,12 +3881,6 @@ class RecurrentWhisperer(object):
                 version=version,
                 filetype=filetype)
 
-            self._save_pred_or_summary_helper(summary,
-                train_or_valid_str=train_or_valid_str,
-                predictions_or_summary_str='summary',
-                version=version,
-                filetype='yaml')
-
     def _save_done_file(self):
         '''Save an empty .done file (indicating that the training procedure
         ran to completion.
