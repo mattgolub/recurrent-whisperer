@@ -600,6 +600,10 @@ class Hyperparameters(object):
     # General class access and manipulation **********************************
     # ************************************************************************
 
+    @property
+    def dict(self):
+        return self.__dict__()
+
     def __call__(self):
         return self.__dict__()
 
