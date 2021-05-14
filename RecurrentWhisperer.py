@@ -15,6 +15,7 @@ import shutil
 import logging
 from copy import deepcopy
 from subprocess import call
+import warnings
 import pdb
 
 import tensorflow as tf
@@ -24,7 +25,6 @@ import numpy.random as npr
 # Imports for saving data, predictions, summaries
 import cPickle
 import h5py, json, yaml
-
 import scipy.io as spio
 
 if os.environ.get('DISPLAY','') == '':
@@ -3887,12 +3887,6 @@ class RecurrentWhisperer(object):
                 version=version,
                 filetype='yaml')
 
-            self._save_pred_or_summary_helper(summary,
-                train_or_valid_str=train_or_valid_str,
-                predictions_or_summary_str='summary',
-                version=version,
-                filetype='json')
-
     def _save_done_file(self):
         '''Save an empty .done file (indicating that the training procedure
         ran to completion.
@@ -3943,14 +3937,26 @@ class RecurrentWhisperer(object):
             self._save_h5(data_to_save, save_path)
         elif filetype == 'npz':
             self._save_npz(data_to_save, save_path)
-        elif filetype == 'json':
-            self._save_json(data_to_save, save_path)
         elif filetype == 'mat':
             self._save_mat(data_to_save, save_path)
         elif filetype == 'pkl':
             self._save_pkl(data_to_save, save_path)
-        elif filetype == 'yaml':
-            self._save_yaml(data_to_save, save_path)
+        elif filetype in ['json', 'yaml']:
+
+            # Only supported for summary (not predictions)
+            if predictions_or_summary_str != 'summary':
+                raise ValueError(
+                    'Saving predictions as %s is not supported.' %
+                        filetype)
+
+            json_data = self._jsonify(data_to_save)
+            if filetype == 'json':
+                self._save_json(json_data, save_path)
+            elif filetype == 'yaml':
+                # This is still problematic, with platform-specific issues.
+                warnings.warn('Caution: Saving summary as yaml '
+                    'can yeild unpredictable results.')
+                self._save_yaml(json_data, save_path)
 
     @classmethod
     def _load_pred_or_summary_helper(cls,
@@ -4065,24 +4071,83 @@ class RecurrentWhisperer(object):
     ''' Work in progress, largely untested:'''
 
     @classmethod
-    def _jsonify(cls, numpy_dict):
-        ''' Converts a dict of Numpy datatypes to a dict of Python datatypes.
-        '''
-        json_dict = {}
-        for key, val in numpy_dict.iteritems():
+    def _jsonify(cls, D):
+        ''' Creates a deep copy of a dict that is safe for saving as JSON.
 
+        Args:
+            D: python dict with all keys as strings or dicts that recursively
+            satisfy this requirement.
+
+        Returns:
+            Dict with all representations safe for saving as JSON.
+        '''
+        def isnumpy(val):
+
+            return type(val).__module__ == np.__name__
+
+        def jsonify_numpy(val):
+            ''' Converts a Numpy object into a JSON-safe Python-type
+            representation. Numpy scalars are converted to int or float types.
+            Numpy arrays are converted to lists.
+
+            Args:
+                val: any Numpy object (e.g., scalar, array).
+
+            Returns:
+                JSON-safe representation of val.
+            '''
             if isinstance(val, np.integer):
-                json_dict[key] =  int(val)
+                return int(val)
             elif isinstance(val, np.floating):
-                json_dict[key] =  float(val)
+                return float(val)
             elif isinstance(val, np.ndarray):
-                json_dict[key] =  val.tolist()
+                return val.tolist()
+            else:
+                raise TypeError('Unsupported type(val)=%s.' % str(type(val)))
+
+        json_dict = {}
+
+        for key, val in D.iteritems():
+
+            if val is None:
+                json_dict[key] = 'None'
+            elif isnumpy(val):
+                json_dict[key] = jsonify_numpy(val)
             elif isinstance (val, dict):
                 json_dict[key] = cls._jsonify(val)
-            else:
+            elif isinstance(val, str):
+                # No conversion necessary. Just removing this possibility from
+                # the catch-all below for more informative error reporting.
+                # (strings  are safe for JSON, so they won't relate to errors)
                 json_dict[key] = val # just shallow copy non Numpy types
+            else:
+                print('_jsonify() encountered unsupported datatype: '
+                    'summary[\'%s\'] = %s (%s)' %
+                    (key, str(val), str(type(val))))
+
+                json_dict[key] = val # just shallow copy, what else can you do?
 
         return json_dict
+
+    @classmethod
+    def _print_dict_types(cls, D, n_indent=0):
+        ''' Print the datatypes of each element of a python Dict.
+        Helpful for debugging encoding issues when saving train/valid
+        summary dicts as .json or .yaml.
+        '''
+
+        sorted_keys = D.keys()
+        sorted_keys.sort()
+
+        for key in sorted_keys:
+
+            val = D[key]
+
+            if isinstance(val, dict):
+                cls.print_dict_types(val, n_indent=n_indent+1)
+            else:
+                indent_str = n_indent * '\t'
+                print('%s%s: %s' % (indent_str, str(type(val)), key))
 
     @classmethod
     def _save_yaml(cls, data_to_save, path_to_file):
@@ -4099,8 +4164,9 @@ class RecurrentWhisperer(object):
             None.
         '''
         with open(path_to_file, 'w') as yaml_file:
-            yaml.dump(cls._jsonify(data_to_save), yaml_file,
-                default_flow_style=False)
+            yaml.dump(data_to_save, yaml_file,
+                default_flow_style=False,
+                canonical=False)
 
     @staticmethod
     def _save_h5(data_to_save, path_to_file):
@@ -4147,12 +4213,13 @@ class RecurrentWhisperer(object):
             None.
         '''
         file = open(path_to_file, 'wb')
-        json.dump(cls._jsonify(data_to_save), file, indent=4)
+        json.dump(data_to_save, file, indent=4)
         file.close()
 
     @staticmethod
     def _load_json(path_to_file):
 
+        # To do: "Decode" lists back into numpy arrays.
         with open(path_to_file, 'r') as file:
             data = json.load(file)
 
