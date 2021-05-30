@@ -3638,7 +3638,9 @@ class RecurrentWhisperer(object):
 
     def save_predictions_and_summary(self, data, train_or_valid_str, version,
         predict_train_or_valid_str='valid',
-        is_final=True):
+        is_final=True,
+        predictions_filetype=None,
+        summary_filetype=None):
         ''' Saves model predictions and a prediction summary, regardless of the
         hyperparameters. This is provided for external convenience, and is
         never used internally.
@@ -3666,8 +3668,50 @@ class RecurrentWhisperer(object):
             train_or_valid_str=predict_train_or_valid_str,
             is_final=is_final)
 
-        self._save_pred(pred, train_or_valid_str, version=version)
-        self._save_summary(summary, train_or_valid_str, version=version)
+        self._save_pred(pred, train_or_valid_str,
+            version=version,
+            filetype=predictions_filetype)
+
+        self._save_summary(summary, train_or_valid_str,
+            version=version,
+            filetype=summary_filetype)
+
+    def save_summary(self, data, train_or_valid_str, version,
+        predict_train_or_valid_str='valid',
+        is_final=True,
+        filetype=None):
+        ''' Saves model prediction summary without saving the (bulky)
+        predictions themselves. This save is done regardless of the
+        hyperparameters (which could otherwise indicate that no summaries are
+        to be saved during training). This is provided for external
+        convenience, and is never used internally.
+
+        Args:
+            data: dict containing the data over which predictions are
+            generated. This can be the training data or the validation data.
+
+            train_or_valid_str: either 'train' or 'valid', indicating whether
+            data contains training data or validation data, respectively.
+            The resulting filenames will reflect this.
+
+            version: 'ltl', 'lvl', or 'seso' indicating whether the state of
+            the model is lowest-training-loss, lowest-validation-loss, or
+            'save-every-so-often', respectively. This determines the names and
+            locations of the files to be saved.
+
+        Returns:
+            None.
+        '''
+
+        self._assert_ckpt_version(version)
+
+        pred, summary = self.predict(data,
+            train_or_valid_str=predict_train_or_valid_str,
+            is_final=is_final)
+
+        self._save_summary(summary, train_or_valid_str,
+            version=version,
+            filetype=filetype)
 
     @classmethod
     def load_train_predictions(cls, run_dir,
@@ -3868,7 +3912,7 @@ class RecurrentWhisperer(object):
         summary,
         train_or_valid_str,
         version='lvl',
-        filetype='npz'):
+        filetype=None):
 
         if summary is not None:
 
