@@ -134,9 +134,10 @@ class RecurrentWhisperer(object):
                 roughly equal sized batches, depending on whether the number
                 of trials divides evenly by this number.
 
-                random_seed: int specifying the random seed for the numpy
-                random generator used for randomly batching data and
-                initializing model parameters. Default: 0
+                random_seed: non-negative int specifying the random seed for
+                the numpy random generator used for randomly batching data and
+                initializing model parameters. Set this to -1 to randomly
+                generate the random_seed. Default: 0
 
                 dtype: string indicating the Tensorflow data type to use for
                 all Tensorflow objects. Default: 'float32' --> tf.float32.
@@ -367,6 +368,9 @@ class RecurrentWhisperer(object):
         '''
 
         self.data_specs = data_specs
+
+        if 'random_seed' in kwargs and kwargs['random_seed'] == -1:
+            kwargs['random_seed'] = np.random.randint(2**31)
 
         hps = self.setup_hps(kwargs)
 
