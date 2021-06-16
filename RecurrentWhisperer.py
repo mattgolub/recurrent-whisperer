@@ -41,7 +41,8 @@ from Hyperparameters import Hyperparameters
 from Timer import Timer
 
 class RecurrentWhisperer(object):
-    '''Base class for training recurrent neural networks or other deep learning models using TensorFlow. This class provides functionality for:
+    '''Base class for training recurrent neural networks or other deep
+    learning models using TensorFlow. This class provides functionality for:
 
     1) Training a recurrent neural network using modern techniques for
     encouraging stable training, such as adaptive learning rates and adaptive
@@ -61,25 +62,25 @@ class RecurrentWhisperer(object):
     functions (see docstrings in the corresponding function prototypes
     throughout this file):
 
-    _default_hash_hyperparameters()
-    _default_non_hash_hyperparameters()
-    _setup_model(...)
-    _train_batch(...)
-    _predict_batch(...)
-    _get_batch_size(...)
-    _subselect_batch(...)
+        _default_hash_hyperparameters()
+        _default_non_hash_hyperparameters()
+        _setup_model(...)
+        _get_pred_ops(...)
+        _build_data_feed_dict(...)
+        _get_batch_size(...)
+        _subselect_batch(...)
 
     Required only if generating (or augmenting) data on-the-fly during
     training:
-    generate_data(...)
+        generate_data(...)
 
     Required only if do_batch_predictions:
-    _combine_prediction_batches(...)
+        _combine_prediction_batches(...)
 
     Not required, but can provide additional helpful functionality:
-    _setup_training(...)
-    _update_valid_tensorboard_summaries
-    _update_visualizations(...)
+        _setup_training(...)
+        _update_valid_tensorboard_summaries(...)
+        _update_visualizations(...)
     '''
 
     def __init__(self, data_specs=None, **kwargs):
@@ -676,6 +677,22 @@ class RecurrentWhisperer(object):
              % sys._getframe().f_code.co_name)
 
     @classmethod
+    def parse_command_line(cls):
+        ''' Parse command-line hyperparameter arguments (or arguments from
+        higher-level shell script), and appropriately integrate them
+        overriding default hyperparameters.
+
+        Args:
+            None.
+
+        Returns:
+            Dict of hyperparameters.
+        '''
+        default_hps = cls.default_hyperparameters()
+        hps = Hyperparameters.parse_command_line(default_hps)
+        return hps
+
+    @classmethod
     def setup_hps(cls, hps_dict):
 
         return Hyperparameters(hps_dict,
@@ -849,7 +866,8 @@ class RecurrentWhisperer(object):
             self._setup_logger()
 
     def _setup_logger(self):
-        '''Setup logging. Redirects (nearly) all printed output to the log file.
+        '''Setup logging. Redirects (nearly) all printed output to the log
+        file.
 
         Some output slips through the cracks, notably the output produced with
         calling tf.session
@@ -1680,6 +1698,185 @@ class RecurrentWhisperer(object):
 
         return predictions, summary
 
+    def _train_batch(self, batch_data):
+        '''Runs one training step. This function must evaluate the following:
+
+        Args:
+            batch_data: dict containing one batch of training data. Key/value
+            pairs will be specific to the subclass implementation.
+
+        Returns:
+            predictions: dict containing model predictions based on data. Key/
+            value pairs will be specific to the subclass implementation.
+
+            summary: dict containing summary data from this training
+            step. Minimally, this includes the following key/val pairs:
+
+                'loss': scalar float evaluation of the loss function over the
+                data batch (i.e., an evaluation of self.loss).
+
+                'grad_global_norm': scalar float evaluation of the norm of the
+                gradient of the loss function with respect to all trainable
+                variables, taken over the data batch (i.e., an evaluation of
+                self.grad_global_norm).
+        '''
+        ops_to_eval = self._get_train_ops()
+        feed_dict = self._build_feed_dict(batch_data, 'train')
+        ev_ops = self.session.run(ops_to_eval, feed_dict=feed_dict)
+
+        if self.hps.do_save_tensorboard_summaries:
+
+            ev_merged_opt_summary = ev_ops['merged_opt_summary']
+
+            if self._epoch==0:
+                '''Hack to prevent throwing the vertical axis on the
+                Tensorboard figure for grad_norm_clip_val (grad_norm_clip val
+                is initialized to an enormous number to prevent clipping
+                before we know the scale of the gradients).'''
+                feed_dict[self.grad_norm_clip_val] = np.nan
+                ev_merged_opt_summary = \
+                    self.session.run(
+                        self.tensorboard['merged_opt_summary'],
+                        feed_dict)
+
+            self.tensorboard['writer'].add_summary(
+                ev_merged_opt_summary, self._step)
+
+        if self.hps.do_save_tensorboard_histograms:
+
+            self.tensorboard['writer'].add_summary(
+                ev_ops['merged_hist_summary'], self._step)
+
+        predictions = {}
+        summary = {
+            'loss': ev_ops['loss'],
+            'grad_global_norm': ev_ops['grad_global_norm']
+            }
+
+        return predictions, summary
+
+    def _get_train_ops(self):
+        ''' Get the minimal set of TF ops that must be run by _train_batch().
+        These are required for updating the model parameters (via SGD) and
+        updating Tensorboard accordingly.
+
+        Args:
+            None.
+
+        Returns:
+            dict with (string label, TF ops) as (key, value) pairs.
+        '''
+
+        ops = {
+            'loss': self.loss,
+            'train_op': self.train_op,
+            'grad_global_norm': self.grad_global_norm,
+        }
+
+        if self.hps.do_save_tensorboard_summaries:
+            ops['merged_opt_summary'] = \
+                self.tensorboard['merged_opt_summary']
+
+        if self.hps.do_save_tensorboard_histograms:
+            ops['merged_hist_summary'] = \
+                self.tensorboard['merged_hist_summary']
+
+        return ops
+
+    def _get_loss_ops(self):
+        return {'loss': self.loss}
+
+    def _build_feed_dict(self, data, train_or_predict_str):
+        ''' Builds the feed dict needed to evaluate the model in either
+        'train' or 'predict' mode.
+
+        Args:
+            train_or_predict_str: 'train' or 'predict', indicating which mode
+            of graph evaluation will be used.
+
+        Returns:
+            dict with (TF placeholder, feed value) as (key, value) pairs.
+
+
+        '''
+
+        self._assert_train_or_predict(train_or_predict_str)
+
+        feed_dict = {}
+
+        data_feed_dict = self._build_data_feed_dict(data)
+        feed_dict.update(data_feed_dict)
+
+        if train_or_predict_str=='train':
+
+            optimizer_feed_dict = self._build_optimizer_feed_dict(
+                learning_rate_scale=1.0)
+            feed_dict.update(optimizer_feed_dict)
+
+        return feed_dict
+
+    def _build_optimizer_feed_dict(self, learning_rate_scale=1.0):
+        ''' Build the feed_dict that provides the adaptive learning rate and
+        adaptive gradient clipping parameters.
+
+        Args:
+            learning_rate_scale (optional): positive float that can be used to
+            provide a batch-specific scaling of the learning rate (e.g., a
+            function of batch size--see application note below).
+
+        Returns:
+            dict with (TF placeholder, feed value) as (key, value) pairs.
+        '''
+
+
+        ''' Application note:
+
+        My typical usage had been: learning_rate_scale=np.sqrt(batch_size)
+        However upon revisiting the literature, it seems a linear scaling
+        may have more empirical justification (at least in feed-forward
+        networks).
+
+        "A bayesian perspective on generalization and stochastic gradient
+        descent," by Smith & Le, ICLR 2018.
+
+        "Don't decay the learning rate, increase the batch size"
+        by Smith et al, ICLR 2018.
+        (argues that equivalent performance can be achieved with fewer
+        parameter updates by increasing batch size during training,
+        while keeping learning rate constant-- all until batch size reaches
+        ~10% of the dataset, at which point learning rate decay is
+        recommended).
+
+        "Control batch size and learning rate to generalize well:
+        theoretical and empirical evidence", NeurIPS 2019.
+        (argues for keeping a "not too large" ratio of batch size to
+        learning rate).
+
+        "Accurate, Large Minibatch SGD: Training ImageNet in 1 Hour" by
+        Goyal et al (Facebook). https://arxiv.org/pdf/1706.02677.pdf
+        '''
+
+        feed_dict = {}
+        feed_dict[self.learning_rate] = \
+            self.adaptive_learning_rate() * learning_rate_scale
+        feed_dict[self.grad_norm_clip_val] = self.adaptive_grad_norm_clip()
+
+        return feed_dict
+
+    def _build_data_feed_dict(self, batch_data):
+        ''' Build the feed dict that provides data to the model.
+
+        Args:
+            batch_data: dict containing the data needed to build the feed dict.
+
+        Returns:
+            dict with (TF placeholder, feed value) as (key, value) pairs.
+
+        '''
+        raise StandardError(
+            '%s must be implemented by RecurrentWhisperer subclass'
+             % sys._getframe().f_code.co_name)
+
     def _update_learning_rate(self):
 
         self.adaptive_learning_rate.update(self.epoch_loss)
@@ -1754,43 +1951,6 @@ class RecurrentWhisperer(object):
         print('')
         self.timer.print()
         print('')
-
-    def _train_batch(self, batch_data):
-        '''Runs one training step. This function must evaluate the Tensorboard
-        summaries:
-            self.tensorboard['merged_opt_summary']
-            self.tensorboard['merged_hist_summary']
-
-        Args:
-            batch_data: dict containing one batch of training data. Key/value
-            pairs will be specific to the subclass implementation.
-
-        Returns:
-            predictions: dict containing model predictions based on data. Key/
-            value pairs will be specific to the subclass implementation.
-
-            summary: dict containing summary data from this training
-            step. Minimally, this includes the following key/val pairs:
-
-                'loss': scalar float evaluation of the loss function over the
-                data batch (i.e., an evaluation of self.loss).
-
-                'grad_global_norm': scalar float evaluation of the norm of the
-                gradient of the loss function with respect to all trainable
-                variables, taken over the data batch (i.e., an evaluation of
-                self.grad_global_norm).
-
-        Note:
-            Training predictions are never used by RecurrentWhisperer.
-            Thus, if your subclass does not use them, it is safe to return them
-            as None, which may reduce computation (although the predictions
-            often come almost for free when running both the forwards and
-            backwards passed through the model for gradient computations.
-
-        '''
-        raise StandardError(
-            '%s must be implemented by RecurrentWhisperer subclass'
-             % sys._getframe().f_code.co_name)
 
     def _is_training_complete(self, epoch_loss):
         '''Determines whether the training optimization procedure should
@@ -2016,6 +2176,12 @@ class RecurrentWhisperer(object):
                     version=version,
                     do_save=_do_save_visualizations(version))
 
+    def _assert_train_or_predict(self, train_or_predict_str):
+
+        assert train_or_predict_str in ['train', 'predict'], \
+            ('train_or_predict_str must be \'train\' or \'predict\', '
+            'but was %s' % train_or_predict_str)
+
     _batch_size_key = 'batch_size'
 
     # *************************************************************************
@@ -2118,6 +2284,38 @@ class RecurrentWhisperer(object):
             summary:  See docstring for predict().
         '''
 
+        ops = {}
+
+        pred_ops = self._get_pred_ops()
+        ops.update(pred_ops)
+
+        loss_ops = self._get_loss_ops()
+        ops.update(loss_ops)
+
+        feed_dict = self._build_data_feed_dict(batch_data)
+
+        ev_ops = self.session.run(ops, feed_dict=feed_dict)
+
+        predictions = {}
+        for key in pred_ops:
+            predictions[key] = ev_ops[key]
+
+        summary = {}
+        for key in loss_ops:
+            summary[key] = ev_ops[key]
+
+        return predictions, summary
+
+    def _get_pred_ops(self):
+        ''' Get the dict of TF ops to be evaluated with each forward pass
+        of the model. These are run by _predict_batch().
+
+        Args:
+            None.
+
+        Returns:
+            dict with (string label, TF ops) as (key, value) pairs.
+        '''
         raise StandardError(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
@@ -2145,7 +2343,8 @@ class RecurrentWhisperer(object):
 
     def generate_data(self, train_or_valid_str='train'):
         ''' Optionally generate data on-the-fly (e.g., during training), rather
-        than relying on fixed sets of training and validation data. This is only called by train(...) when called using train_data=None.
+        than relying on fixed sets of training and validation data. This is
+        only called by train(...) when called using train_data=None.
 
         Args:
             train_or_valid_str:
@@ -2157,7 +2356,8 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def _get_batch_size(self, batch_data):
+    @classmethod
+    def _get_batch_size(cls, batch_data):
         '''Returns the number of training examples in a batch of training data.
 
         Args:
@@ -2213,7 +2413,8 @@ class RecurrentWhisperer(object):
 
         return data_batches, batch_indices
 
-    def _subselect_batch(self, data, batch_idx):
+    @classmethod
+    def _subselect_batch(cls, data, batch_idx):
         ''' Subselect a batch of data given the batch indices.
 
         Args:
