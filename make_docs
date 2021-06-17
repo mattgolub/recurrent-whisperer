@@ -1,0 +1,8 @@
+# Usage: source make_docs
+# Note: bash make_docs will not work!
+pydoc -w ./RecurrentWhisperer.py
+pydoc -w ./Hyperparameters.py
+pydoc -w ./AdaptiveLearningRate.py
+pydoc -w ./AdaptiveGradNormClip.py
+pydoc -w ./Timer.py
+mv *.html ./documentation

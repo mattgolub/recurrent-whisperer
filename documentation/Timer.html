@@ -50,30 +50,7 @@ Please&nbsp;direct&nbsp;correspondence&nbsp;to&nbsp;mgolub@stanford.edu.</tt></p
 Example&nbsp;usage,&nbsp;using&nbsp;prospective&nbsp;splits&nbsp;(default):<br>
 &nbsp;<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Build&nbsp;a&nbsp;timer&nbsp;<a href="__builtin__.html#object">object</a>&nbsp;to&nbsp;profile&nbsp;three&nbsp;tasks.<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t&nbsp;=&nbsp;<a href="#Timer">Timer</a>(3)<br>
-&nbsp;<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t.<a href="#Timer-start">start</a>()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Start&nbsp;the&nbsp;timer&nbsp;(required).<br>
-&nbsp;<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;run_task_1()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Run&nbsp;task&nbsp;1&nbsp;of&nbsp;3.<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t1&nbsp;=&nbsp;t.<a href="#Timer-split">split</a>('Task&nbsp;1')&nbsp;&nbsp;#&nbsp;Measure&nbsp;time&nbsp;taken&nbsp;for&nbsp;task&nbsp;1.<br>
-&nbsp;<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;run_task_2()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Run&nbsp;task&nbsp;2&nbsp;of&nbsp;3.<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t2&nbsp;=&nbsp;t.<a href="#Timer-split">split</a>('Task&nbsp;2')&nbsp;&nbsp;#&nbsp;Measure&nbsp;time&nbsp;taken&nbsp;for&nbsp;task&nbsp;2.<br>
-&nbsp;<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;run_task_3()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Run&nbsp;task&nbsp;3&nbsp;of&nbsp;3.<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t3&nbsp;=&nbsp;t.<a href="#Timer-split">split</a>('Task&nbsp;3')&nbsp;&nbsp;#&nbsp;Measure&nbsp;time&nbsp;taken&nbsp;for&nbsp;task&nbsp;3.<br>
-&nbsp;<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t.<a href="#Timer-disp">disp</a>()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Print&nbsp;profile&nbsp;of&nbsp;timing.<br>
-&nbsp;<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--&gt;&nbsp;Total&nbsp;time:&nbsp;16.00s<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--&gt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Task&nbsp;1:&nbsp;2.00s&nbsp;(12.5%)<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--&gt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Task&nbsp;2:&nbsp;8.00s&nbsp;(50.0%)<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--&gt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Task&nbsp;3:&nbsp;6.00s&nbsp;(37.5%)<br>
-&nbsp;<br>
-Example&nbsp;usage,&nbsp;using&nbsp;retrospective&nbsp;splits:<br>
-&nbsp;<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Build&nbsp;a&nbsp;timer&nbsp;<a href="__builtin__.html#object">object</a>&nbsp;to&nbsp;profile&nbsp;three&nbsp;tasks.<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t&nbsp;=&nbsp;<a href="#Timer">Timer</a>(3,&nbsp;do_retrospective=True)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t&nbsp;=&nbsp;<a href="#Timer">Timer</a>(3,&nbsp;do_retrospective=False)<br>
 &nbsp;<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t.<a href="#Timer-start">start</a>()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Start&nbsp;the&nbsp;timer&nbsp;(optional).<br>
 &nbsp;<br>
@@ -89,15 +66,38 @@ Example&nbsp;usage,&nbsp;using&nbsp;retrospective&nbsp;splits:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t.<a href="#Timer-stop">stop</a>()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Stop&nbsp;the&nbsp;timer<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;(required&nbsp;to&nbsp;see&nbsp;split&nbsp;3&nbsp;time)<br>
 &nbsp;<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t.<a href="#Timer-disp">disp</a>()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Print&nbsp;profile&nbsp;of&nbsp;timing.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t.<a href="#Timer-print">print</a>()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Print&nbsp;profile&nbsp;of&nbsp;timing.<br>
 &nbsp;<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--&gt;&nbsp;Total&nbsp;time:&nbsp;16.00s<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--&gt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Task&nbsp;1:&nbsp;2.00s&nbsp;(12.5%)<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--&gt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Task&nbsp;2:&nbsp;8.00s&nbsp;(50.0%)<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--&gt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Task&nbsp;3:&nbsp;6.00s&nbsp;(37.5%)<br>
 &nbsp;<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Note&nbsp;that&nbsp;<a href="#Timer-split">split</a>()&nbsp;returns&nbsp;None&nbsp;with&nbsp;retrospective&nbsp;splits,&nbsp;as&nbsp;it<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Note&nbsp;that&nbsp;<a href="#Timer-split">split</a>()&nbsp;returns&nbsp;None&nbsp;with&nbsp;prospective&nbsp;splits,&nbsp;as&nbsp;it<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;cannot&nbsp;yet&nbsp;know&nbsp;the&nbsp;timing&nbsp;of&nbsp;the&nbsp;upcoming&nbsp;task.<br>
+&nbsp;<br>
+Example&nbsp;usage,&nbsp;using&nbsp;retrospective&nbsp;splits:<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Build&nbsp;a&nbsp;timer&nbsp;<a href="__builtin__.html#object">object</a>&nbsp;to&nbsp;profile&nbsp;three&nbsp;tasks.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t&nbsp;=&nbsp;<a href="#Timer">Timer</a>(3,&nbsp;do_retrospective=True)<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t.<a href="#Timer-start">start</a>()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Start&nbsp;the&nbsp;timer&nbsp;(required).<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;run_task_1()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Run&nbsp;task&nbsp;1&nbsp;of&nbsp;3.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t1&nbsp;=&nbsp;t.<a href="#Timer-split">split</a>('Task&nbsp;1')&nbsp;&nbsp;#&nbsp;Measure&nbsp;time&nbsp;taken&nbsp;for&nbsp;task&nbsp;1.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;run_task_2()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Run&nbsp;task&nbsp;2&nbsp;of&nbsp;3.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t2&nbsp;=&nbsp;t.<a href="#Timer-split">split</a>('Task&nbsp;2')&nbsp;&nbsp;#&nbsp;Measure&nbsp;time&nbsp;taken&nbsp;for&nbsp;task&nbsp;2.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;run_task_3()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Run&nbsp;task&nbsp;3&nbsp;of&nbsp;3.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t3&nbsp;=&nbsp;t.<a href="#Timer-split">split</a>('Task&nbsp;3')&nbsp;&nbsp;#&nbsp;Measure&nbsp;time&nbsp;taken&nbsp;for&nbsp;task&nbsp;3.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t.<a href="#Timer-print">print</a>()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#&nbsp;Print&nbsp;profile&nbsp;of&nbsp;timing.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--&gt;&nbsp;Total&nbsp;time:&nbsp;16.00s<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--&gt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Task&nbsp;1:&nbsp;2.00s&nbsp;(12.5%)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--&gt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Task&nbsp;2:&nbsp;8.00s&nbsp;(50.0%)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;--&gt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Task&nbsp;3:&nbsp;6.00s&nbsp;(37.5%)<br>
 &nbsp;<br>
 Outward&nbsp;facing&nbsp;usage&nbsp;is&nbsp;identical&nbsp;when&nbsp;the&nbsp;number&nbsp;of&nbsp;tasks&nbsp;to&nbsp;be&nbsp;timed&nbsp;is<br>
 not&nbsp;specified&nbsp;from&nbsp;the&nbsp;outset.&nbsp;However,&nbsp;this&nbsp;prevents&nbsp;<a href="#Timer">Timer</a>&nbsp;from<br>
@@ -119,6 +119,10 @@ Args:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Over-allocating&nbsp;(i.e.,&nbsp;requesting&nbsp;more&nbsp;splits&nbsp;than&nbsp;ultimately&nbsp;are<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;invoked)&nbsp;will&nbsp;not&nbsp;impact&nbsp;profiling&nbsp;(though&nbsp;may&nbsp;have&nbsp;memory<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;implications&nbsp;in&nbsp;extreme&nbsp;applications).&nbsp;Default:&nbsp;10.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_retrospective&nbsp;(optional):&nbsp;bool.&nbsp;Default:&nbsp;False.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do_print_single_line&nbsp;(optional):&nbsp;bool.&nbsp;Default:&nbsp;False.<br>
 &nbsp;<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;n_indent&nbsp;(optional):&nbsp;int&nbsp;specifying&nbsp;the&nbsp;number&nbsp;of&nbsp;indentation<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;to&nbsp;prefix&nbsp;into&nbsp;print&nbsp;statements.&nbsp;Useful&nbsp;when&nbsp;utilizing&nbsp;multiple<br>
@@ -145,7 +149,9 @@ Args:<br>
 Returns:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;float&nbsp;indicating&nbsp;the&nbsp;split&nbsp;time&nbsp;in&nbsp;seconds.</tt></dd></dl>
 
-<dl><dt><a name="Timer-print"><strong>print</strong></a>(self, n_indent<font color="#909090">=None</font>)</dt><dd><tt>Prints&nbsp;the&nbsp;profile&nbsp;of&nbsp;the&nbsp;tasks&nbsp;that&nbsp;have&nbsp;been&nbsp;timed&nbsp;thus&nbsp;far.<br>
+<dl><dt><a name="Timer-get_splits"><strong>get_splits</strong></a>(self)</dt><dd><tt>Returns&nbsp;a&nbsp;list&nbsp;of&nbsp;all&nbsp;completed&nbsp;split&nbsp;times.</tt></dd></dl>
+
+<dl><dt><a name="Timer-print"><strong>print</strong></a>(self, n_indent<font color="#909090">=None</font>, do_single_line<font color="#909090">=None</font>)</dt><dd><tt>Prints&nbsp;the&nbsp;profile&nbsp;of&nbsp;the&nbsp;tasks&nbsp;that&nbsp;have&nbsp;been&nbsp;timed&nbsp;thus&nbsp;far.<br>
 &nbsp;<br>
 Args:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;None.<br>
@@ -166,12 +172,32 @@ Returns:<br>
 <dl><dt><a name="Timer-stop"><strong>stop</strong></a>(self)</dt><dd><tt>Stops&nbsp;the&nbsp;timer,&nbsp;freezing&nbsp;total&nbsp;and&nbsp;split&nbsp;times.</tt></dd></dl>
 
 <hr>
+Class methods defined here:<br>
+<dl><dt><a name="Timer-run_tests"><strong>run_tests</strong></a>(cls)<font color="#909090"><font face="helvetica, arial"> from <a href="__builtin__.html#type">__builtin__.type</a></font></font></dt><dd><tt>See&nbsp;docstring&nbsp;to&nbsp;<a href="#Timer-test">test</a>(...).<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;None.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;None.</tt></dd></dl>
+
+<dl><dt><a name="Timer-test"><strong>test</strong></a>(cls, times, do_retrospective<font color="#909090">=False</font>, verbose<font color="#909090">=False</font>, tol_seconds<font color="#909090">=0.001</font>, tol_stddev_seconds<font color="#909090">=0.0005</font>)<font color="#909090"><font face="helvetica, arial"> from <a href="__builtin__.html#type">__builtin__.type</a></font></font></dt><dd><tt>Test&nbsp;the&nbsp;<a href="#Timer">Timer</a>&nbsp;class&nbsp;by&nbsp;timing&nbsp;calls&nbsp;to&nbsp;time.sleep(times[i]).<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;times:&nbsp;list&nbsp;of&nbsp;(nonnegative)&nbsp;times&nbsp;to&nbsp;measure.<br>
+&nbsp;<br>
+Returns:&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;the&nbsp;<a href="#Timer">Timer</a>&nbsp;<a href="__builtin__.html#object">object</a>&nbsp;used&nbsp;in&nbsp;the&nbsp;timing&nbsp;simultion.</tt></dd></dl>
+
+<hr>
 Data descriptors defined here:<br>
 <dl><dt><strong>__dict__</strong></dt>
 <dd><tt>dictionary&nbsp;for&nbsp;instance&nbsp;variables&nbsp;(if&nbsp;defined)</tt></dd>
 </dl>
 <dl><dt><strong>__weakref__</strong></dt>
 <dd><tt>list&nbsp;of&nbsp;weak&nbsp;references&nbsp;to&nbsp;the&nbsp;object&nbsp;(if&nbsp;defined)</tt></dd>
+</dl>
+<dl><dt><strong>total_time</strong></dt>
 </dl>
 </td></tr></table></td></tr></table><p>
 <table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
