@@ -883,7 +883,7 @@ class Hyperparameters(object):
                 pass
             else:
                 error_msg += str('\t\'%s\' is not a valid hyperparameter '
-                    '(has no specified default).\n' % violating_key)
+                    '(has no specified default).\n' % key)
                 do_raise = True
 
         if do_raise:
