@@ -1260,6 +1260,7 @@ class RecurrentWhisperer(object):
         '''
 
         if self.hps.do_save_tensorboard_histograms:
+            # Create histograms for all trainable variables
             hist_ops = {}
             for v in self.trainable_variables:
                 hist_ops[v.name] = v
@@ -1720,9 +1721,21 @@ class RecurrentWhisperer(object):
                 variables, taken over the data batch (i.e., an evaluation of
                 self.grad_global_norm).
         '''
-        ops_to_eval = self._get_train_ops()
+        ops = {}
+
+        # The forward-pass ops
+        summary_ops = self._get_summary_ops()
+        ops.update(summary_ops)
+
+        pred_ops = self._get_pred_ops()
+        ops.update(pred_ops)
+
+        # The backward-pass ops
+        train_ops = self._get_train_ops()
+        ops.update(train_ops)
+
         feed_dict = self._build_feed_dict(batch_data, 'train')
-        ev_ops = self.session.run(ops_to_eval, feed_dict=feed_dict)
+        ev_ops = self.session.run(ops, feed_dict=feed_dict)
 
         if self.hps.do_save_tensorboard_summaries:
 
@@ -1748,15 +1761,19 @@ class RecurrentWhisperer(object):
                 ev_ops['merged_hist_summary'], self._step)
 
         predictions = {}
-        summary = {
-            'loss': ev_ops['loss'],
-            'grad_global_norm': ev_ops['grad_global_norm']
-            }
+        for key in pred_ops:
+            predictions[key] = ev_ops[key]
+
+        summary = {}
+        for key in summary_ops:
+            summary[key] = ev_ops[key]
+
+        summary['grad_global_norm'] = ev_ops['grad_global_norm']
 
         return predictions, summary
 
     def _get_train_ops(self):
-        ''' Get the minimal set of TF ops that must be run by _train_batch().
+        ''' Get the TF ops that result from a backward pass through the model.
         These are required for updating the model parameters (via SGD) and
         updating Tensorboard accordingly.
 
@@ -1766,9 +1783,7 @@ class RecurrentWhisperer(object):
         Returns:
             dict with (string label, TF ops) as (key, value) pairs.
         '''
-
         ops = {
-            'loss': self.loss,
             'train_op': self.train_op,
             'grad_global_norm': self.grad_global_norm,
         }
@@ -1783,7 +1798,9 @@ class RecurrentWhisperer(object):
 
         return ops
 
-    def _get_loss_ops(self):
+    def _get_summary_ops(self):
+        # Don't include anything here that requires a backward pass through
+        # the model (e.g., anything related to gradients)
         return {'loss': self.loss}
 
     def _build_feed_dict(self, data, train_or_predict_str):
@@ -2289,8 +2306,8 @@ class RecurrentWhisperer(object):
         pred_ops = self._get_pred_ops()
         ops.update(pred_ops)
 
-        loss_ops = self._get_loss_ops()
-        ops.update(loss_ops)
+        summary_ops = self._get_summary_ops()
+        ops.update(summary_ops)
 
         feed_dict = self._build_data_feed_dict(batch_data)
 
@@ -2301,7 +2318,7 @@ class RecurrentWhisperer(object):
             predictions[key] = ev_ops[key]
 
         summary = {}
-        for key in loss_ops:
+        for key in summary_ops:
             summary[key] = ev_ops[key]
 
         return predictions, summary
