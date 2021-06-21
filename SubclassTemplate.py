@@ -239,3 +239,23 @@ class SubclassTemplate(RecurrentWhisperer):
         '''
         print('\tGenerating %s %s visualizations.' %
             (version.upper(), train_or_valid_str))
+
+        ''' RecurrentWhisperer will save your figures in the run directory and
+        will log them in Tensorboard (as desired per hyperparameter settings).
+        To leverage this functionality, just create your figures like so:
+
+            FIG_WIDTH = 6 # inches
+            FIG_HEIGHT = 6 # inches
+
+            fig = self._get_fig('your_figure_title',
+                width=FIG_WIDTH,
+                height=FIG_HEIGHT)
+
+            # Now generate your visualization on fig
+
+        This will create a new figure if one doesn't exist, or grab the figure
+        if it was already created. This convention allows the same
+        visualization plotted at various points throughout optimization to be
+        placed on the same figure, to be saved to the same filename, and to be
+        logged to the same Tensorboard image.
+        '''

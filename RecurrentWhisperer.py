@@ -422,7 +422,7 @@ class RecurrentWhisperer(object):
                 # Each of these will create run_dir if it doesn't exist
                 # (do not move above the os.path.isdir check that is in
                 # _setup_run_dir)
-                self._maybe_setup_tensorboard_summaries()
+                self._setup_tensorboard()
                 self.timer.split('_setup_tensorboard')
 
                 self._setup_savers()
@@ -1229,7 +1229,7 @@ class RecurrentWhisperer(object):
     # Tensorboard *************************************************************
     # *************************************************************************
 
-    def _maybe_setup_tensorboard_summaries(self):
+    def _setup_tensorboard(self):
         '''Sets up the Tensorboard FileWriter and graph. Optionally sets up
         Tensorboard Summaries. Tensorboard Images are not setup here (see
         _update_tensorboard_images()).
@@ -1249,6 +1249,9 @@ class RecurrentWhisperer(object):
         if self.hps.do_save_tensorboard_summaries:
             self._setup_tensorboard_summaries()
 
+        if self.hps.do_save_tensorboard_histograms:
+            self._setup_tensorboard_histograms()
+
     def _setup_tensorboard_summaries(self):
         '''Sets up Tensorboard summaries for monitoring the optimization.
 
@@ -1258,29 +1261,52 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-
-        if self.hps.do_save_tensorboard_histograms:
-            # Create histograms for all trainable variables
-            hist_ops = {}
-            for v in self.trainable_variables:
-                hist_ops[v.name] = v
-            self.tensorboard['merged_hist_summary'] = \
-                self._build_merged_tensorboard_summaries(
-                    scope='model',
-                    ops_dict=hist_ops,
-                    summary_fcn=tf.summary.histogram)
-
         self.tensorboard['merged_opt_summary'] = \
             self._build_merged_tensorboard_summaries(
                 scope='tb-optimizer',
-                ops_dict={
-                    'loss': self.loss,
-                    'lvl': self.records['ops']['lvl'],
-                    'learning_rate': self.learning_rate,
-                    'grad_global_norm': self.grad_global_norm,
-                    'grad_norm_clip_val': self.grad_norm_clip_val,
-                    'clipped_grad_global_norm': self.clipped_grad_global_norm,
-                    'grad_clip_diff': self.clipped_grad_norm_diff})
+                ops_dict=self._get_tensorboard_summary_ops())
+
+    def _get_tensorboard_summary_ops(self):
+        ''' Returns a string-keyed dict of scalar TF ops to be logged by
+        Tensorboard throughout the optimization.
+
+        Args:
+            None.
+
+        Returns:
+            Dict with strings as keys and scalar TF ops as values.
+        '''
+        return {
+            'loss': self.loss,
+            'lvl': self.records['ops']['lvl'],
+            'learning_rate': self.learning_rate,
+            'grad_global_norm': self.grad_global_norm,
+            'grad_norm_clip_val': self.grad_norm_clip_val,
+            'clipped_grad_global_norm': self.clipped_grad_global_norm,
+            'grad_clip_diff': self.clipped_grad_norm_diff
+            }
+
+    def _setup_tensorboard_histograms(self):
+        '''Sets up Tensorboard histograms for monitoring all trainable
+        variables throughout the optimization.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+        hist_ops = {}
+
+        # Build string-keyed dict of trainable_variables
+        for v in self.trainable_variables:
+            hist_ops[v.name] = v
+
+        self.tensorboard['merged_hist_summary'] = \
+            self._build_merged_tensorboard_summaries(
+                scope='model',
+                ops_dict=hist_ops,
+                summary_fcn=tf.summary.histogram)
 
     def _build_merged_tensorboard_summaries(self, scope, ops_dict,
         summary_fcn=tf.summary.scalar):
@@ -1308,6 +1334,53 @@ class RecurrentWhisperer(object):
                 summaries.append(summary_fcn(name, op))
 
         return tf.summary.merge(summaries)
+
+    def _update_train_tensorboard(self, feed_dict, ev_ops):
+        ''' Updates Tensorboard based on a pass through a single-batch of
+        training data.
+
+        Args:
+            feed_dict:
+
+            ev_ops:
+
+        Returns:
+            None.
+        '''
+        if self.hps.do_save_tensorboard_summaries:
+
+            ev_merged_opt_summary = ev_ops['merged_opt_summary']
+
+            if self._epoch==0:
+                '''Hack to prevent throwing the vertical axis on the
+                Tensorboard figure for grad_norm_clip_val (grad_norm_clip val
+                is initialized to an enormous number to prevent clipping
+                before we know the scale of the gradients).'''
+                feed_dict[self.grad_norm_clip_val] = np.nan
+                ev_merged_opt_summary = \
+                    self.session.run(
+                        self.tensorboard['merged_opt_summary'],
+                        feed_dict)
+
+            self.tensorboard['writer'].add_summary(
+                ev_merged_opt_summary, self._step)
+
+        if self.hps.do_save_tensorboard_histograms:
+
+            self.tensorboard['writer'].add_summary(
+                ev_ops['merged_hist_summary'], self._step)
+
+    def _update_valid_tensorboard(self, valid_summary):
+        ''' Updates Tensorboard based on a pass through the validation data.
+
+        Args:
+            valid_summary: dict returned by predict().
+
+        Returns:
+            None.
+        '''
+        if self.hps.do_save_tensorboard_summaries:
+            self._update_valid_tensorboard_summaries(valid_summary)
 
     def _update_valid_tensorboard_summaries(self, valid_summary):
         '''Updates the Tensorboard summaries corresponding to the validation
@@ -1737,28 +1810,7 @@ class RecurrentWhisperer(object):
         feed_dict = self._build_feed_dict(batch_data, 'train')
         ev_ops = self.session.run(ops, feed_dict=feed_dict)
 
-        if self.hps.do_save_tensorboard_summaries:
-
-            ev_merged_opt_summary = ev_ops['merged_opt_summary']
-
-            if self._epoch==0:
-                '''Hack to prevent throwing the vertical axis on the
-                Tensorboard figure for grad_norm_clip_val (grad_norm_clip val
-                is initialized to an enormous number to prevent clipping
-                before we know the scale of the gradients).'''
-                feed_dict[self.grad_norm_clip_val] = np.nan
-                ev_merged_opt_summary = \
-                    self.session.run(
-                        self.tensorboard['merged_opt_summary'],
-                        feed_dict)
-
-            self.tensorboard['writer'].add_summary(
-                ev_merged_opt_summary, self._step)
-
-        if self.hps.do_save_tensorboard_histograms:
-
-            self.tensorboard['writer'].add_summary(
-                ev_ops['merged_hist_summary'], self._step)
+        self._update_train_tensorboard(feed_dict, ev_ops)
 
         predictions = {}
         for key in pred_ops:
@@ -2657,6 +2709,26 @@ class RecurrentWhisperer(object):
         print('\tGenerating %s %s visualizations.' %
             (version.upper(), train_or_valid_str))
 
+        ''' RecurrentWhisperer will save your figures in the run directory and
+        will log them in Tensorboard (as desired per hyperparameter settings).
+        To leverage this functionality, just create your figures like so:
+
+            FIG_WIDTH = 6 # inches
+            FIG_HEIGHT = 6 # inches
+
+            fig = self._get_fig('your_figure_title',
+                width=FIG_WIDTH,
+                height=FIG_HEIGHT)
+
+            # Now generate your visualization on fig
+
+        This will create a new figure if one doesn't exist, or grab the figure
+        if it was already created. This convention allows the same
+        visualization plotted at various points throughout optimization to be
+        placed on the same figure, to be saved to the same filename, and to be
+        logged to the same Tensorboard image.
+        '''
+
     def _maybe_update_visualizations_pretraining(self,
         train_data, valid_data):
 
@@ -3475,8 +3547,8 @@ class RecurrentWhisperer(object):
                     version=version,
                     is_final=is_final)
 
-            if self.hps.do_save_tensorboard_summaries:
-                self._update_valid_tensorboard_summaries(valid_summary)
+            self._update_valid_tensorboard(valid_summary)
+
         else:
             valid_pred = valid_summary = None
 
