@@ -1634,8 +1634,8 @@ class RecurrentWhisperer(object):
 
             self._initialize_epoch()
 
-            # Profiling for data prep is managed elsewhere.
-            # It's complicated in the case of on-the-fly data generation.
+            # Profiling for data prep is managed elsewhere
+            # (it's complicated in the case of on-the-fly data generation)
             epoch_train_data = self._prepare_epoch_data(train_data)
 
             train_pred, train_summary = self._train_epoch(epoch_train_data)
@@ -1670,9 +1670,6 @@ class RecurrentWhisperer(object):
 
         self.timer.split('train')
 
-        # There's an opportunity to save a call to predict in _close_training()
-        # for the seso model--just pass it the train predictions from the last
-        # epoch. Future work.
         epoch_train_data = self._prepare_epoch_data(train_data)
         self._close_training(epoch_train_data, valid_data)
 
@@ -2798,7 +2795,10 @@ class RecurrentWhisperer(object):
 
         print('\tSaving %s visualizations.' % version.upper())
 
-        for fig_name, fig in figs.iteritems():
+        fig_names= figs.keys()
+        fig_names.sort()
+
+        for fig_name in fig_names:
 
             self._visualizations_timer.split('Saving: %s' % fig_name)
 
@@ -2812,6 +2812,7 @@ class RecurrentWhisperer(object):
             if not os.path.isdir(figs_dir_i):
                 os.makedirs(figs_dir_i)
 
+            fig = figs[fig_name]
             fig.savefig(file_path,
                 bbox_inches='tight',
                 format=hps.fig_filetype,
