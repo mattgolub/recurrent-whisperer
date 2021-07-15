@@ -38,6 +38,7 @@ import matplotlib.pyplot as plt
 from AdaptiveLearningRate import AdaptiveLearningRate
 from AdaptiveGradNormClip import AdaptiveGradNormClip
 from Hyperparameters import Hyperparameters
+from EpochResults import EpochResults
 from Timer import Timer
 
 class RecurrentWhisperer(object):
@@ -171,6 +172,19 @@ class RecurrentWhisperer(object):
                 predictions in batches, or all in a single evaluation of the
                 TF graph. This may be required for GPU/CPU memory management
                 in large models or for large datasets. Default: False.
+
+                do_train_mode_predict_on_train_data: bool indicating how to
+                operate the model when running training data through a forward
+                pass. Default: False.
+                    True --> operate in "train mode", i.e., the same mode that
+                    is used when computing gradient steps (forward+backward
+                    pass). Train mode may include injecting noise or sampling
+                    steps, which can act as a regularizer during training.
+                    False --> operate in "predict mode", which typically has
+                    noise sources turned off.
+                 This is relevant for LTL predictions/summaries/visualization.
+                 See kwarg: do_train_mode in predict() (and use it in your
+                 implementation of _predict_batch(), if desired).
 
                 max_n_epochs_without_lvl_improvement: int specifying
                 optimization termination criteria on the number of training
@@ -555,6 +569,7 @@ class RecurrentWhisperer(object):
             'max_n_epochs_without_lvl_improvement': 200,
 
             'do_batch_predictions': False,
+            'do_train_mode_predict_on_train_data': False,
 
             'do_log_output': False,
             'do_restart_run': False,
@@ -1615,7 +1630,8 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        self._setup_training(train_data, valid_data)
+        epoch_train_data = self._prepare_epoch_data(train_data)
+        self._setup_training(epoch_train_data, valid_data)
         self.timer.split('_setup_training')
 
         if self._is_training_complete(self._ltl):
@@ -1623,43 +1639,60 @@ class RecurrentWhisperer(object):
             # and do not save a new checkpoint.
             return
 
-        self._maybe_update_visualizations_pretraining(train_data, valid_data)
-        self.timer.split('_init_visualizations')
+        self._maybe_update_visualizations_pretraining(
+            epoch_train_data, valid_data)
+
+        # To do:
+        # self._maybe_save_init_checkpoint()
+        # -- Make sure to only save if self.epoch==0 (in case of restore)
+        # -- This will encompass above visualizations
+        self.timer.split('init_ckpt')
 
         # Training loop
         print('Entering training loop.')
-        done = False
 
+        done = False
         while not done:
 
             self._initialize_epoch()
 
-            # Profiling for data prep is managed elsewhere
-            # (it's complicated in the case of on-the-fly data generation)
+            ''' Profiling for data prep is managed elsewhere. Timer starts in
+            _initialize_epoch() and stops at start of _train_epoch().
+            It's complicated by the case of on-the-fly data generation. '''
             epoch_train_data = self._prepare_epoch_data(train_data)
 
+            # Use a helper class to organize predictions and prediction
+            # summaries from this epoch. This initialization does not perform
+            # any computation.
+            self._epoch_results = EpochResults(
+                model=self,
+                train_data=epoch_train_data,
+                valid_data=valid_data,
+                do_batch=self.hps.do_batch_predictions,
+                is_final=False)
+
             train_pred, train_summary = self._train_epoch(epoch_train_data)
+
+            self._epoch_results.set(
+                predictions=train_pred,
+                summary=train_summary,
+                dataset='train',
+                do_train_mode=True,)
+
             self._epoch_timer.split('train')
 
             self._maybe_save_seso_checkpoint()
             self._epoch_timer.split('seso')
 
-            self._maybe_save_ltl_checkpoint(train_pred, train_summary)
+            self._maybe_save_ltl_checkpoint()
             self._epoch_timer.split('ltl')
 
-            valid_pred, valid_summary = self._maybe_save_lvl_checkpoint(
-                valid_data=valid_data,
-                train_pred=train_pred,
-                train_summary=train_summary)
+            self._maybe_save_lvl_checkpoint()
             self._epoch_timer.split('lvl')
 
             self._maybe_update_visualizations(
-                train_data=epoch_train_data,
-                train_pred=train_pred,
-                train_summary=train_summary,
+                train_data=train_data,
                 valid_data=valid_data,
-                valid_pred=valid_pred,
-                valid_summary=valid_summary,
                 version='seso')
             self._epoch_timer.split('visualize')
 
@@ -1670,9 +1703,7 @@ class RecurrentWhisperer(object):
 
         self.timer.split('train')
 
-        epoch_train_data = self._prepare_epoch_data(train_data)
         self._close_training(epoch_train_data, valid_data)
-
         self.timer.split('_close_training')
 
         self._print_run_summary()
@@ -2119,7 +2150,10 @@ class RecurrentWhisperer(object):
         training.'''
         self._save_done_file()
 
+        # This one MUST come first (avoids an unnecessary restore since
+        # the model is currently the SESO model)
         self.save_final_results(train_data, valid_data, version='seso')
+
         self.save_final_results(train_data, valid_data, version='lvl')
         self.save_final_results(train_data, valid_data, version='ltl')
 
@@ -2142,11 +2176,11 @@ class RecurrentWhisperer(object):
                 return False
 
             if version == 'seso':
-                return self.hps.do_generate_final_visualizations
+                return hps.do_generate_final_visualizations
             elif version == 'lvl':
                 return False
             elif version == 'ltl':
-                return self.hps.do_generate_ltl_visualizations
+                return hps.do_generate_ltl_visualizations
 
         def _do_valid_visualizations(version, data):
 
@@ -2154,9 +2188,9 @@ class RecurrentWhisperer(object):
                 return False
 
             if version == 'seso':
-                return self.hps.do_generate_final_visualizations
+                return hps.do_generate_final_visualizations
             elif version == 'lvl':
-                return self.hps.do_generate_lvl_visualizations
+                return hps.do_generate_lvl_visualizations
             elif version == 'ltl':
                 return False
 
@@ -2182,7 +2216,6 @@ class RecurrentWhisperer(object):
 
         def _do_save_visualizations(version):
 
-            hps = self.hps
             if version == 'seso':
                 return hps.do_save_final_visualizations
             elif version == 'ltl':
@@ -2190,6 +2223,7 @@ class RecurrentWhisperer(object):
             elif version == 'lvl':
                 return hps.do_save_lvl_visualizations
 
+        hps = self.hps
         self._assert_ckpt_version(version)
 
         do_train_pred = _do_train_predictions(version, train_data)
@@ -2205,42 +2239,60 @@ class RecurrentWhisperer(object):
             # (train_data=None, valid_data=None)
             return
 
-        if version in ['ltl' or 'lvl']:
+        if version == 'seso':
+            # Avoid redundant computation in certain cases by leveraging
+            # existing self._epoch_results. This relies critically on this
+            # call to save_final_results() being ahead of subsequent calls
+            # that restore a different model version (e.g., 'ltl', 'lvl').
+            # Otherwise the current self._epoch_results will not contain
+            # the desired (or correct?) results. Careful. There is a similar
+            # warning comment where this this call originates.
+            pass
+        elif version in ['ltl' or 'lvl']:
             self.restore_from_checkpoint(version)
+
+            # In this case, all results will be computed anew. So results
+            # could be just computed directly via predict(). But using
+            # EpochResults facilitates the seso case above, where redundant
+            # computation can be avoided in some cases.
+            self._epoch_results = EpochResults(
+                model=self,
+                train_data=train_data,
+                valid_data=valid_data,
+                do_batch=hps.do_batch_predictions,
+                is_final=True)
 
         if do_train_pred or do_train_vis:
 
-            train_pred, train_summary = self.predict(train_data,
-                train_or_valid_str='train',
-                is_final=True)
+            train_pred, train_summary = self._epoch_results.get(
+                dataset='train',
+                do_train_mode=hps.do_train_mode_predict_on_train_data)
 
             if do_train_pred:
                 self._save_pred(train_pred, 'train', version=version)
                 self._save_summary(train_summary, 'train', version=version)
 
             if do_train_vis:
-                self.update_visualizations(
-                    train_data=train_data,
-                    train_pred=train_pred,
-                    version=version,
-                    do_save=_do_save_visualizations(version))
+                self._update_visualizations(
+                    train_data, train_pred, 'train',version=version)
 
         if do_valid_pred or do_valid_vis:
 
-            valid_pred, valid_summary = self.predict(valid_data,
-                train_or_valid_str='valid',
-                is_final=True)
+            valid_pred, valid_summary = self._epoch_results.get(
+                dataset='valid', do_train_mode=False)
 
             if do_valid_pred:
                 self._save_pred(valid_pred, 'valid', version=version)
                 self._save_summary(valid_summary, 'valid', version=version)
 
             if do_valid_vis:
-                self.update_visualizations(
-                    valid_data=valid_data,
-                    valid_pred=valid_pred,
-                    version=version,
-                    do_save=_do_save_visualizations(version))
+                self._update_visualizations(
+                    valid_data, valid_pred, 'valid',version=version)
+
+        if (do_train_vis and _do_save_visualizations(version)) or \
+            (do_valid_vis and _do_save_visualizations(version)):
+
+            self.save_visualizations(version=version)
 
     def _assert_train_or_predict(self, train_or_predict_str):
 
@@ -2255,7 +2307,7 @@ class RecurrentWhisperer(object):
     # *************************************************************************
 
     def predict(self, data,
-        train_or_valid_str='valid',
+        do_train_mode=False,
         do_batch=None,
         is_final=False):
         ''' Runs a forward pass through the model using given input data. If
@@ -2266,15 +2318,16 @@ class RecurrentWhisperer(object):
             data: dict containing requisite data for generating predictions.
             Key/value pairs will be specific to the subclass implementation.
 
-            train_or_valid_str (optional): either 'train' or 'valid',
-            indicating whether data contains training data or validation data,
-            respectively. This can be used to modulate the behavior of
-            _predict_batch(). Default: 'valid'.
+            do_train_mode (optional): bool indicating whether run the forward
+            pass in "train mode", i.e., the same mode that is used when
+            computing gradient steps. E.g., train mode may include injecting
+            noise or sampling steps, which can act as a regularizer during
+            training. Default: False.
 
             do_batch (optional): bool indicating whether to split data into
             batches and then sequentially process those batches. This can be
             important for large models and/or large datasets relative to
-            memory resources. Default: falls back to hps.do_batch_predictions.
+            memory resources. Default: hps.do_batch_predictions.
 
             is_final (optional, advanced): bool indicating whether the model
             state is LTL, LVL, or similar. This option is not used in
@@ -2298,6 +2351,11 @@ class RecurrentWhisperer(object):
         predictions.
         '''
 
+        if do_train_mode:
+            mode_str = ' (TRAIN MODE)'
+        else:
+            mode_str = ''
+
         if do_batch is None:
             do_batch = self.hps.do_batch_predictions
 
@@ -2311,11 +2369,11 @@ class RecurrentWhisperer(object):
 
                 batch_size = self._get_batch_size(batch_data)
 
-                print('\tPredict: %s batch %d of %d (%d trials)'
-                      % (train_or_valid_str, cnt+1, n_batches, batch_size))
+                print('\tPredict%s: batch %d of %d (%d trials)'
+                      % (mode_str, cnt+1, n_batches, batch_size))
 
-                batch_pred, batch_summary = self._predict_batch(
-                    batch_data, train_or_valid_str=train_or_valid_str)
+                batch_pred, batch_summary = self._predict_batch(batch_data,
+                    do_train_mode=do_train_mode)
 
                 pred_list.append(batch_pred)
                 summary_list.append(batch_summary)
@@ -2324,15 +2382,15 @@ class RecurrentWhisperer(object):
                 pred_list, summary_list, batch_indices)
 
         else:
-            predictions, summary = self._predict_batch(
-                data, train_or_valid_str=train_or_valid_str)
+            predictions, summary = self._predict_batch(data,
+                do_train_mode=do_train_mode)
 
         assert ('loss' in summary),\
             ('summary must minimally contain key: \'loss\', but does not.')
 
         return predictions, summary
 
-    def _predict_batch(self, batch_data, train_or_valid_str='valid'):
+    def _predict_batch(self, batch_data, do_train_mode=False):
         ''' Runs a forward pass through the model using a single batch of data.
 
         Args:
@@ -2340,9 +2398,11 @@ class RecurrentWhisperer(object):
             predictions. Key/value pairs will be specific to the subclass
             implementation.
 
-            train_or_valid_str (optional): either 'train' or 'valid',
-            indicating whether data contains training data or validation data,
-            respectively. Default: 'valid'.
+            do_train_mode (optional): bool indicating whether run the forward
+            pass in "train mode", i.e., the same mode that is used when
+            computing gradient steps. E.g., train mode may include injecting
+            noise or sampling steps, which can act as a regularizer during
+            training. Default: False.
 
         Returns:
             predictions: See docstring for predict().
@@ -2449,10 +2509,11 @@ class RecurrentWhisperer(object):
             data_batches: list of dicts, where each dict contains one batch of
             data.
 
-            batch_indices: list, where each element, idx_list[i], is a list of
-            the trial indices for the corresponding batch of data in data_list[
-            i]. This is used to recombine the trials back into their original
-            (i.e., pre-batching) order by _combine_prediction_batches().
+            batch_indices: list, where each element, batch_indices[i], is a list
+            of the trial indices for the corresponding batch of data in
+            data_batches[i]. This is used to recombine the trials back into
+            their original (i.e., pre-batching) order by
+            _combine_prediction_batches().
         '''
 
         n_trials = self._get_batch_size(data)
@@ -2496,7 +2557,8 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def _combine_prediction_batches(self, pred_list, summary_list, idx_list):
+    def _combine_prediction_batches(self,
+        pred_list, summary_list, batch_indices):
         ''' Combines predictions and summaries across multiple batches. This is
         required by _train_epoch(...) and predict(...), which first split data
         into multiple batches before sequentially calling _train_batch(...) or
@@ -2508,6 +2570,9 @@ class RecurrentWhisperer(object):
 
             summary_list: list of summary dicts, each generated by
             _predict_batch(...).
+
+            batch_indices: list of trial index lists, as returned by
+            _split_data_into_batches(...).
 
         Returns:
             pred: a single prediction dict containing the combined predictions
@@ -2723,7 +2788,8 @@ class RecurrentWhisperer(object):
         if it was already created. This convention allows the same
         visualization plotted at various points throughout optimization to be
         placed on the same figure, to be saved to the same filename, and to be
-        logged to the same Tensorboard image.
+        logged to the same Tensorboard image. Figure saving and Tensorboard
+        logging are handled downstream of this function.
         '''
 
     def _maybe_update_visualizations_pretraining(self,
@@ -2732,20 +2798,19 @@ class RecurrentWhisperer(object):
         # Visualizations generated from untrained network
         if self._do_update_pretraining_visualizations:
 
-            epoch_train_data = self._prepare_epoch_data(train_data)
-            train_pred, train_summary = self.predict(epoch_train_data,
-                train_or_valid_str='train',
+            train_pred, train_summary = self.predict(train_data,
+                do_train_mode=self.hps.do_train_mode_predict_on_train_data,
                 is_final=False)
 
-            if valid_data:
+            if valid_data is not None:
                 valid_pred, valid_summary = self.predict(valid_data,
-                    train_or_valid_str='valid',
+                    do_train_mode=False,
                     is_final=False)
             else:
                 valid_pred = valid_summary = None
 
             self.update_visualizations(
-                train_data=epoch_train_data,
+                train_data=train_data,
                 train_pred=train_pred,
                 train_summary=train_summary,
                 valid_data=valid_data,
@@ -2754,7 +2819,9 @@ class RecurrentWhisperer(object):
                 version='seso',
                 do_save=self.hps.do_save_pretraining_visualizations)
 
-    def _maybe_update_visualizations(self, **kwargs):
+    def _maybe_update_visualizations(self, train_data,
+        valid_data=None,
+        version='seso'):
         '''Updates visualizations if the current epoch number indicates that
         an update is due. Saves those visualization to Tensorboard or to
         individual figure files, depending on hyperparameters
@@ -2763,25 +2830,35 @@ class RecurrentWhisperer(object):
 
         Args:
             train_data:
-            train_pred:
-            train_summary:
             valid_data:
-            valid_pred:
-            valid_summary:
             version:
 
         Returns:
             None.
         '''
 
-        if self._do_update_pretraining_visualizations:
-            do_save = self.hps.do_save_pretraining_visualizations
-        elif self._do_update_training_visualizations:
-            do_save = self.hps.do_save_training_visualizations
-        else:
-            return
+        if self._do_update_training_visualizations:
 
-        self.update_visualizations(do_save=do_save, **kwargs)
+            do_save = self.hps.do_save_training_visualizations
+            train_pred, train_summary = self._epoch_results.get(
+                dataset='train',
+                do_train_mode=self.hps.do_train_mode_predict_on_train_data)
+
+            if valid_data is not None:
+                valid_pred, valid_summary = self._epoch_results.get(
+                    dataset='valid', do_train_mode=False)
+            else:
+                valid_pred = valid_summary = None
+
+            self.update_visualizations(
+                train_data=train_data,
+                train_pred=train_pred,
+                train_summary=train_summary,
+                valid_data=valid_data,
+                valid_pred=valid_pred,
+                valid_summary=valid_summary,
+                version=version,
+                do_save=do_save)
 
     def _save_figs(self,
         figs=None, # optionally pass in a subset of self.figs
@@ -3470,18 +3547,18 @@ class RecurrentWhisperer(object):
         if self._do_save_seso_checkpoint:
             self._save_checkpoint(version='seso')
 
-    def _maybe_save_ltl_checkpoint(self, train_pred, train_summary):
+    def _maybe_save_ltl_checkpoint(self):
         ''' Saves a model checkpoint if the current training loss is lower than
         all previously evaluated training losses.
 
         Args:
-            train_pred and train_summary: dicts as returned by
-            predict(train_data).
+            None.
 
         Returns:
             None.
         '''
 
+        hps = self.hps
         version = 'ltl'
         train_loss = self.epoch_loss
 
@@ -3489,24 +3566,25 @@ class RecurrentWhisperer(object):
 
             self._update_loss_records(train_loss, version=version)
 
-            if self.hps.do_save_ltl_ckpt:
+            if hps.do_save_ltl_ckpt:
                 self._save_checkpoint(version=version)
 
             if self.hps.do_save_ltl_train_summary:
+
+                train_pred, train_summary = self._epoch_results.get(
+                    dataset='train',
+                    do_train_mode=hps.do_train_mode_predict_on_train_data)
+
                 self._save_summary(train_summary, 'train', version=version)
 
-    def _maybe_save_lvl_checkpoint(self, valid_data, train_pred, train_summary,
-        is_final=False):
-        '''Saves a model checkpoint if the current validation loss is lower
-        than all previously evaluated validation losses. Optionally, this will
-        also generate and save model predictions over the training and
-        validation data.
+    def _maybe_save_lvl_checkpoint(self):
+        ''' Runs a forward pass on the validation data, and saves a model
+        checkpoint if the current validation loss is lower than all previously
+        evaluated validation losses. Optionally, this will also generate and
+        save model predictions over the training and validation data.
 
         Args:
-            valid_data: dict containing validation data.
-
-            train_pred and train_summary: dicts as returned by
-            predict(train_data).
+            None.
 
         Returns:
             valid_pred, valid_summary:
@@ -3519,11 +3597,12 @@ class RecurrentWhisperer(object):
         # ...if using validation data and due for an update this epoch
         if self._do_predict_validation:
 
-            valid_pred, valid_summary = self.predict(valid_data,
-                train_or_valid_str='valid',
-                is_final=is_final)
+            valid_pred, valid_summary = self._epoch_results.get(
+                dataset='valid',
+                do_train_mode=False)
 
             # ... if validation loss is better than previously seen
+            hps = self.hps
             version = 'lvl'
             valid_loss = valid_summary['loss']
             print('\tValidation loss: %.2e' % valid_loss)
@@ -3533,20 +3612,27 @@ class RecurrentWhisperer(object):
                 print('\t\tAchieved lowest validation loss.')
                 self._update_loss_records(valid_loss, version=version)
 
-                if self.hps.do_save_lvl_ckpt:
+                if hps.do_save_lvl_ckpt:
                     self._save_checkpoint(version=version)
-
-                self._maybe_save_pred_and_summary('train',
-                    pred=train_pred,
-                    summary=train_summary,
-                    version=version,
-                    is_final=is_final)
 
                 self._maybe_save_pred_and_summary('valid',
                     pred=valid_pred,
                     summary=valid_summary,
                     version=version,
-                    is_final=is_final)
+                    is_final=False)
+
+                if self._do_save_pred('train', version=version) or \
+                    self._do_save_summary('train', version=version):
+
+                    train_pred, train_summary = self._epoch_results.get(
+                        dataset='train',
+                        do_train_mode=hps.do_train_mode_predict_on_train_data)
+
+                    self._maybe_save_pred_and_summary('train',
+                        pred=train_pred,
+                        summary=train_summary,
+                        version=version,
+                        is_final=False)
 
             self._update_valid_tensorboard(valid_summary)
 
@@ -3554,48 +3640,6 @@ class RecurrentWhisperer(object):
             valid_pred = valid_summary = None
 
         return valid_pred, valid_summary
-
-    def _maybe_save_checkpoint(self, data, pred, summary, version,
-        is_final=False):
-        '''Saves a model checkpoint if the current validation loss is lower
-        than all previously evaluated validation losses. Optionally, this will
-        also generate and save model predictions over the training and
-        validation data.
-
-        If prediction summaries are generated, those summaries are saved in
-        separate files. See docstring for predict() for additional detail.
-
-        Args:
-            valid_pred and valid_summary: dicts as returned by
-            predict(valid_data).
-
-            train_data: dict containing the training data.
-
-        Returns:
-            None.
-        '''
-
-        loss = summary['loss']
-
-        if self._do_save_checkpoint(loss, version):
-
-            self._update_loss_records(valid_loss, version=version)
-
-            if self.hps.do_save_lvl_ckpt:
-                self._save_checkpoint(version=version)
-
-            self._maybe_save_pred_and_summary('train',
-                data=train_data,
-                version=version,
-                is_final=is_final)
-
-            self._maybe_save_pred_and_summary('valid',
-                pred=valid_pred,
-                summary=valid_summary,
-                version=version,
-                is_final=is_final)
-
-        self._epoch_timer.split(version)
 
     ''' Currently there's a bit of asymmetry: ltl and lvl check
     hps.do_save_*_ckpt upstream, but hps.do_save_seso_ckpt is checked here.
@@ -3932,7 +3976,8 @@ class RecurrentWhisperer(object):
         return os.path.exists(path_to_file)
 
     def save_predictions_and_summary(self, data, train_or_valid_str, version,
-        predict_train_or_valid_str='valid',
+        do_train_mode=False,
+        do_batch_predictions=None,
         is_final=True,
         predictions_filetype=None,
         summary_filetype=None):
@@ -3960,7 +4005,8 @@ class RecurrentWhisperer(object):
         self._assert_ckpt_version(version)
 
         pred, summary = self.predict(data,
-            train_or_valid_str=predict_train_or_valid_str,
+            do_train_mode=do_train_mode,
+            do_batch=do_batch_predictions,
             is_final=is_final)
 
         self._save_pred(pred, train_or_valid_str,
@@ -3972,7 +4018,8 @@ class RecurrentWhisperer(object):
             filetype=summary_filetype)
 
     def save_summary(self, data, train_or_valid_str, version,
-        predict_train_or_valid_str='valid',
+        do_train_mode=False,
+        do_batch_predictions=None,
         is_final=True,
         filetype=None):
         ''' Saves model prediction summary without saving the (bulky)
@@ -4001,7 +4048,8 @@ class RecurrentWhisperer(object):
         self._assert_ckpt_version(version)
 
         pred, summary = self.predict(data,
-            train_or_valid_str=predict_train_or_valid_str,
+            do_train_mode=do_train_mode,
+            do_batch=do_batch_predictions,
             is_final=is_final)
 
         self._save_summary(summary, train_or_valid_str,
@@ -4097,9 +4145,9 @@ class RecurrentWhisperer(object):
             filetype=filetype)
 
     def _maybe_save_pred_and_summary(self, train_or_valid_str,
-        data=None,    # Either provide data, ...
-        pred=None,    # or provide both pred
-        summary=None, # and summary.
+        pred=None,    # This is required
+        summary=None, # This is required
+        do_train_mode=False,
         version='lvl',
         is_final=False):
         '''Saves model predictions and/or a prediction summary. Which are
@@ -4117,30 +4165,11 @@ class RecurrentWhisperer(object):
         if not (do_save_pred or do_save_summary):
             return
 
-        # Goal: only call predict() if absolutely necessary since it requires
-        # substantial computation.
-        do_generate_pred = (do_save_pred and pred is None) or \
-            (do_save_summary and summary is None)
-
-        # Summary always comes along when predictions are generated. So, make
-        # sure we never have to call predict() just to get the summary if we
-        # already got the predictions.
-        if pred is not None:
-            assert summary is not None, \
-                'Summary must be provided if pred is provided.'
-
-        if do_generate_pred:
-            pred, summary = self.predict(data,
-                train_or_valid_str=train_or_valid_str,
-                is_final=is_final)
-
         if do_save_pred:
-            self._save_pred(
-                pred, train_or_valid_str, version=version)
+            self._save_pred(pred, train_or_valid_str, version=version)
 
         if do_save_summary:
-            self._save_summary(
-                summary, train_or_valid_str, version=version)
+            self._save_summary(summary, train_or_valid_str, version=version)
 
     def _do_save_pred(self, train_or_valid_str, version='lvl'):
         ''' Determines whether or not to save a set of predictions depending
@@ -4150,7 +4179,7 @@ class RecurrentWhisperer(object):
         '''
         if self.is_done:
             # Never use LTL model with validation data.
-            # Accordingly, there is no hps.do_save_LTL_valid_predictions
+            # Accordingly, there is no hps.do_save_ltl_valid_predictions
             if train_or_valid_str == 'valid' and version == 'ltl':
                 return False
 
@@ -4168,7 +4197,7 @@ class RecurrentWhisperer(object):
         '''
 
         # Never use LTL model with validation data.
-        # Accordingly, there is no hps.do_save_LTL_valid_summary
+        # Accordingly, there is no hps.do_save_ltl_valid_summary
         if train_or_valid_str == 'valid' and version == 'ltl':
             return False
 
