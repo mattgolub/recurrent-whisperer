@@ -1292,10 +1292,10 @@ class RecurrentWhisperer(object):
             Dict with strings as keys and scalar TF ops as values.
         '''
         return {
-            'loss': self.loss,
+            self._loss_key: self.loss,
+            self._grad_norm_key: self.grad_global_norm,
             'lvl': self.records['ops']['lvl'],
             'learning_rate': self.learning_rate,
-            'grad_global_norm': self.grad_global_norm,
             'grad_norm_clip_val': self.grad_norm_clip_val,
             'clipped_grad_global_norm': self.clipped_grad_global_norm,
             'grad_clip_diff': self.clipped_grad_norm_diff
@@ -1661,23 +1661,7 @@ class RecurrentWhisperer(object):
             It's complicated by the case of on-the-fly data generation. '''
             epoch_train_data = self._prepare_epoch_data(train_data)
 
-            # Use a helper class to organize predictions and prediction
-            # summaries from this epoch. This initialization does not perform
-            # any computation.
-            self._epoch_results = EpochResults(
-                model=self,
-                train_data=epoch_train_data,
-                valid_data=valid_data,
-                do_batch=self.hps.do_batch_predictions,
-                is_final=False)
-
             train_pred, train_summary = self._train_epoch(epoch_train_data)
-
-            self._epoch_results.set(
-                predictions=train_pred,
-                summary=train_summary,
-                dataset='train',
-                do_train_mode=True,)
 
             self._epoch_timer.split('train')
 
@@ -1690,13 +1674,10 @@ class RecurrentWhisperer(object):
             self._maybe_save_lvl_checkpoint()
             self._epoch_timer.split('lvl')
 
-            self._maybe_update_visualizations(
-                train_data=train_data,
-                valid_data=valid_data,
-                version='seso')
+            self._maybe_update_visualizations(version='seso')
             self._epoch_timer.split('visualize')
 
-            done = self._is_training_complete(self.epoch_loss)
+            done = self._is_training_complete()
             self._epoch_timer.split('other', stop=True)
 
             self._print_epoch_summary(train_summary)
@@ -1722,12 +1703,23 @@ class RecurrentWhisperer(object):
         '''
         self._has_valid_data = valid_data is not None
 
+        # Use a helper class to organize predictions and prediction
+        # summaries from this epoch. This initialization does not perform
+        # any computation.
+        self._epoch_results = EpochResults(
+            model=self,
+            train_data=train_data,
+            valid_data=valid_data,
+            do_batch=self.hps.do_batch_predictions,
+            is_final=False)
+
     def _initialize_epoch(self):
 
         # Number of segments to time for profiling
         N_EPOCH_SPLITS = 8
 
         self._print_epoch_state()
+        self._epoch_results.reset()
 
         self._epoch_timer = Timer(N_EPOCH_SPLITS,
             name='Epoch',
@@ -1785,9 +1777,16 @@ class RecurrentWhisperer(object):
         predictions, summary = self._combine_prediction_batches(
             pred_list, summary_list, batch_indices)
 
+        self._epoch_results.set(
+            predictions=predictions,
+            summary=summary,
+            dataset='train',
+            do_train_mode=True,)
+
         self.prev_loss = self.epoch_loss
-        self.epoch_loss = summary['loss']
-        self.epoch_grad_norm = summary['grad_global_norm']
+        self.epoch_loss = self._get_summary_item(summary, self._loss_key)
+        self.epoch_grad_norm = self._get_summary_item(
+            summary, self._grad_norm_key)
 
         ''' Note, these updates are intentionally placed before any
         possible checkpointing for the epoch. This placement is critical
@@ -1848,7 +1847,7 @@ class RecurrentWhisperer(object):
         for key in summary_ops:
             summary[key] = ev_ops[key]
 
-        summary['grad_global_norm'] = ev_ops['grad_global_norm']
+        summary[self._grad_norm_key] = ev_ops[self._grad_norm_key]
 
         return predictions, summary
 
@@ -1865,7 +1864,7 @@ class RecurrentWhisperer(object):
         '''
         ops = {
             'train_op': self.train_op,
-            'grad_global_norm': self.grad_global_norm,
+            self._grad_norm_key: self.grad_global_norm,
         }
 
         if self.hps.do_save_tensorboard_summaries:
@@ -1881,7 +1880,7 @@ class RecurrentWhisperer(object):
     def _get_summary_ops(self):
         # Don't include anything here that requires a backward pass through
         # the model (e.g., anything related to gradients)
-        return {'loss': self.loss}
+        return {self._loss_key: self.loss}
 
     def _build_feed_dict(self, data, train_or_predict_str):
         ''' Builds the feed dict needed to evaluate the model in either
@@ -2049,7 +2048,7 @@ class RecurrentWhisperer(object):
         self.timer.print()
         print('')
 
-    def _is_training_complete(self, epoch_loss):
+    def _is_training_complete(self, epoch_loss=None):
         '''Determines whether the training optimization procedure should
         terminate. Termination criteria, governed by hyperparameters, are
         thresholds on the following:
@@ -2061,7 +2060,7 @@ class RecurrentWhisperer(object):
                validation loss improved (only if do_check_lvl == True).
 
         Args:
-            epoch_summaries:
+            epoch_loss (optional):
 
         Returns:
             bool indicating whether any of the termination criteria have been
@@ -2070,8 +2069,10 @@ class RecurrentWhisperer(object):
 
         hps = self.hps
 
-        complete = False
+        if epoch_loss is None:
+            epoch_loss = self.epoch_loss
 
+        complete = False
         if self.is_done(self.run_dir):
             print('Stopping optimization: found .done file.')
             complete = True
@@ -2272,9 +2273,8 @@ class RecurrentWhisperer(object):
                 self._save_pred(train_pred, 'train', version=version)
                 self._save_summary(train_summary, 'train', version=version)
 
-            if do_train_vis:
-                self._update_visualizations(
-                    train_data, train_pred, 'train',version=version)
+        else:
+            train_pred = train_summary = None
 
         if do_valid_pred or do_valid_vis:
 
@@ -2285,22 +2285,26 @@ class RecurrentWhisperer(object):
                 self._save_pred(valid_pred, 'valid', version=version)
                 self._save_summary(valid_summary, 'valid', version=version)
 
-            if do_valid_vis:
-                self._update_visualizations(
-                    valid_data, valid_pred, 'valid',version=version)
+        else:
+            valid_pred = valid_summary = None
 
-        if (do_train_vis and _do_save_visualizations(version)) or \
-            (do_valid_vis and _do_save_visualizations(version)):
+        if do_train_vis or do_valid_vis:
 
-            self.save_visualizations(version=version)
+            self.update_visualizations(
+                train_data=train_data,
+                train_pred=train_pred,
+                train_summary=train_summary,
+                valid_data=valid_data,
+                valid_pred=valid_pred,
+                valid_summary=valid_summary,
+                version=version,
+                do_save=_do_save_visualizations(version))
 
     def _assert_train_or_predict(self, train_or_predict_str):
 
         assert train_or_predict_str in ['train', 'predict'], \
             ('train_or_predict_str must be \'train\' or \'predict\', '
             'but was %s' % train_or_predict_str)
-
-    _batch_size_key = 'batch_size'
 
     # *************************************************************************
     # Prediction **************************************************************
@@ -2385,9 +2389,6 @@ class RecurrentWhisperer(object):
             predictions, summary = self._predict_batch(data,
                 do_train_mode=do_train_mode)
 
-        assert ('loss' in summary),\
-            ('summary must minimally contain key: \'loss\', but does not.')
-
         return predictions, summary
 
     def _predict_batch(self, batch_data, do_train_mode=False):
@@ -2429,6 +2430,10 @@ class RecurrentWhisperer(object):
         summary = {}
         for key in summary_ops:
             summary[key] = ev_ops[key]
+
+        assert (self._loss_key in summary),\
+            ('summary must minimally contain key: '
+            '\'%s\', but does not.' % self._loss_key)
 
         return predictions, summary
 
@@ -2678,6 +2683,11 @@ class RecurrentWhisperer(object):
 
         return avg
 
+    @classmethod
+    def _get_summary_item(cls, summary, key):
+        # Provided for ease of subclass reimplementation
+        return summary[key]
+
     # *************************************************************************
     # Visualizations **********************************************************
     # *************************************************************************
@@ -2690,6 +2700,7 @@ class RecurrentWhisperer(object):
         valid_pred=None,
         valid_summary=None,
         version='seso',
+        save_subdir=None,
         do_save=True, # Save individual figures (indep of Tensorboard)
         do_update_tensorboard=None, # default: hps.do_save_tensorboard_images
         ):
@@ -2712,6 +2723,7 @@ class RecurrentWhisperer(object):
 
         self.save_visualizations(
             do_save_figs=do_save,
+            subdir=save_subdir,
             do_update_tensorboard=do_update_tensorboard,
             version=version)
 
@@ -2720,13 +2732,25 @@ class RecurrentWhisperer(object):
     def save_visualizations(self,
         figs=None, # optionally pass in a subset of self.figs
         version='seso',
+        subdir=None,
         do_save_figs=True,
         do_update_tensorboard=None):
-        '''Saves individual figures to this run's figure directory. This is
-        independent of Tensorboard Images.
+        '''Saves individual figures to the relevant figure directory.
+
+        Note: This is independent of Tensorboard Images.
 
         Args:
-            version:
+            figs (optional): Dict containing a subset of self.figs.
+
+            version (optional): string indicating the state of the model used
+            to generate the to-be-saved visualizations. Valid options are in
+            list: _valid_ckpt_versions.
+
+            subdir (optional): Enables advanced figure directories for
+            subclasses. E.g., when stitching multiple datasets, dataset names
+            can be used to create dataset-specific subdirectories via
+            subdir=dataset_name. This option is never used internally to
+            RecurrentWhisperer. Default: None.
 
             do_save_figs (optional): bool indicating whether to save
             individual figure files in the figure directory corresponding to
@@ -2747,7 +2771,7 @@ class RecurrentWhisperer(object):
             self._update_tensorboard_images()
 
         if do_save_figs:
-            self._save_figs(figs=figs, version=version)
+            self._save_figs(figs=figs, version=version, subdir=subdir)
 
     def _update_visualizations(self,
         data, pred, train_or_valid_str, version):
@@ -2762,8 +2786,8 @@ class RecurrentWhisperer(object):
             data contains training data or validation data, respectively.
 
             version: string indicating the state of the model, which can be
-            used to select which figures to generate. Options are: 'ltl',
-            'lvl', 'seso', or 'final'.
+            used to select which figures to generate. Valid options are in
+            list: _valid_ckpt_versions.
 
         Returns:
             None.
@@ -2819,9 +2843,7 @@ class RecurrentWhisperer(object):
                 version='seso',
                 do_save=self.hps.do_save_pretraining_visualizations)
 
-    def _maybe_update_visualizations(self, train_data,
-        valid_data=None,
-        version='seso'):
+    def _maybe_update_visualizations(self, version='seso'):
         '''Updates visualizations if the current epoch number indicates that
         an update is due. Saves those visualization to Tensorboard or to
         individual figure files, depending on hyperparameters
@@ -2829,8 +2851,6 @@ class RecurrentWhisperer(object):
         respectively.)
 
         Args:
-            train_data:
-            valid_data:
             version:
 
         Returns:
@@ -2839,13 +2859,17 @@ class RecurrentWhisperer(object):
 
         if self._do_update_training_visualizations:
 
+            epoch_results = self._epoch_results
+            train_data = epoch_results.train_data
+            valid_data = epoch_results.valid_data
+
             do_save = self.hps.do_save_training_visualizations
-            train_pred, train_summary = self._epoch_results.get(
+            train_pred, train_summary = epoch_results.get(
                 dataset='train',
                 do_train_mode=self.hps.do_train_mode_predict_on_train_data)
 
             if valid_data is not None:
-                valid_pred, valid_summary = self._epoch_results.get(
+                valid_pred, valid_summary = epoch_results.get(
                     dataset='valid', do_train_mode=False)
             else:
                 valid_pred = valid_summary = None
@@ -2862,10 +2886,13 @@ class RecurrentWhisperer(object):
 
     def _save_figs(self,
         figs=None, # optionally pass in a subset of self.figs
-        version='seso'):
+        version='seso',
+        subdir=None,):
 
         hps = self.hps
-        fig_dir = self._build_fig_dir(self.run_dir, version=version)
+        fig_dir = self._build_fig_dir(self.run_dir,
+            version=version,
+            subdir=subdir)
 
         if figs is None:
             figs = self.figs
@@ -2880,9 +2907,9 @@ class RecurrentWhisperer(object):
             self._visualizations_timer.split('Saving: %s' % fig_name)
 
             file_path_no_ext = os.path.join(fig_dir, fig_name)
-            figs_dir_i, file_name_no_ext = os.path.split(file_path_no_ext)
-            file_name = file_name_no_ext + '.' + hps.fig_filetype
-            file_path = os.path.join(figs_dir_i, file_name)
+            figs_dir_i, filename_no_ext = os.path.split(file_path_no_ext)
+            filename = filename_no_ext + '.' + hps.fig_filetype
+            file_path = os.path.join(figs_dir_i, filename)
 
             # This fig's dir may have additional directory structure beyond
             # the already existing .../figs/ directory. Make it.
@@ -2979,8 +3006,8 @@ class RecurrentWhisperer(object):
         return  epoch > 0 and \
             np.mod(epoch, hps.n_epochs_per_visualization_update) == 0
 
-    @staticmethod
-    def refresh_figs():
+    @classmethod
+    def refresh_figs(cls):
         ''' Refreshes all matplotlib figures.
 
         Args:
@@ -3037,8 +3064,8 @@ class RecurrentWhisperer(object):
     def fps_dir(self):
         return self._subdirs['fps']
 
-    @staticmethod
-    def get_hash_dir(log_dir, run_hash):
+    @classmethod
+    def get_hash_dir(cls, log_dir, run_hash):
         '''Returns a path to the run_hash in the log_dir.
 
         Args:
@@ -3052,10 +3079,11 @@ class RecurrentWhisperer(object):
         Returns:
             Path to the hash directory.
         '''
-        return os.path.join(log_dir, run_hash)
 
-    @staticmethod
-    def get_run_dir(log_dir, run_hash, n_folds=None, fold_idx=None):
+        return cls._build_subdir(log_dir, run_hash)
+
+    @classmethod
+    def get_run_dir(cls, log_dir, run_hash, n_folds=None, fold_idx=None):
         ''' Returns a path to the directory containing all files related to a
         given run.
 
@@ -3077,20 +3105,20 @@ class RecurrentWhisperer(object):
             Path to the run directory.
         '''
 
-        hash_dir = RecurrentWhisperer.get_hash_dir(log_dir, run_hash)
+        hash_dir = cls.get_hash_dir(log_dir, run_hash)
 
         if (n_folds is not None) and (fold_idx is not None):
 
             fold_str = str('fold-%d-of-%d' % (fold_idx+1, n_folds))
-            run_dir = os.path.join(hash_dir, fold_str)
+            run_dir = cls._build_subdir(hash_dir, fold_str)
 
             return run_dir
 
         else:
             return hash_dir
 
-    @staticmethod
-    def get_run_info(run_dir):
+    @classmethod
+    def get_run_info(cls, run_dir):
         '''Advanced functionality for models invoking K-fold cross-validation.
 
         Args:
@@ -3107,15 +3135,15 @@ class RecurrentWhisperer(object):
                 if os.path.isdir(os.path.join(path_str, name)) ]
 
         run_info = []
-        if RecurrentWhisperer.is_run_dir(run_dir):
+        if cls.is_run_dir(run_dir):
             pass
         else:
             fold_names = list_dirs(run_dir)
 
             run_info = []
             for fold_name in fold_names:
-                fold_dir = os.path.join(run_dir, fold_name)
-                if RecurrentWhisperer.is_run_dir(fold_dir):
+                fold_dir = cls._build_subdir(run_dir, fold_name)
+                if cls.is_run_dir(fold_dir):
                     run_info.append(fold_name)
 
         return run_info
@@ -3170,10 +3198,10 @@ class RecurrentWhisperer(object):
     # *************************************************************************
     # Scalar access and updates ***********************************************
     # *************************************************************************
-    #
-    # Convention: properties beginning with an underscore return numpy or
-    # python numeric types (e.g., _epoch, _lvl). The corresponding TF
-    # Variables are in self.records. See _setup_records().
+
+    _batch_size_key = 'batch_size'
+    _loss_key = 'loss'
+    _grad_norm_key = 'grad_global_norm'
 
     @property
     def trainable_variables(self):
@@ -3604,7 +3632,7 @@ class RecurrentWhisperer(object):
             # ... if validation loss is better than previously seen
             hps = self.hps
             version = 'lvl'
-            valid_loss = valid_summary['loss']
+            valid_loss = self._get_summary_item(valid_summary, self._loss_key)
             print('\tValidation loss: %.2e' % valid_loss)
 
             if self._do_save_lvl_checkpoint(valid_loss):
@@ -3678,13 +3706,15 @@ class RecurrentWhisperer(object):
     # *************************************************************************
     # *************************************************************************
 
+    _valid_ckpt_versions = ['seso', 'ltl', 'lvl']
+
     def _save_checkpoint(self, version):
         '''Saves a model checkpoint, along with data for restoring the adaptive
         learning rate and the adaptive gradient clipper.
 
         Args:
             version: string indicating which version to label this checkpoint
-            as: 'seso', 'ltl', or 'lvl'.
+            as. Valid options are in list: _valid_ckpt_versions.
 
         Returns:
             None.
@@ -3716,9 +3746,9 @@ class RecurrentWhisperer(object):
         # (for that, use _get_ckpt_path, as relevant for restoring from ckpt)
         return self._paths['%s_ckpt_path' % version]
 
-    @staticmethod
-    def _assert_ckpt_version(version):
-        assert version in ['seso', 'ltl', 'lvl'], \
+    @classmethod
+    def _assert_ckpt_version(cls, version):
+        assert version in cls._valid_ckpt_versions, \
             'Unsupported version: %s' % str(version)
 
     @staticmethod
@@ -3803,7 +3833,7 @@ class RecurrentWhisperer(object):
         '''
         Args:
             version: string indicating which version to label this checkpoint
-            as: 'seso', 'ltl', or 'lvl'.
+            as. Valid options are in list: _valid_ckpt_versions.
         '''
 
         self._assert_ckpt_version(version)
@@ -4719,19 +4749,36 @@ class RecurrentWhisperer(object):
         return cls._build_subdir(run_dir, 'lvl')
 
     @classmethod
-    def _build_fig_dir(cls, run_dir, version='seso'):
-        '''
-        'seso': /run_dir/figs/
-        'ltl': /run_dir/ltl/figs/
-        'lvl': /run_dir/lvl/figs/
+    def _build_fig_dir(cls, run_dir, version='seso', subdir=None):
+        ''' Builds string path to a figures directory.
+
+        version='seso' --> '/<run_dir>/figs/'
+        version='ltl'  --> '/<run_dir>/ltl/figs/'
+        version='lvl'  --> '/<run_dir>/lvl/figs/'
+
+        Args:
+            run_dir:
+
+            version:
+
+            subdir (optional): Enables advanced figure directories for
+            subclasses, e.g., when stitching multiple datasets, can append
+            dataset name via subdir=dataset_name. This option is never used
+            internally to RecurrentWhisperer. Default: None.
         '''
 
         cls._assert_ckpt_version(version)
         if version == 'seso':
-            subdir = run_dir
+            version_dir = run_dir
         else:
-            subdir = cls._build_subdir(run_dir, version)
-        return os.path.join(subdir, 'figs')
+            version_dir = cls._build_subdir(run_dir, version)
+
+        fig_dir = cls._build_subdir(version_dir, 'figs')
+
+        if subdir is None:
+            return fig_dir
+        else:
+            return cls._build_subdir(fig_dir, subdir)
 
     # ************************************************************************
     # ************************************************************************
