@@ -93,7 +93,6 @@ class EpochResults(object):
         results['predictions'] = predictions
         results['summary'] = summary
 
-
     def exists(self, dataset, do_train_mode):
         ''' Returns True if the requested results already exist (i.e., they
         have been computed and can be retrieved).
@@ -110,6 +109,17 @@ class EpochResults(object):
             return False
         else:
             return True
+
+    def reset(self):
+        self._results = self._get_blank_results()
+
+    @property
+    def train_data(self):
+        return self._data['train']
+
+    @property
+    def valid_data(self):
+        return self._data['valid']
 
     def _get_results_leaf(self, dataset, do_train_mode):
 
