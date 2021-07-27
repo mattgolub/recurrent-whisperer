@@ -3568,6 +3568,8 @@ class RecurrentWhisperer(object):
 
         if self._do_save_ltl_checkpoint(train_loss):
 
+            print('\tAchieved lowest training loss.')
+
             self._update_loss_records(train_loss, version=version)
 
             if hps.do_save_ltl_ckpt:
@@ -3650,31 +3652,17 @@ class RecurrentWhisperer(object):
 
     @property
     def _do_save_seso_checkpoint(self):
-
         n = self._epoch
         n_per_update = self.hps.n_epochs_per_seso_update
-
         return self.hps.do_save_seso_ckpt and np.mod(n, n_per_update) == 0
 
     def _do_save_ltl_checkpoint(self, train_loss):
-
-        epoch = self._epoch
-
-        if epoch == 0 or \
-            (train_loss < self._ltl and epoch >= self._epoch_next_ltl_check):
-
-            print('\tAchieved lowest training loss.')
-            return True
-
-        else:
-            return False
+        n = self._epoch
+        n_next = self._epoch_next_ltl_check
+        return n == 0 or (train_loss < self._ltl and n >= n_next)
 
     def _do_save_lvl_checkpoint(self, valid_loss):
-
-        if self._epoch == 0 or valid_loss < self._lvl:
-            return True
-        else:
-            return False
+        return self._epoch == 0 or valid_loss < self._lvl
 
     # *************************************************************************
     # *************************************************************************
