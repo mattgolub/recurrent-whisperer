@@ -806,7 +806,7 @@ class RecurrentWhisperer(object):
         '''
 
         cmd_list = cls.get_command_line_call(run_script, hp_dict)
-        print(Hyperparameters.printable_str_from_dict(hp_dict))
+        Hyperparameters.prettyprint(hp_dict)
         call(cmd_list)
 
     @classmethod
@@ -3745,7 +3745,9 @@ class RecurrentWhisperer(object):
     # *************************************************************************
 
     @classmethod
-    def restore(cls, run_dir, version, do_update_base_path=False):
+    def restore(cls, run_dir, version,
+        data_specs=None,
+        do_update_base_path=False):
         ''' Load a saved model given only the run directory, properly handling
         subclassing.
 
@@ -3801,7 +3803,7 @@ class RecurrentWhisperer(object):
         hps_dict['log_dir'] = log_dir
         hps_dict['do_custom_restore'] = True
         hps_dict['do_log_output'] = False
-        model = cls(**hps_dict)
+        model = cls(data_specs=data_specs, **hps_dict)
 
         # Find and resotre parameters from lvl checkpoint
         model.restore_from_checkpoint(version, checkpoint_path=ckpt_path)
