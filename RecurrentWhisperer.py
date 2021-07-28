@@ -806,7 +806,7 @@ class RecurrentWhisperer(object):
         '''
 
         cmd_list = cls.get_command_line_call(run_script, hp_dict)
-        print(cmd_list)
+        print(Hyperparameters.printable_str_from_dict(hp_dict))
         call(cmd_list)
 
     @classmethod
@@ -898,6 +898,11 @@ class RecurrentWhisperer(object):
         # Update all loggers that have been setup by dependencies
         # (e.g., Tensorflow)
 
+        # Before changing where log messages go, make sure any currently in
+        # the buffer get written...otherwise they may not refresh until
+        # stdout is reset back to default, e.g. after the run terminates.
+        sys.stdout.flush() # Attempt to shorten logging buffer time
+
         formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         log_level = logging.DEBUG
@@ -923,6 +928,20 @@ class RecurrentWhisperer(object):
         self._log_file = open(model_log_path, 'a+')
         sys.stdout = self._log_file
         sys.stderr = self._log_file
+
+    def _restore_logger_defaults(self):
+        ''' Redirect all printing, errors, and warnings back to defaults. This
+        undoes the logging redirecting enacted by _setup_logger().
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+        self._log_file.close()
+        sys.stdout = self._default_stdout
+        sys.stderr = self._default_stderr
 
     def _setup_records(self):
         '''Sets up basic record keeping for training steps, epochs, timing,
@@ -1685,6 +1704,9 @@ class RecurrentWhisperer(object):
 
         self.timer.split('train')
 
+        self._maybe_save_final_seso_checkpoint()
+        self._save_done_file()
+
         epoch_train_data = self._prepare_epoch_data(train_data)
         self._close_training(epoch_train_data, valid_data)
         self.timer.split('_close_training')
@@ -2139,30 +2161,12 @@ class RecurrentWhisperer(object):
 
         print('\nClosing training:')
 
-        # Save checkpoint upon completing training
-        if hps.do_save_seso_ckpt:
-            self._save_checkpoint(version='seso')
-
-        ''' Save .done file. Critically placed after saving final checkpoint,
-        but before doing a bunch of other stuff that might fail. This way,
-        if anything below does fail, the .done file will be present,
-        indicating safe to interpret checkpoint model as final.
-        Also, subclass implementations of predict(), update_visualizations(),
-        etc can check self.is_done to do certain expensive things just once
-        at the end of training, rather than on every call throughout
-        training.'''
-        self._save_done_file()
-
         self.save_final_results(train_data, valid_data, version='seso')
         self.save_final_results(train_data, valid_data, version='lvl')
         self.save_final_results(train_data, valid_data, version='ltl')
 
         if hps.do_log_output:
-            self._log_file.close()
-
-            # Redirect all printing, errors, and warnings back to defaults
-            sys.stdout = self._default_stdout
-            sys.stderr = self._default_stderr
+            self._restore_logger_defaults()
 
     def save_final_results(self, train_data, valid_data, version='seso'):
         ''' Optionally save predictions and/or visualizations upon completion
@@ -3551,6 +3555,19 @@ class RecurrentWhisperer(object):
         if self._do_save_seso_checkpoint:
             self._save_checkpoint(version='seso')
 
+    def _maybe_save_final_seso_checkpoint(self):
+        ''' Saves the final SESO model checkpoint. This should only be called
+        once, upon termination of the train() loop.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+        if self.hps.do_save_seso_ckpt:
+            self._save_checkpoint(version='seso')
+
     def _maybe_save_ltl_checkpoint(self):
         ''' Saves a model checkpoint if the current training loss is lower than
         all previously evaluated training losses.
@@ -4237,8 +4254,16 @@ class RecurrentWhisperer(object):
                 filetype=filetype)
 
     def _save_done_file(self):
-        '''Save an empty .done file (indicating that the training procedure
-        ran to completion.
+        '''Save .done file (an empty file whose existence indicates that the
+        training procedure ran to self termination.
+
+        CRITICAL: This must be called after saving final SESO checkpoint,
+        but before doing a bunch of other stuff that might fail. This way,
+        if any of that stuff does fail, the .done file will be present,
+        indicating safe to interpret checkpoint model as final. Also, subclass
+        implementations of predict(), update_visualizations(), etc can check
+        self.is_done to do certain expensive things just once at the end of
+        training, rather than on every call throughout training.
 
         Args:
             None.
