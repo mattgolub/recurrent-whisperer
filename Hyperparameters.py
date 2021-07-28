@@ -600,6 +600,10 @@ class Hyperparameters(object):
     # General class access and manipulation **********************************
     # ************************************************************************
 
+    @classmethod
+    def prettyprint(cls, hps_dict):
+        print(cls._printable_str_from_dict(hps_dict))
+
     @property
     def dict(self):
         return self.__dict__()
@@ -666,7 +670,7 @@ class Hyperparameters(object):
             setattr(self, key, value)
 
     def __str__(self):
-        return self.print_sorted_dict(self._integrated_hps)
+        return self._printable_str_from_dict(self._integrated_hps)
 
     # def __getattr__(self, name):
     #     ''' Failed attempt to link each key in _integrated_hps to a class
@@ -756,7 +760,7 @@ class Hyperparameters(object):
     # ************************************************************************
 
     @classmethod
-    def printable_str_from_dict(cls, D, n_indent=0):
+    def _printable_str_from_dict(cls, D, n_indent=0):
         ''' Quick and dirty PrettyPrinting of a dict that conforms to the
         internal API for a Hyperparameters dict (i.e., keys as strings or
         dicts).
@@ -769,7 +773,7 @@ class Hyperparameters(object):
 
             S += '%s%s: ' % (indent, key)
             if isinstance(value, dict):
-                S += '\n' + cls.printable_str_from_dict(value, n_indent+1)
+                S += '\n' + cls._printable_str_from_dict(value, n_indent+1)
             else:
                 S += '%s\n' % str(value)
 
