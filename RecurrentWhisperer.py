@@ -488,7 +488,7 @@ class RecurrentWhisperer(object):
         '''
 
         hash_hps = Hyperparameters.integrate_hps(
-            RecurrentWhisperer._default_rw_hash_hyperparameters(),
+            cls._default_rw_hash_hyperparameters(),
             cls._default_hash_hyperparameters())
 
         return hash_hps
@@ -506,7 +506,7 @@ class RecurrentWhisperer(object):
         '''
 
         non_hash_hps = Hyperparameters.integrate_hps(
-            RecurrentWhisperer._default_rw_non_hash_hyperparameters(),
+            cls._default_rw_non_hash_hyperparameters(),
             cls._default_non_hash_hyperparameters())
         return non_hash_hps
 
@@ -645,8 +645,8 @@ class RecurrentWhisperer(object):
             'log_device_placement': False,
         }
 
-    @staticmethod
-    def _default_hash_hyperparameters():
+    @classmethod
+    def _default_hash_hyperparameters(cls):
         '''Defines subclass-specific default hyperparameters for the set of
         hyperparameters that are hashed to define a directory structure for
         easily managing multiple runs of the model training (i.e., using
@@ -670,8 +670,8 @@ class RecurrentWhisperer(object):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    @staticmethod
-    def _default_non_hash_hyperparameters():
+    @classmethod
+    def _default_non_hash_hyperparameters(cls):
         '''Defines default hyperparameters for the set of hyperparameters that
         are NOT hashed to define a run directory. These hyperparameters should
         not influence the model architecture or the trajectory of fitting.
@@ -715,11 +715,12 @@ class RecurrentWhisperer(object):
             cls.default_hash_hyperparameters(),
             cls.default_non_hash_hyperparameters())
 
-    @staticmethod
-    def get_command_line_call(run_script,
-                              hp_dict={},
-                              do_shell_format=False,
-                              shell_delimiter=' \\\n'):
+    @classmethod
+    def get_command_line_call(cls,
+        run_script,
+        hp_dict={},
+        do_shell_format=False,
+        shell_delimiter=' \\\n'):
 
         ''' Generates a command line call to a user-specified shell script with
         RecurrentWhisperer hyperparameters passed in as command-line arguments.
@@ -806,7 +807,6 @@ class RecurrentWhisperer(object):
         '''
 
         cmd_list = cls.get_command_line_call(run_script, hp_dict)
-        Hyperparameters.prettyprint(hp_dict)
         call(cmd_list)
 
     @classmethod
