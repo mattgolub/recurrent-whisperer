@@ -14,7 +14,7 @@ import os
 import shutil
 import logging
 from copy import deepcopy
-from subprocess import call
+import subprocess
 import warnings
 import pdb
 
@@ -382,15 +382,30 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        self.data_specs = data_specs
+        self.timer = Timer(
+            name='Total run time',
+            do_retrospective=True)
+        self.timer.start()
 
         if 'random_seed' in kwargs and kwargs['random_seed'] == -1:
             kwargs['random_seed'] = np.random.randint(2**31)
 
         hps = self.setup_hps(kwargs)
+        self.timer.split('setup_hps')
 
         self.hps = hps
+        self.data_specs = data_specs
         self.dtype = getattr(tf, hps.dtype)
+        self._version = 'seso'
+        self.prev_loss = None
+        self.epoch_loss = None
+
+        self._setup_run_dir()
+        self.timer.split('_setup_run_dir')
+
+        if hps.do_log_output:
+            self._setup_logger()
+            self.timer.split('_setup_logger')
 
         '''Make parameter initializations and data batching reproducible
         across runs.'''
@@ -401,19 +416,13 @@ class RecurrentWhisperer(object):
         runs (i.e., that do not require restoring from a checkpoint). The fix
         would be to draw all random numbers needed for a run upon starting or
         restoring a run.'''
+        self.timer.split('set_random_seed')
 
-        self._version = 'seso'
-        self.prev_loss = None
-        self.epoch_loss = None
         self.adaptive_learning_rate = AdaptiveLearningRate(**hps.alr_hps)
+        self.timer.split('init AdaptiveLearningRate')
+
         self.adaptive_grad_norm_clip = AdaptiveGradNormClip(**hps.agnc_hps)
-
-        self._setup_run_dir()
-
-        self.timer = Timer(
-            name='Total run time',
-            do_retrospective=True)
-        self.timer.start()
+        self.timer.split('init AdaptiveGradNormClip')
 
         self._setup_devices()
 
@@ -448,7 +457,11 @@ class RecurrentWhisperer(object):
                 if not hps.do_custom_restore:
                     self.initialize_or_restore()
                     self.print_trainable_variables()
-                    self.timer.split('_initialize_or_restore')
+                    self.timer.split('initialize_or_restore')
+
+        print('')
+        self.timer.print()
+        print('')
 
     # *************************************************************************
     # Hyperparameters management **********************************************
@@ -807,7 +820,7 @@ class RecurrentWhisperer(object):
         '''
 
         cmd_list = cls.get_command_line_call(run_script, hp_dict)
-        call(cmd_list)
+        subprocess.call(cmd_list)
 
     @classmethod
     def write_shell_script(cls, save_path, run_script, hp_dict):
@@ -877,9 +890,6 @@ class RecurrentWhisperer(object):
             for version in ['seso', 'ltl', 'lvl']:
                 d = self._build_fig_dir(run_dir, version=version)
                 os.makedirs(d)
-
-        if hps.do_log_output:
-            self._setup_logger()
 
     def _setup_logger(self):
         '''Setup logging. Redirects (nearly) all printed output to the log
@@ -1072,13 +1082,6 @@ class RecurrentWhisperer(object):
         assert device_type in ['cpu', 'gpu'], \
             'Unsupported device_type: %s' % str(device_type)
 
-        if device_type == 'gpu':
-            if 'CUDA_VISIBLE_DEVICES' in os.environ:
-                cuda_devices = os.environ['CUDA_VISIBLE_DEVICES']
-            else:
-                cuda_devices = ''
-            print('\n\nCUDA_VISIBLE_DEVICES: %s' % cuda_devices)
-
         self.device = '%s:%d' % (device_type, self.hps.device_id)
         print('Attempting to build TF model on %s\n' % self.device)
 
@@ -1087,6 +1090,18 @@ class RecurrentWhisperer(object):
         overrides (at least in TF<=1.15).'''
         self.cpu_device = 'cpu:%d' % self.hps.cpu_device_id
         print('Placing CPU-only ops on %s\n' % self.cpu_device)
+
+        if device_type == 'gpu':
+
+            if 'CUDA_VISIBLE_DEVICES' in os.environ:
+                cuda_devices = os.environ['CUDA_VISIBLE_DEVICES']
+            else:
+                cuda_devices = ''
+
+            print('\n\nCUDA_VISIBLE_DEVICES: %s' % cuda_devices)
+            print('\n\n')
+            print(subprocess.check_output(['nvidia-smi']))
+            print('\n\n')
 
     def _setup_model(self):
         '''Defines the Tensorflow model including:
@@ -1666,7 +1681,7 @@ class RecurrentWhisperer(object):
         # self._maybe_save_init_checkpoint()
         # -- Make sure to only save if self.epoch==0 (in case of restore)
         # -- This will encompass above visualizations
-        self.timer.split('init_ckpt')
+        self.timer.split('init ckpt')
 
         # Training loop
         print('Entering training loop.')
@@ -1709,7 +1724,7 @@ class RecurrentWhisperer(object):
 
         epoch_train_data = self._prepare_epoch_data(train_data)
         self._close_training(epoch_train_data, valid_data)
-        self.timer.split('_close_training')
+        self.timer.split('close_training')
 
         self._print_run_summary()
 
