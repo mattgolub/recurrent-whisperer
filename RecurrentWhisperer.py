@@ -3278,6 +3278,10 @@ class RecurrentWhisperer(object):
         return self.session.run(self.records['ops']['global_step'])
 
     @property
+    def _epoch_tf(self):
+        return self.records['ops']['epoch']
+
+    @property
     def _epoch(self):
         '''Returns the number of training epochs taken thus far. An epoch is
         typically defined as one pass through all training examples, possibly
@@ -3292,7 +3296,7 @@ class RecurrentWhisperer(object):
         '''
 
         # TO DO: remove "_" from definition
-        return self.session.run(self.records['ops']['epoch'])
+        return self.session.run(self._epoch_tf)
 
     @property
     def _epoch_next_ltl_check(self):
