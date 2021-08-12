@@ -1919,7 +1919,10 @@ class RecurrentWhisperer(object):
     def _get_summary_ops(self):
         # Don't include anything here that requires a backward pass through
         # the model (e.g., anything related to gradients)
-        return {self._loss_key: self.loss}
+        return {
+            self._loss_key: self.loss,
+            self._epoch_key: self._epoch_tf
+            }
 
     def _build_feed_dict(self, data, train_or_predict_str):
         ''' Builds the feed dict needed to evaluate the model in either
@@ -3197,6 +3200,7 @@ class RecurrentWhisperer(object):
     _batch_size_key = 'batch_size'
     _loss_key = 'loss'
     _grad_norm_key = 'grad_global_norm'
+    _epoch_key = 'epoch'
 
     @property
     def trainable_variables(self):
