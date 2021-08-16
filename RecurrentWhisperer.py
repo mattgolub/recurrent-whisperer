@@ -1153,8 +1153,15 @@ class RecurrentWhisperer(object):
             self.learning_rate = tf.placeholder(
                 self.dtype, name='learning_rate')
 
+            self.learning_rate_scale = tf.placeholder(
+                self.dtype, name='learning_rate_scale')
+
+            self.learning_rate_scaled = \
+                self.learning_rate * self.learning_rate_scale
+
             self.optimizer = tf.train.AdamOptimizer(
-                learning_rate=self.learning_rate, **self.hps.adam_hps)
+                learning_rate=self.learning_rate_scaled,
+                **self.hps.adam_hps)
 
             self.train_op = self.optimizer.apply_gradients(
                 zipped_grads, global_step=self.records['ops']['global_step'])
@@ -1331,6 +1338,7 @@ class RecurrentWhisperer(object):
             self._grad_norm_key: self.grad_global_norm,
             'lvl': self.records['ops']['lvl'],
             'learning_rate': self.learning_rate,
+            'learning_rate_scaled': self.learning_rate_scaled,
             'grad_norm_clip_val': self.grad_norm_clip_val,
             'clipped_grad_global_norm': self.clipped_grad_global_norm,
             'grad_clip_diff': self.clipped_grad_norm_diff
@@ -1994,10 +2002,11 @@ class RecurrentWhisperer(object):
         Goyal et al (Facebook). https://arxiv.org/pdf/1706.02677.pdf
         '''
 
-        feed_dict = {}
-        feed_dict[self.learning_rate] = \
-            self.adaptive_learning_rate() * learning_rate_scale
-        feed_dict[self.grad_norm_clip_val] = self.adaptive_grad_norm_clip()
+        feed_dict = {
+            self.learning_rate: self.adaptive_learning_rate(),
+            self.learning_rate_scale: learning_rate_scale,
+            self.grad_norm_clip_val: self.adaptive_grad_norm_clip()
+        }
 
         return feed_dict
 
