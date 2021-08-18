@@ -1881,7 +1881,7 @@ class RecurrentWhisperer(object):
         train_ops = self._get_train_ops()
         ops.update(train_ops)
 
-        feed_dict = self._build_feed_dict(batch_data, 'train')
+        feed_dict = self._build_feed_dict(batch_data, do_train_mode=True)
         ev_ops = self.session.run(ops, feed_dict=feed_dict)
 
         self._update_train_tensorboard(feed_dict, ev_ops)
@@ -1932,29 +1932,25 @@ class RecurrentWhisperer(object):
             self._epoch_key: self._epoch_tf
             }
 
-    def _build_feed_dict(self, data, train_or_predict_str):
+    def _build_feed_dict(self, data, do_train_mode=True):
         ''' Builds the feed dict needed to evaluate the model in either
         'train' or 'predict' mode.
 
         Args:
-            train_or_predict_str: 'train' or 'predict', indicating which mode
-            of graph evaluation will be used.
+            data:
+
+            do_train_mode:
 
         Returns:
             dict with (TF placeholder, feed value) as (key, value) pairs.
-
-
         '''
 
-        self._assert_train_or_predict(train_or_predict_str)
-
         feed_dict = {}
-
-        data_feed_dict = self._build_data_feed_dict(data)
+        data_feed_dict = self._build_data_feed_dict(data,
+            do_train_mode=do_train_mode)
         feed_dict.update(data_feed_dict)
 
-        if train_or_predict_str=='train':
-
+        if do_train_mode:
             optimizer_feed_dict = self._build_optimizer_feed_dict(
                 learning_rate_scale=1.0)
             feed_dict.update(optimizer_feed_dict)
@@ -2010,11 +2006,15 @@ class RecurrentWhisperer(object):
 
         return feed_dict
 
-    def _build_data_feed_dict(self, batch_data):
+    def _build_data_feed_dict(self, batch_data, do_train_mode=True):
         ''' Build the feed dict that provides data to the model.
 
         Args:
             batch_data: dict containing the data needed to build the feed dict.
+
+            do_train_mode: bool indicating whether these data will be used for
+            running the model in "train mode" (True) or "predict mode" (False).
+            Default: True.
 
         Returns:
             dict with (TF placeholder, feed value) as (key, value) pairs.
@@ -2426,7 +2426,8 @@ class RecurrentWhisperer(object):
         summary_ops = self._get_summary_ops()
         ops.update(summary_ops)
 
-        feed_dict = self._build_data_feed_dict(batch_data)
+        feed_dict = self._build_data_feed_dict(batch_data,
+            do_train_mode=do_train_mode)
 
         ev_ops = self.session.run(ops, feed_dict=feed_dict)
 
@@ -3664,7 +3665,7 @@ class RecurrentWhisperer(object):
 
             if self._do_save_lvl_checkpoint(valid_loss):
 
-                print('\t\tAchieved lowest validation loss.')
+                print('\tAchieved lowest validation loss.')
                 self._update_loss_records(valid_loss, version=version)
 
                 if hps.do_save_lvl_ckpt:
