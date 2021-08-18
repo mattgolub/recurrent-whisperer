@@ -15,6 +15,17 @@ import time
 class Timer(object):
 	'''Class for profiling computation time.
 
+	Example usage, bare-bones:
+
+		t = Timer()
+		t.start()
+		# Do your business
+		t.print()
+
+		-->	Total time: 0.57s:
+
+		# This will work regardless of do_retrospective.
+
 	Example usage, using prospective splits (default):
 
 		# Build a timer object to profile three tasks.
@@ -36,7 +47,7 @@ class Timer(object):
 
 		t.print()            	# Print profile of timing.
 
-		--> Total time: 16.00s
+		--> Total time: 16.00s:
 		-->     Task 1: 2.00s (12.5%)
 		-->     Task 2: 8.00s (50.0%)
 		-->     Task 3: 6.00s (37.5%)
@@ -62,7 +73,7 @@ class Timer(object):
 
 		t.print()            	# Print profile of timing.
 
-		--> Total time: 16.00s
+		--> Total time: 16.00s:
 		-->     Task 1: 2.00s (12.5%)
 		-->     Task 2: 8.00s (50.0%)
 		-->     Task 3: 6.00s (37.5%)
