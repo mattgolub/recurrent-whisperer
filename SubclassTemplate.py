@@ -107,11 +107,15 @@ class SubclassTemplate(RecurrentWhisperer):
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-    def _build_data_feed_dict(self, batch_data):
+    def _build_data_feed_dict(self, batch_data, do_train_mode=True):
         ''' Build the feed dict that provides data to the model.
 
         Args:
             batch_data: dict containing the data needed to build the feed dict.
+
+            do_train_mode: bool indicating whether these data will be used for
+            running the model in "train mode" (True) or "predict mode" (False).
+            Default: True.
 
         Returns:
             dict with (TF placeholder, feed value) as (key, value) pairs.
