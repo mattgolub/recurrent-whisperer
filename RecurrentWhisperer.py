@@ -1699,13 +1699,10 @@ class RecurrentWhisperer(object):
 
             self._initialize_epoch()
 
-            ''' Profiling for data prep is managed elsewhere. Timer starts in
-            _initialize_epoch() and stops at start of _train_epoch().
-            It's complicated by the case of on-the-fly data generation. '''
             epoch_train_data = self._prepare_epoch_data(train_data)
+            self._epoch_timer.split('data prep')
 
             train_pred, train_summary = self._train_epoch(epoch_train_data)
-
             self._epoch_timer.split('train')
 
             self._maybe_save_seso_checkpoint()
@@ -1762,15 +1759,10 @@ class RecurrentWhisperer(object):
 
     def _initialize_epoch(self):
 
-        # Number of segments to time for profiling
-        N_EPOCH_SPLITS = 8
-
         self._print_epoch_state()
         self._epoch_results.reset()
 
-        self._epoch_timer = Timer(N_EPOCH_SPLITS,
-            name='Epoch',
-            do_retrospective=True)
+        self._epoch_timer = Timer(name='Epoch', do_retrospective=True)
         self._epoch_timer.start()
 
     def _prepare_epoch_data(self, train_data):
@@ -1803,7 +1795,7 @@ class RecurrentWhisperer(object):
 
         data_batches, batch_indices = self._split_data_into_batches(
             train_data)
-        self._epoch_timer.split('data')
+        self._epoch_timer.split('batching')
 
         pred_list = []
         summary_list = []
