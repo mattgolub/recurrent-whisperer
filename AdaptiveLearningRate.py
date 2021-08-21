@@ -21,8 +21,8 @@ import matplotlib.pyplot as plt
 class AdaptiveLearningRate(object):
 	'''Class for managing an adaptive learning rate schedule based on the
 	recent history of loss values. The adaptive schedule begins with an
-	optional warm-up period, during which the learning rate logarithmically
-	increases up to the initial rate. For the remainder of the training
+	optional warm-up period, during which the learning rate ramps up (with
+	user-specified shape) to the initial rate. For the remainder of the training
 	procedure, the learning rate will increase following a period of monotonic
 	improvements in the loss and will decrease if a loss is encountered that
 	is worse than all losses in the recent period. Hyperparameters control the
@@ -145,11 +145,8 @@ class AdaptiveLearningRate(object):
 			warm-up learning rate is warmup_scale * initial_rate. Default:
 			0.001.
 
-			warmup_shape: String indicating the shape of the increasing
-			learning rate during the warm-up period. Options are 'exp'
-			(exponentially increasing learning rates; slope increases
-			throughout) or 'gaussian' (slope increases, then decreases; rate
-			ramps up faster and levels off smoother than with 'exp').
+			warmup_shape: 'linear', 'exp', or 'gaussian', indicating the shape
+			of the increasing learning rate during the warm-up period.
 			Default: 'gaussian'.
 
 			do_decrease_rate: Bool indicating whether or not to decrease the
@@ -206,7 +203,7 @@ class AdaptiveLearningRate(object):
 
 		self.n_warmup_steps = n_warmup_steps
 		self.warmup_scale = warmup_scale
-		self.warmup_shape = warmup_shape
+		self.warmup_shape = warmup_shape.lower()
 
 		self.save_filename = 'learning_rate.pkl'
 
@@ -394,7 +391,7 @@ class AdaptiveLearningRate(object):
 			raise ValueError('increase_factor must be >= 1, but was %f'
 							 % self.increase_factor)
 
-		if self.warmup_shape not in ['exp', 'gaussian']:
+		if self.warmup_shape not in ['exp', 'gaussian', 'linear']:
 			raise ValueError('warmup_shape must be \'exp\' or \'gaussian\', '
 			                 'but was %s' % self.warmup_shape)
 
@@ -406,20 +403,23 @@ class AdaptiveLearningRate(object):
 			None.
 
 		Returns:
-			An [n_warmup_steps,] numpy array containing the learning rates for
-			each step of the warm-up period.
+			Shape (n_warmup_steps,) numpy array containing the learning rates
+			for each step of the warm-up period.
 
 		'''
+		n = self.n_warmup_steps
+		warmup_shape = self.warmup_shape
 		scale = self.warmup_scale
 		warmup_start = scale*self.initial_rate
 		warmup_stop = self.initial_rate
 
+		if warmup_shape == 'linear':
+			warmup_rates = np.linspace(warmup_start, warmup_stop, n+1)[:-1]
 		if self.warmup_shape == 'exp':
-			n = self.n_warmup_steps + 1
 			warmup_rates = np.logspace(
-				np.log10(warmup_start), np.log10(warmup_stop), n)
+				np.log10(warmup_start), np.log10(warmup_stop), n+1)[:-1]
 		elif self.warmup_shape == 'gaussian':
-			mu = np.float32(self.n_warmup_steps)
+			mu = np.float32(n)
 			x = np.arange(mu)
 
 			# solve for sigma s.t. warmup_rates[0] = warmup_start
