@@ -1673,8 +1673,7 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        epoch_train_data = self._prepare_epoch_data(train_data)
-        self._setup_training(epoch_train_data, valid_data)
+        self._setup_training(train_data, valid_data)
         self.timer.split('_setup_training')
 
         if self._is_training_complete(self._ltl):
@@ -1682,8 +1681,7 @@ class RecurrentWhisperer(object):
             # and do not save a new checkpoint.
             return
 
-        self._maybe_update_visualizations_pretraining(
-            epoch_train_data, valid_data)
+        self._maybe_update_visualizations_pretraining(train_data, valid_data)
 
         # To do:
         # self._maybe_save_init_checkpoint()
@@ -1699,10 +1697,7 @@ class RecurrentWhisperer(object):
 
             self._initialize_epoch()
 
-            epoch_train_data = self._prepare_epoch_data(train_data)
-            self._epoch_timer.split('data prep')
-
-            train_pred, train_summary = self._train_epoch(epoch_train_data)
+            train_pred, train_summary = self._train_epoch(train_data)
             self._epoch_timer.split('train')
 
             self._maybe_save_seso_checkpoint()
@@ -1727,13 +1722,12 @@ class RecurrentWhisperer(object):
         self._maybe_save_final_seso_checkpoint()
         self._save_done_file()
 
-        epoch_train_data = self._prepare_epoch_data(train_data)
-        self._close_training(epoch_train_data, valid_data)
+        self._close_training(train_data, valid_data)
         self.timer.split('close_training')
 
         self._print_run_summary()
 
-    def _setup_training(self, train_data, valid_data=None):
+    def _setup_training(self, train_data=None, valid_data=None):
         '''Performs any tasks that must be completed before entering the
         training loop in self.train().
 
@@ -1745,6 +1739,8 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
+        train_data = self._prepare_epoch_data(train_data)
+
         self._has_valid_data = valid_data is not None
 
         # Use a helper class to organize predictions and prediction
@@ -1769,18 +1765,17 @@ class RecurrentWhisperer(object):
 
         if train_data is None:
             # For on-the-fly data generation
-            return self.generate_data('train')
+            return self.generate_data()
         else:
             return train_data
 
-    def _train_epoch(self, train_data, verbose=False):
+    def _train_epoch(self, train_data=None, verbose=False):
         '''Performs training steps across an epoch of training data batches.
 
         Args:
             train_data: dict containing the training data. If not provided
-            (i.e., train_data=None), the subclass implementation of
-            _split_data_into_batches(...) must generate training data on the
-            fly. Default: None.
+            (i.e., train_data=None), data will be generated on-the-fly using
+            generate_data(). Default: None.
 
         Returns:
             predictions: dict containing model predictions based on data. Key/
@@ -1792,6 +1787,9 @@ class RecurrentWhisperer(object):
             evaluation of the overall objective function being minimized
             during training.
         '''
+
+        train_data = self._prepare_epoch_data(train_data)
+        self._epoch_timer.split('prep data')
 
         data_batches, batch_indices = self._split_data_into_batches(
             train_data)
@@ -2180,6 +2178,8 @@ class RecurrentWhisperer(object):
 
         print('\nClosing training:')
 
+        train_data = self._prepare_epoch_data(train_data)
+
         self.save_final_results(train_data, valid_data, version='seso')
         self.save_final_results(train_data, valid_data, version='lvl')
         self.save_final_results(train_data, valid_data, version='ltl')
@@ -2472,13 +2472,13 @@ class RecurrentWhisperer(object):
     # Data and batch management ***********************************************
     # *************************************************************************
 
-    def generate_data(self, train_or_valid_str='train'):
+    def generate_data(self):
         ''' Optionally generate data on-the-fly (e.g., during training), rather
         than relying on fixed sets of training and validation data. This is
         only called by train(...) when called using train_data=None.
 
         Args:
-            train_or_valid_str:
+            None.
 
         Returns:
             data: dict containing the generated data.
@@ -2821,6 +2821,8 @@ class RecurrentWhisperer(object):
 
         # Visualizations generated from untrained network
         if self._do_update_pretraining_visualizations:
+
+            train_data = self._prepare_epoch_data(train_data)
 
             train_pred, train_summary = self.predict(train_data,
                 do_train_mode=self.hps.do_train_mode_predict_on_train_data,
