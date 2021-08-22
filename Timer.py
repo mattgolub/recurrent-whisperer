@@ -85,6 +85,10 @@ class Timer(object):
 	time in unpredictable ways when total time is fast relative to memory
 	allocations.
 	'''
+	_s_per_min = 60
+	_s_per_hr = _s_per_min*60
+	_s_per_day = _s_per_hr*24
+	_s_per_yr = _s_per_day*365
 
 	def __init__(self,
 		n_splits=10,
@@ -403,22 +407,24 @@ class Timer(object):
 			print('[', end='')
 
 		idx = 0
+		pct_scale = 100./total_time # for converting to percent of total time
+
 		while self._is_split_complete(idx):
 
 			split_name = self._split_names[idx]
 			split_time = self._get_split_time(idx)
 
 			if do_single_line:
-				print(' %s: %.2fs (%.1f%%);' %
+				print(' %s: %.1f%% (%s);' %
 					(split_name,
-					split_time,
-					100.*split_time/total_time),
+					split_time*pct_scale,
+					self._format_time(split_time)),
 					end='')
 			else:
-				print('%s\t%.2fs (%.1f%%): %s' %
+				print('%s\t%.1f%% (%s): %s' %
 					(prefix,
-					split_time,
-					100.*split_time/total_time,
+					split_time*pct_scale,
+					self._format_time(split_time),
 					split_name),
 					end='\n')
 
@@ -439,11 +445,103 @@ class Timer(object):
 			do_single_line = self._do_print_single_line
 
 		total_time = self.__call__()
-		print_data = (prefix, self.name, total_time)
+		print_data = (prefix, self.name, self._format_time(total_time))
 		end = '' if do_single_line else '\n'
-		print('%s%s time: %.2fs: ' % print_data, end=end)
+		print('%s%s time: %s: ' % print_data, end=end)
 
 		return total_time
+
+	@classmethod
+	def _format_time(cls, t_seconds, do_abbreviate=True, n_sig_figs=3):
+		''' Builds a string representation of a timing measurement, converted
+		to the appropriate units (from nanoseconds to years) and desired number
+		of significant figures.
+
+		Currently times < 1 nansecond are printed in scientific notation with
+		fixed 3 significant figures. This is typically irrelevant because the
+		timing overhead tends to be around 1-10 microseconds.
+
+		This is not the most lightweight printing function. In some use cases,
+		a more lightweight variant may be needed if frequent printing is
+		required and corresponding time measurements are on the order of
+		microseconds.
+		'''
+
+		def time2str(t):
+
+			# Reduces to n significant figures for printing
+			s = np.format_float_positional(t,
+				precision=n_sig_figs,
+				fractional=False,
+				unique=False,
+				trim='k',
+				sign=False)
+
+			# Drop trailing decimal point (no 'keep' arg does this without
+			# impacting trailing zeros).
+			if s[-1] == '.':
+				return s[:-1]
+			else:
+				return s
+
+		def str_sci_notation(t_seconds, do_abbreviate):
+			str_units = 's' if do_abbreviate else ' seconds'
+			return '%1.2.e%s' % (t_seconds, str_units)
+
+		def str_nanoseconds(t_seconds, do_abbreviate):
+			str_units = 'ns' if do_abbreviate else ' nanoseconds'
+			return '%s%s' % (time2str(t_seconds*1e9), str_units)
+
+		def str_microseconds(t_seconds, do_abbreviate):
+			str_units = 'us' if do_abbreviate else ' microseconds'
+			return '%s%s' % (time2str(t_seconds*1e6), str_units)
+
+		def str_milliseconds(t_seconds, do_abbreviate):
+			str_units = 'ms' if do_abbreviate else ' milliseconds'
+			return '%s%s' % (time2str(t_seconds*1e3), str_units)
+
+		def str_seconds(t_seconds, do_abbreviate):
+			str_units = 's' if do_abbreviate else ' seconds'
+			return '%s%s' % (time2str(t_seconds), str_units)
+
+		def str_minutes(t_seconds, do_abbreviate):
+			str_units = 'mins' if do_abbreviate else 'minutes'
+			return '%s %s' % (time2str(t_seconds/cls._s_per_min), str_units)
+
+		def str_hours(t_seconds, do_abbreviate):
+			str_units = 'hrs' if do_abbreviate else 'hours'
+			return '%s %s' % (time2str(t_seconds/cls._s_per_hr), str_units)
+
+		def str_days(t_seconds, do_abbreviate):
+			str_units = 'd' if do_abbreviate else 'days'
+			return '%s %s' % (time2str(t_seconds/cls._s_per_day), str_units)
+
+		def str_years(t_seconds, do_abbreviate):
+			str_units = 'yrs' if do_abbreviate else 'years'
+			return '%s %s' % (time2str(t_seconds/cls._s_per_yr), str_units)
+
+		if t_seconds<0:
+			return '-' + cls._format_time(-t_seconds, do_abbreviate)
+		elif t_seconds==0:
+			return '0 s'
+		elif t_seconds<1e-9:
+			return str_sci_notation(t_seconds, do_abbreviate)
+		elif t_seconds<1e-6:
+			return str_nanoseconds(t_seconds, do_abbreviate)
+		elif t_seconds<1e-3:
+			return str_microseconds(t_seconds, do_abbreviate)
+		elif t_seconds<1:
+			return str_milliseconds(t_seconds, do_abbreviate)
+		elif t_seconds<=cls._s_per_min:
+			return str_seconds(t_seconds, do_abbreviate)
+		elif t_seconds<=cls._s_per_hr:
+			return str_minutes(t_seconds, do_abbreviate)
+		elif t_seconds<=cls._s_per_day:
+			return str_hours(t_seconds, do_abbreviate)
+		elif t_seconds<=cls._s_per_wk:
+			return str_days(t_seconds, do_abbreviate)
+		else:
+			return str_years(t_seconds, do_abbreviate)
 
 	def _print(self, str, n_indent=None):
 		'''Prints string after prefixing with the desired number of
