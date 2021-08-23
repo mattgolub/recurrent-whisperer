@@ -382,9 +382,7 @@ class RecurrentWhisperer(object):
             None.
         '''
 
-        self.timer = Timer(
-            name='Total run time',
-            do_retrospective=True)
+        self.timer = Timer(name='Total run time', do_retrospective=True)
         self.timer.start()
 
         if 'random_seed' in kwargs and kwargs['random_seed'] == -1:
@@ -1670,7 +1668,6 @@ class RecurrentWhisperer(object):
             None.
         '''
         self._setup_training(train_data, valid_data)
-        self.timer.split('_setup_training')
 
         if self._is_training_complete(self._ltl):
             # If restoring from a completed run, do not enter training loop
@@ -1683,7 +1680,7 @@ class RecurrentWhisperer(object):
         # self._maybe_save_init_checkpoint()
         # -- Make sure to only save if self.epoch==0 (in case of restore)
         # -- This will encompass above visualizations
-        self.timer.split('init ckpt')
+        # -- Make sure time is logged appropriately
 
         # Training loop
         print('Entering training loop.')
@@ -1692,40 +1689,23 @@ class RecurrentWhisperer(object):
         while not done:
 
             self._initialize_epoch()
-
             epoch_train_data = self._prepare_epoch_data(train_data)
-            self._epoch_timer.split('prep data')
-
             train_pred, train_summary = self._train_epoch(epoch_train_data)
-            self._epoch_timer.split('train')
 
             # The following may access epoch_train_data via self._epoch_results
 
             self._maybe_save_seso_checkpoint()
-            self._epoch_timer.split('seso')
-
             self._maybe_save_ltl_checkpoint()
-            self._epoch_timer.split('ltl')
-
             self._maybe_save_lvl_checkpoint()
-            self._epoch_timer.split('lvl')
-
             self._maybe_update_visualizations(version='seso')
-            self._epoch_timer.split('visualize')
-
             done = self._is_training_complete()
-            self._epoch_timer.split('other', stop=True)
-
             self._print_epoch_summary(train_summary)
 
         self.timer.split('train')
 
         self._maybe_save_final_seso_checkpoint()
         self._save_done_file()
-
         self._close_training(train_data, valid_data)
-        self.timer.split('close_training')
-
         self._print_run_summary()
 
     def _setup_training(self, train_data=None, valid_data=None):
@@ -1757,21 +1737,29 @@ class RecurrentWhisperer(object):
         # train_data on-the-fly) because _prepare_epoch_data() updates
         # _epoch_results.train_data appropriately.
 
+        self._initialize_epoch_timer()
+        self.timer.split('_setup_training')
+
     def _initialize_epoch(self):
 
         self._print_epoch_state()
         self._epoch_results.reset()
+        self._initialize_epoch_timer()
 
+    def _initialize_epoch_timer(self):
         self._epoch_timer = Timer(name='Epoch', do_retrospective=True)
         self._epoch_timer.start()
 
     def _prepare_epoch_data(self, train_data):
 
-        if train_data is None:
-            # For on-the-fly data generation
+        if train_data is None: # For on-the-fly data generation
+
             train_data = self.generate_data()
+
             self._epoch_results.train_data = train_data
             self._epoch_results.reset()
+
+            self._epoch_timer.split('prep data')
 
         return train_data
 
@@ -1835,6 +1823,8 @@ class RecurrentWhisperer(object):
         self._update_learning_rate()
         self._update_grad_clipping()
         self._increment_epoch()
+
+        self._epoch_timer.split('train')
 
         return predictions, summary
 
@@ -2162,6 +2152,8 @@ class RecurrentWhisperer(object):
 
                 complete = True
 
+        self._epoch_timer.split('terminate', stop=True)
+
         return complete
 
     def _close_training(self, train_data=None, valid_data=None):
@@ -2188,6 +2180,8 @@ class RecurrentWhisperer(object):
 
         if hps.do_log_output:
             self._restore_logger_defaults()
+
+        self.timer.split('close_training')
 
     def save_final_results(self, train_data, valid_data, version='seso'):
         ''' Optionally save predictions and/or visualizations upon completion
@@ -2847,6 +2841,8 @@ class RecurrentWhisperer(object):
                 version='seso',
                 do_save=self.hps.do_save_pretraining_visualizations)
 
+            self.timer.split('init ckpt')
+
     def _maybe_update_visualizations(self, version='seso'):
         '''Updates visualizations if the current epoch number indicates that
         an update is due. Saves those visualization to Tensorboard or to
@@ -2887,6 +2883,8 @@ class RecurrentWhisperer(object):
                 valid_summary=valid_summary,
                 version=version,
                 do_save=do_save)
+
+        self._epoch_timer.split('visualize')
 
     def _save_figs(self,
         figs=None, # optionally pass in a subset of self.figs
@@ -3584,6 +3582,8 @@ class RecurrentWhisperer(object):
         if self._do_save_seso_checkpoint:
             self._save_checkpoint(version='seso')
 
+            self._epoch_timer.split('seso')
+
     def _maybe_save_final_seso_checkpoint(self):
         ''' Saves the final SESO model checkpoint. This should only be called
         once, upon termination of the train() loop.
@@ -3628,6 +3628,8 @@ class RecurrentWhisperer(object):
                     do_train_mode=hps.do_train_mode_predict_on_train_data)
 
                 self._save_summary(train_summary, 'train', version=version)
+
+        self._epoch_timer.split('ltl')
 
     def _maybe_save_lvl_checkpoint(self):
         ''' Runs a forward pass on the validation data, and saves a model
@@ -3688,6 +3690,8 @@ class RecurrentWhisperer(object):
 
         else:
             valid_pred = valid_summary = None
+
+        self._epoch_timer.split('lvl')
 
         return valid_pred, valid_summary
 
