@@ -1644,7 +1644,7 @@ class RecurrentWhisperer(object):
            Here, call train(train_data=None, valid_data=None), i.e., train().
            You must provide an implementation of generate_data().
         2. Provide a single, fixed set of training data. This is done by
-           calling train(train_data).
+           calling train(train_data, valid_data=None).
         3. Provide, single, fixed set of training data (as in 2) and a single,
            fixed set of validation data. This is done by calling
            train(train_data, valid_data).
@@ -1656,10 +1656,6 @@ class RecurrentWhisperer(object):
         All modes support save-every-so-often (SESO) and lowest-training-loss
         (LTL) updates. Only mode 3 supports the lowest-validation-loss (LVL)
         updates.
-
-        By convention, this call is the first time this object sees any data
-        (train_data / valid_data, or as generated batch-by-batch by
-        generate_data()).
 
         Args:
             train_data (optional): dict containing the training data. If not
@@ -1681,7 +1677,7 @@ class RecurrentWhisperer(object):
             # and do not save a new checkpoint.
             return
 
-        self._maybe_update_visualizations_pretraining(train_data, valid_data)
+        self._maybe_generate_pretraining_visualizations(train_data, valid_data)
 
         # To do:
         # self._maybe_save_init_checkpoint()
@@ -1697,8 +1693,13 @@ class RecurrentWhisperer(object):
 
             self._initialize_epoch()
 
-            train_pred, train_summary = self._train_epoch(train_data)
+            epoch_train_data = self._prepare_epoch_data(train_data)
+            self._epoch_timer.split('prep data')
+
+            train_pred, train_summary = self._train_epoch(epoch_train_data)
             self._epoch_timer.split('train')
+
+            # The following may access epoch_train_data via self._epoch_results
 
             self._maybe_save_seso_checkpoint()
             self._epoch_timer.split('seso')
@@ -1739,7 +1740,6 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        train_data = self._prepare_epoch_data(train_data)
 
         self._has_valid_data = valid_data is not None
 
@@ -1748,10 +1748,14 @@ class RecurrentWhisperer(object):
         # any computation.
         self._epoch_results = EpochResults(
             model=self,
-            train_data=train_data,
-            valid_data=valid_data,
+            train_data=train_data, # ok if this is None
+            valid_data=valid_data, # ok if this is None
             do_batch=self.hps.do_batch_predictions,
             is_final=False)
+
+        # Above is safe for the case of train_data=None (i.e., generating
+        # train_data on-the-fly) because _prepare_epoch_data() updates
+        # _epoch_results.train_data appropriately.
 
     def _initialize_epoch(self):
 
@@ -1765,9 +1769,11 @@ class RecurrentWhisperer(object):
 
         if train_data is None:
             # For on-the-fly data generation
-            return self.generate_data()
-        else:
-            return train_data
+            train_data = self.generate_data()
+            self._epoch_results.train_data = train_data
+            self._epoch_results.reset()
+
+        return train_data
 
     def _train_epoch(self, train_data=None, verbose=False):
         '''Performs training steps across an epoch of training data batches.
@@ -1788,11 +1794,7 @@ class RecurrentWhisperer(object):
             during training.
         '''
 
-        train_data = self._prepare_epoch_data(train_data)
-        self._epoch_timer.split('prep data')
-
-        data_batches, batch_indices = self._split_data_into_batches(
-            train_data)
+        data_batches, batch_idxs = self._split_data_into_batches(train_data)
         self._epoch_timer.split('batching')
 
         pred_list = []
@@ -1812,7 +1814,7 @@ class RecurrentWhisperer(object):
             summary_list.append(batch_summary)
 
         predictions, summary = self._combine_prediction_batches(
-            pred_list, summary_list, batch_indices)
+            pred_list, summary_list, batch_idxs)
 
         self._epoch_results.set(
             predictions=predictions,
@@ -2816,11 +2818,11 @@ class RecurrentWhisperer(object):
         logging are handled downstream of this function.
         '''
 
-    def _maybe_update_visualizations_pretraining(self,
+    def _maybe_generate_pretraining_visualizations(self,
         train_data, valid_data):
 
         # Visualizations generated from untrained network
-        if self._do_update_pretraining_visualizations:
+        if self._do_pretraining_visualizations:
 
             train_data = self._prepare_epoch_data(train_data)
 
@@ -2980,11 +2982,11 @@ class RecurrentWhisperer(object):
 
     @property
     def _do_update_visualizations(self):
-        return self._do_update_pretraining_visualizations or \
+        return self._do_pretraining_visualizations or \
             self._do_update_training_visualizations
 
     @property
-    def _do_update_pretraining_visualizations(self):
+    def _do_pretraining_visualizations(self):
 
         hps = self.hps
 
