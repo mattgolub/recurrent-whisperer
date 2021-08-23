@@ -117,6 +117,10 @@ class EpochResults(object):
     def train_data(self):
         return self._data['train']
 
+    @train_data.setter
+    def train_data(self, value):
+        self._data['train'] = value
+
     @property
     def valid_data(self):
         return self._data['valid']
