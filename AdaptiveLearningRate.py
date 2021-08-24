@@ -6,7 +6,7 @@ Please direct correspondence to mgolub@stanford.edu.
 '''
 import os
 import pdb
-import cPickle
+import pickle
 import numpy as np
 import numpy.random as npr
 
@@ -327,8 +327,8 @@ class AdaptiveLearningRate(object):
 		if self.verbose:
 			print('Saving AdaptiveLearningRate.')
 		save_path = os.path.join(save_dir, self.save_filename)
-		file = open(save_path,'w')
-		file.write(cPickle.dumps(self.__dict__))
+		file = open(save_path,'wb')
+		file.write(pickle.dumps(self.__dict__))
 		file.close
 
 	def restore(self, restore_dir):
@@ -345,10 +345,10 @@ class AdaptiveLearningRate(object):
 		if self.verbose:
 			print('Restoring AdaptiveLearningRate.')
 		restore_path = os.path.join(restore_dir, self.save_filename)
-		file = open(restore_path,'r')
+		file = open(restore_path,'rb')
 		restore_data = file.read()
 		file.close()
-		self.__dict__ = cPickle.loads(restore_data)
+		self.__dict__ = pickle.loads(restore_data)
 
 	def _validate_hyperparameters(self):
 		'''Checks that critical hyperparameters have valid values.

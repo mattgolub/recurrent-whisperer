@@ -5,15 +5,15 @@ Written using Python 2.7.12
 Please direct correspondence to mgolub@stanford.edu.
 '''
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+
+
+
 
 import argparse
 import pdb
 from copy import deepcopy
 import hashlib
-import cPickle
+import pickle
 from numpy import sort
 import yaml
 
@@ -129,7 +129,7 @@ class Hyperparameters(object):
         ''' Create a class attribute for every key in the _integrated_hps dict.
         These attributes are updated
         '''
-        for key, val in self._integrated_hps.iteritems():
+        for key, val in self._integrated_hps.items():
             # setattr(self, key, val)
             self.__setattr__(key, val, debug=False)
 
@@ -189,7 +189,7 @@ class Hyperparameters(object):
             Returns:
                 None.
             '''
-            for key, val in D.iteritems():
+            for key, val in D.items():
 
                 if val is None or val=='None':
                     # Don't set default. This results in default set to None.
@@ -307,7 +307,7 @@ class Hyperparameters(object):
         # now be 'None' in the dict. Here, change 'None' to None. This is less
         # easily implemented as a type argument function provided to
         # ArgumentParser (as is done with str2bool.)
-        for key, val in hps_flat.iteritems():
+        for key, val in hps_flat.items():
             if val == 'None':
                 hps_flat[key] = None
 
@@ -379,7 +379,7 @@ class Hyperparameters(object):
         _integrated_hps = deepcopy(hps)
         update_hps = deepcopy(update_hps)
 
-        for key, val in update_hps.iteritems():
+        for key, val in update_hps.items():
 
             if not isinstance(val, dict) or key not in _integrated_hps:
                 # Base case
@@ -439,7 +439,7 @@ class Hyperparameters(object):
         '''
         self._maybe_print('Saving Hyperparameters.')
         file = open(save_path, 'wb')
-        file.write(cPickle.dumps(self._integrated_hps))
+        file.write(pickle.dumps(self._integrated_hps))
         file.close()
 
     def save_yaml(self, save_path):
@@ -467,7 +467,7 @@ class Hyperparameters(object):
         file = open(restore_path, 'rb')
         restore_data = file.read()
         file.close()
-        return cPickle.loads(restore_data)
+        return pickle.loads(restore_data)
 
     def restore_from_yaml(self, yaml_path):
         # Note, this returns a dict of hps, not a Hyperparameters object
@@ -496,7 +496,7 @@ class Hyperparameters(object):
         '''
 
         D_flat = dict()
-        for key, val in D.iteritems():
+        for key, val in D.items():
 
             assert (isinstance(key, str)),\
                 ('Keys must be strings, '
@@ -504,7 +504,7 @@ class Hyperparameters(object):
 
             if isinstance(val, dict):
                 val_flat = cls.flatten(val)
-                for key2, val2 in val_flat.iteritems():
+                for key2, val2 in val_flat.items():
                     D_flat[key + delimiter + key2] = val2
             else:
                 D_flat[key] = val
@@ -573,7 +573,7 @@ class Hyperparameters(object):
             return D
 
         D_unflattened = dict()
-        for key, val in D_flat.iteritems():
+        for key, val in D_flat.items():
             # Don't need to check type here (handled by parse_helper).
             D_unflattened = add_helper(D_unflattened, key, val)
 
@@ -583,7 +583,7 @@ class Hyperparameters(object):
     def remove_list_hps(cls, hps):
         # Recursive
         keys_to_del = []
-        for key, val in hps.iteritems():
+        for key, val in hps.items():
             if isinstance(val, list):
                 # Base case
                 print('\nDetected list in HPs (%s)--ignoring this HP.' % key)
@@ -745,7 +745,7 @@ class Hyperparameters(object):
             dict_name, rem_name = \
                 cls._parse_delimited_hp_name(key)
 
-            if not dict_name in D.keys():
+            if not dict_name in list(D.keys()):
 
                 D[dict_name] = dict()
 
@@ -768,7 +768,7 @@ class Hyperparameters(object):
 
         S = ''
         indent = n_indent * '\t'
-        for key in sort(D.keys()):
+        for key in sort(list(D.keys())):
             value = D[key]
 
             S += '%s%s: ' % (indent, key)
@@ -793,7 +793,7 @@ class Hyperparameters(object):
             string of key, value pairs, sorted by key.
         '''
 
-        sorted_keys = sort(d.keys())
+        sorted_keys = sort(list(d.keys()))
         n_keys = len(sorted_keys)
 
         str_items = ['{']
@@ -909,7 +909,7 @@ class Hyperparameters(object):
             ValueError if any keys are not strings or dicts.
         '''
 
-        for key, val in hps.iteritems():
+        for key, val in hps.items():
 
             assert (isinstance(key, str)),\
                 ('Hyperparameters keys must be strings, '
@@ -958,8 +958,8 @@ class Hyperparameters(object):
         flat_hps = cls.flatten(hps)
         flat_defaults = cls.flatten(default_hash_hps)
 
-        keys = flat_hps.keys()
-        default_keys = flat_defaults.keys()
+        keys = list(flat_hps.keys())
+        default_keys = list(flat_defaults.keys())
 
         ''' Because of the checks in _validate_args, we only need to check the
         intersection: Keys that are unique to hps are non-hash hps. Keys that
@@ -1009,7 +1009,7 @@ class Hyperparameters(object):
 
         # Generate the hash for that string
         h = hashlib.new('sha512')
-        h.update(str_to_hash)
+        h.update(str_to_hash.encode('utf-8'))
         hps_hash = h.hexdigest()[0:self._hash_len]
 
         return hps_hash

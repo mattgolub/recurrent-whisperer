@@ -5,10 +5,6 @@ Written using Python 2.7.12 and TensorFlow 1.10
 Please direct correspondence to mgolub@stanford.edu.
 '''
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 import os
 import shutil
@@ -23,7 +19,7 @@ import numpy as np
 import numpy.random as npr
 
 # Imports for saving data, predictions, summaries
-import cPickle
+import pickle
 import h5py, json, yaml
 import scipy.io as spio
 
@@ -677,7 +673,7 @@ class RecurrentWhisperer(object):
         Returns:
             A dict of hyperparameters.
         '''
-        raise StandardError(
+        raise Exception(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
@@ -699,7 +695,7 @@ class RecurrentWhisperer(object):
         Returns:
             A dict of hyperparameters.
         '''
-        raise StandardError(
+        raise Exception(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
@@ -765,7 +761,7 @@ class RecurrentWhisperer(object):
         	raise ValueError('HPs that are themselves dicts are not supported')
 
         flat_hps = Hyperparameters.flatten(hp_dict)
-        hp_names = flat_hps.keys()
+        hp_names = list(flat_hps.keys())
         hp_names.sort()
 
         if do_shell_format:
@@ -881,7 +877,7 @@ class RecurrentWhisperer(object):
             print('\nCreating run directory: %s.' % run_dir)
 
             # Subdirectories
-            for d in subdirs.values():
+            for d in list(subdirs.values()):
                 os.makedirs(d)
 
             # Sub-subdirectories
@@ -1114,7 +1110,7 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        raise StandardError(
+        raise Exception(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
@@ -1146,7 +1142,7 @@ class RecurrentWhisperer(object):
             self.clipped_grad_norm_diff = \
                 self.grad_global_norm - self.clipped_grad_global_norm
 
-            zipped_grads = zip(clipped_grads, vars_to_train)
+            zipped_grads = list(zip(clipped_grads, vars_to_train))
 
             self.learning_rate = tf.placeholder(
                 self.dtype, name='learning_rate')
@@ -1386,7 +1382,7 @@ class RecurrentWhisperer(object):
 
         summaries = []
         with tf.variable_scope(scope, reuse=False):
-            for name, op in ops_dict.iteritems():
+            for name, op in ops_dict.items():
                 summaries.append(summary_fcn(name, op))
 
         return tf.summary.merge(summaries)
@@ -1487,7 +1483,7 @@ class RecurrentWhisperer(object):
             '''
             images = self.tensorboard['images']
 
-        for fig_name, fig in figs.iteritems():
+        for fig_name, fig in figs.items():
 
             if fig_name in images['placeholders']:
                 # Don't recreate existing image placeholders
@@ -2002,7 +1998,7 @@ class RecurrentWhisperer(object):
             dict with (TF placeholder, feed value) as (key, value) pairs.
 
         '''
-        raise StandardError(
+        raise Exception(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
@@ -2443,7 +2439,7 @@ class RecurrentWhisperer(object):
         Returns:
             dict with (string label, TF ops) as (key, value) pairs.
         '''
-        raise StandardError(
+        raise Exception(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
@@ -2479,7 +2475,7 @@ class RecurrentWhisperer(object):
         Returns:
             data: dict containing the generated data.
         '''
-        raise StandardError(
+        raise Exception(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
@@ -2493,7 +2489,7 @@ class RecurrentWhisperer(object):
         Returns:
             int specifying the number of examples in batch_data.
         '''
-        raise StandardError(
+        raise Exception(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
@@ -2521,7 +2517,7 @@ class RecurrentWhisperer(object):
         max_batch_size = self.hps.max_batch_size
         n_batches = int(np.ceil(float(n_trials)/max_batch_size))
 
-        shuffled_indices = range(n_trials)
+        shuffled_indices = list(range(n_trials))
         self.rng.shuffle(shuffled_indices)
 
         data_batches = []
@@ -2554,7 +2550,7 @@ class RecurrentWhisperer(object):
             subselected_data: dict containing the subselected data.
         '''
 
-        raise StandardError(
+        raise Exception(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
@@ -2583,7 +2579,7 @@ class RecurrentWhisperer(object):
             from summary_list.
         '''
 
-        raise StandardError(
+        raise Exception(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
@@ -2614,7 +2610,7 @@ class RecurrentWhisperer(object):
         summary = {}
 
         # Average everything except batch_size
-        for key in np.sort(batch_summaries[0].keys()):
+        for key in np.sort(list(batch_summaries[0].keys())):
 
             if key == BATCH_SIZE_KEY:
                 pass
@@ -2901,7 +2897,7 @@ class RecurrentWhisperer(object):
 
         print('\tSaving %s visualizations.' % version.upper())
 
-        fig_names= figs.keys()
+        fig_names= list(figs.keys())
         fig_names.sort()
 
         for fig_name in fig_names:
@@ -3169,7 +3165,7 @@ class RecurrentWhisperer(object):
         # if a run was executed. This won't look for various files, which may
         # or may not be saved depending on hyperparameter choices.
         dirs = cls._build_subdirs(run_dir)
-        exists = [os.path.exists(d) for d in dirs.values()]
+        exists = [os.path.exists(d) for d in list(dirs.values())]
         return all(exists)
 
     @classmethod
@@ -3481,7 +3477,7 @@ class RecurrentWhisperer(object):
         self.clipped_grad_norm_diff = \
             self.grad_global_norm - self.clipped_grad_global_norm
 
-        zipped_grads = zip(clipped_grads, vars_to_train)
+        zipped_grads = list(zip(clipped_grads, vars_to_train))
 
         self.train_op = self.optimizer.apply_gradients(
             zipped_grads, global_step=self.records['ops']['global_step'])
@@ -4309,7 +4305,7 @@ class RecurrentWhisperer(object):
         print('\tSaving .done file.')
 
         save_path = self._paths['done_path']
-        file = open(save_path, 'wb')
+        file = open(save_path, 'w')
         file.write('')
         file.close()
 
@@ -4414,7 +4410,7 @@ class RecurrentWhisperer(object):
         '''
 
         file = open(path_to_file, 'wb')
-        file.write(cPickle.dumps(data_to_save))
+        file.write(pickle.dumps(data_to_save))
         file.close()
 
     @staticmethod
@@ -4430,7 +4426,7 @@ class RecurrentWhisperer(object):
         if os.path.exists(path_to_file):
             file = open(path_to_file, 'rb')
             load_path = file.read()
-            data = cPickle.loads(load_path)
+            data = pickle.loads(load_path)
             file.close()
         else:
             raise IOError('%s not found.' % path_to_file)
@@ -4516,7 +4512,7 @@ class RecurrentWhisperer(object):
 
         json_dict = {}
 
-        for key, val in D.iteritems():
+        for key, val in D.items():
 
             if val is None:
                 json_dict[key] = 'None'
@@ -4545,7 +4541,7 @@ class RecurrentWhisperer(object):
         summary dicts as .json or .yaml.
         '''
 
-        sorted_keys = D.keys()
+        sorted_keys = list(D.keys())
         sorted_keys.sort()
 
         for key in sorted_keys:
@@ -4593,7 +4589,7 @@ class RecurrentWhisperer(object):
         '''
         flat_data = Hyperparameters.flatten(data_to_save)
         with h5py.File(path_to_file, 'w') as file:
-            for key, val in flat_data.iteritems():
+            for key, val in flat_data.items():
                 assert '/' not in key, \
                     'data keys cannot contain \'/\': %s' % key
                 file.create_dataset(key, data=val, compression=None)
@@ -4602,7 +4598,7 @@ class RecurrentWhisperer(object):
     def _load_h5(data_to_save, path_to_file):
 
         with h5py.File(path_to_file, 'r') as file:
-            for key, val in file.items():
+            for key, val in list(file.items()):
                 flat_data[key] = val
         data = Hyperparameters.unflatten(flat_data)
         return data
