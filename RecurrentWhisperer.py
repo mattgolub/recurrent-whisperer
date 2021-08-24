@@ -913,7 +913,7 @@ class RecurrentWhisperer(object):
 
         formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        log_level = logging.DEBUG
+        log_level = logging.WARNING
 
         model_log_path = self._paths['model_log_path']
         loggers_log_path = self._paths['loggers_log_path']
