@@ -15,6 +15,6 @@ setup(
         'matplotlib >= 2.2.3',
         'pyyaml >= 3.13'],
     extras_require={
-        'cpu': ['tensorflow>=1.14.0'],
-        'gpu': ['tensorflow-gpu>=1.14.0'],},
+        'cpu': ['tensorflow==1.14.0'],
+        'gpu': ['tensorflow-gpu==1.14.0'],},
 )
