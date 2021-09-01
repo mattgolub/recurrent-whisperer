@@ -1094,7 +1094,8 @@ class RecurrentWhisperer(object):
 
             print('\n\nCUDA_VISIBLE_DEVICES: %s' % cuda_devices)
             print('\n\n')
-            print(subprocess.check_output(['nvidia-smi']))
+            print(subprocess.check_output(['nvidia-smi'],
+                universal_newlines=True))
             print('\n\n')
 
     def _setup_model(self):
