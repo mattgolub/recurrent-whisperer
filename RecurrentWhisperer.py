@@ -584,7 +584,7 @@ class RecurrentWhisperer(object):
 
             # Tensorboard logging
             'do_save_tensorboard_summaries': True,
-			'do_save_tensorboard_histograms': True,
+            'do_save_tensorboard_histograms': True,
             'do_save_tensorboard_images': True,
 
             # Frequency of (potentially time consuming) operations
@@ -756,9 +756,9 @@ class RecurrentWhisperer(object):
         '''
 
         def raise_error():
-        	# This should not be reachable--Hyperparameters.flatten converts to
-        	# a colon delimited format.
-        	raise ValueError('HPs that are themselves dicts are not supported')
+            # This should not be reachable--Hyperparameters.flatten converts to
+            # a colon delimited format.
+            raise ValueError('HPs that are themselves dicts are not supported')
 
         flat_hps = Hyperparameters.flatten(hp_dict)
         hp_names = list(flat_hps.keys())
@@ -1792,11 +1792,17 @@ class RecurrentWhisperer(object):
 
                 batch_size = self._get_batch_size(batch_data)
                 print('\tTraining on batch %d of %d (size=%d).' %
-                    (cnt+1, n_batches, batch_size))
+                    (cnt+1, n_batches, batch_size), end=' ')
+
+                batch_timer = Timer(name='Batch')
+                batch_timer.start()
 
             batch_pred, batch_summary = self._train_batch(batch_data)
             pred_list.append(batch_pred)
             summary_list.append(batch_summary)
+
+            if verbose:
+                batch_timer.print_total_time()
 
         predictions, summary = self._combine_prediction_batches(
             pred_list, summary_list, batch_idxs)
