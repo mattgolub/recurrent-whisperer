@@ -534,8 +534,6 @@ class Timer(object):
 			return str_minutes(t_seconds, do_abbreviate)
 		elif t_seconds<=cls._s_per_day:
 			return str_hours(t_seconds, do_abbreviate)
-		elif t_seconds<=cls._s_per_wk:
-			return str_days(t_seconds, do_abbreviate)
 		else:
 			return str_years(t_seconds, do_abbreviate)
 
