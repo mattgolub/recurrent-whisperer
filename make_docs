@@ -1,8 +1,14 @@
 # Usage: source make_docs
 # Note: bash make_docs will not work!
-pydoc -w ./RecurrentWhisperer.py
-pydoc -w ./Hyperparameters.py
-pydoc -w ./AdaptiveLearningRate.py
-pydoc -w ./AdaptiveGradNormClip.py
-pydoc -w ./Timer.py
+
+# This fails after moving to Python3:
+#
+# ModuleNotFoundError: No module named 'tensorflow'
+# ModuleNotFoundError: No module named 'numpy'
+
+pydoc3 -w ./RecurrentWhisperer.py
+pydoc3 -w ./Hyperparameters.py
+pydoc3 -w ./AdaptiveLearningRate.py
+pydoc3 -w ./AdaptiveGradNormClip.py
+pydoc3 -w ./Timer.py
 mv *.html ./documentation

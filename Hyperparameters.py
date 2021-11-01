@@ -1,13 +1,9 @@
 '''
 Hyperparameters.py
-Written using Python 2.7.12
+Written for Python 3.6.9
 @ Matt Golub, August 2018.
 Please direct correspondence to mgolub@stanford.edu.
 '''
-
-
-
-
 
 import argparse
 import pdb
