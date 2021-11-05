@@ -1784,7 +1784,6 @@ class RecurrentWhisperer(object):
             during training.
         '''
 
-        verbose = self.hps.verbose
         data_batches, batch_idxs = self._split_data_into_batches(train_data)
         self._epoch_timer.split('batching')
 
@@ -1794,7 +1793,7 @@ class RecurrentWhisperer(object):
         n_batches = len(data_batches)
         for cnt, batch_data in enumerate(data_batches):
 
-            if verbose:
+            if self.hps.verbose:
 
                 batch_size = self._get_batch_size(batch_data)
                 print('\tTraining on batch %d of %d (size=%d).' %
@@ -1807,7 +1806,7 @@ class RecurrentWhisperer(object):
             pred_list.append(batch_pred)
             summary_list.append(batch_summary)
 
-            if verbose:
+            if self.hps.verbose:
                 batch_timer.print_total_time()
 
         predictions, summary = self._combine_prediction_batches(
@@ -2377,8 +2376,9 @@ class RecurrentWhisperer(object):
 
                 batch_size = self._get_batch_size(batch_data)
 
-                print('\tPredict%s: batch %d of %d (%d trials)'
-                      % (mode_str, cnt+1, n_batches, batch_size))
+                if self.hps.verbose:
+                    print('\tPredict%s: batch %d of %d (%d trials)'
+                          % (mode_str, cnt+1, n_batches, batch_size))
 
                 batch_pred, batch_summary = self._predict_batch(batch_data,
                     do_train_mode=do_train_mode)
