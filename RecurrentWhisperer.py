@@ -158,6 +158,9 @@ class RecurrentWhisperer(object):
                 Used for scoping and uniquifying of TF variables.
                 Default: 'rw'.
 
+                verbose: bool indicating whether to print additional detail
+                during operation. Default: False.
+
                 mode: string identifying the mode in which the model will be
                 used. This is never used internally, and is only included for
                 optional use by external run scripts. This is included here
@@ -562,7 +565,9 @@ class RecurrentWhisperer(object):
 
         # See comment in _default_super_hash_hyperparameters()
         return {
+
             'name': 'RecurrentWhisperer',
+            'verbose': False,
 
             'log_dir': '/tmp/rnn_logs/',
             'run_script': None,
@@ -1760,7 +1765,7 @@ class RecurrentWhisperer(object):
 
         return train_data
 
-    def _train_epoch(self, train_data=None, verbose=False):
+    def _train_epoch(self, train_data=None):
         '''Performs training steps across an epoch of training data batches.
 
         Args:
@@ -1779,6 +1784,7 @@ class RecurrentWhisperer(object):
             during training.
         '''
 
+        verbose = self.hps.verbose
         data_batches, batch_idxs = self._split_data_into_batches(train_data)
         self._epoch_timer.split('batching')
 
