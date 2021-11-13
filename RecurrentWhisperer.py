@@ -4219,7 +4219,7 @@ class RecurrentWhisperer(object):
 
         Returns: bool indicating whether or not to perform the save.
         '''
-        if self.self.is_done(self.run_dir):
+        if self.is_done(self.run_dir):
 
             if version == 'seso':
                 return False
