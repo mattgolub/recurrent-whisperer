@@ -5,32 +5,28 @@ Written using Python 2.7.12 and TensorFlow 1.10
 Please direct correspondence to mgolub@stanford.edu.
 '''
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from RecurrentWhisperer import RecurrentWhisperer
 
 class SubclassTemplate(RecurrentWhisperer):
-	''' Template for subclassing RecurrentWhisperer. Everything here is copied
-	from RecurrentWhisperer.py, but includes only the minimal set of functions
-	that must be implemented by any RecurrentWhisperer subclass.
+    ''' Template for subclassing RecurrentWhisperer. Everything here is copied
+    from RecurrentWhisperer.py, but includes only the minimal set of functions
+    that must be implemented by any RecurrentWhisperer subclass.
 
-	Technically, the following functions are not required in all use cases, but
-	are included here for completeness:
+    Technically, the following functions are not required in all use cases, but
+    are included here for completeness:
 
     Required only if generating (or augmenting) data on-the-fly during
     training:
-	    generate_data(...)
+        generate_data(...)
 
     Required only if do_batch_predictions:
-	    _combine_prediction_batches(...)
+        _combine_prediction_batches(...)
 
     Not required, but can provide additional helpful functionality:
-	    _setup_training(...)
-	    _update_valid_tensorboard_summaries(...)
-	    _update_visualizations(...)
-	'''
+        _setup_training(...)
+        _update_valid_tensorboard_summaries(...)
+        _update_visualizations(...)
+    '''
 
     @staticmethod
     def _default_hash_hyperparameters():
@@ -88,7 +84,7 @@ class SubclassTemplate(RecurrentWhisperer):
             None.
         '''
         super(SubclassTemplate, self)._setup_training(
-        	train_data, valid_data=valid_data)
+            train_data, valid_data=valid_data)
 
     def _setup_model(self):
         '''Defines the Tensorflow model including:
@@ -103,7 +99,7 @@ class SubclassTemplate(RecurrentWhisperer):
         Returns:
             None.
         '''
-        raise StandardError(
+        raise Exception(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
@@ -121,7 +117,7 @@ class SubclassTemplate(RecurrentWhisperer):
             dict with (TF placeholder, feed value) as (key, value) pairs.
 
         '''
-        raise StandardError(
+        raise Exception(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
@@ -135,7 +131,7 @@ class SubclassTemplate(RecurrentWhisperer):
         Returns:
             dict with (string label, TF ops) as (key, value) pairs.
         '''
-        raise StandardError(
+        raise Exception(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
@@ -149,11 +145,11 @@ class SubclassTemplate(RecurrentWhisperer):
         Returns:
             int specifying the number of examples in batch_data.
         '''
-        raise StandardError(
+        raise Exception(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
-	@classmethod
+    @classmethod
     def _subselect_batch(cls, data, batch_idx):
         ''' Subselect a batch of data given the batch indices.
 
@@ -166,7 +162,7 @@ class SubclassTemplate(RecurrentWhisperer):
             subselected_data: dict containing the subselected data.
         '''
 
-        raise StandardError(
+        raise Exception(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
@@ -181,7 +177,7 @@ class SubclassTemplate(RecurrentWhisperer):
         Returns:
             data: dict containing the generated data.
         '''
-        raise StandardError(
+        raise Exception(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 
@@ -206,7 +202,7 @@ class SubclassTemplate(RecurrentWhisperer):
             from summary_list.
         '''
 
-        raise StandardError(
+        raise Exception(
             '%s must be implemented by RecurrentWhisperer subclass'
              % sys._getframe().f_code.co_name)
 

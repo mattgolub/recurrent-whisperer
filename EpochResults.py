@@ -1,13 +1,9 @@
 '''
 EpochResults.py
-Written using Python 2.7.12
+Written for Python 3.6.9
 @ Matt Golub, July 2021.
 Please direct correspondence to mgolub@stanford.edu.
 '''
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 class EpochResults(object):
     ''' Helper class for organizing model predictions and prediction summaries

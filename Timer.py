@@ -1,13 +1,9 @@
 '''
 Timer.py
-Written using Python 2.7.12
+Written for Python 3.6.9
 @ Matt Golub, August 2018.
 Please direct correspondence to mgolub@stanford.edu.
 '''
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
 import time
@@ -289,6 +285,14 @@ class Timer(object):
 
 		return splits
 
+	def disp(self, *args, **kwargs):
+
+		print('Timer.disp() is deprecated and '
+		      'will be removed in a future version of Timer.py. '
+		      'Use Timer.print(...) instead.')
+
+		self.print(*args, **kwargs)
+
 	def print(self, n_indent=None, do_single_line=None):
 		'''Prints the profile of the tasks that have been timed thus far.
 
@@ -301,23 +305,76 @@ class Timer(object):
 
 		if self._is_started:
 
-			total_time = self._print_total_time(
+			total_time = self.print_total_time(
 				do_single_line=do_single_line,
 				n_indent=n_indent)
 
-			self._print_split_times(total_time, 
+			self.print_split_times(total_time, 
 				do_single_line=do_single_line,
 				n_indent=n_indent)
 		else:
 			self._print('Timer has not been started.')
 
-	def disp(self, *args, **kwargs):
+	def print_total_time(self, n_indent=None, do_single_line=None):
+		# Print total time
 
-		print('Timer.disp() is deprecated and '
-		      'will be removed in a future version of Timer.py. '
-		      'Use Timer.print(...) instead.')
+		if n_indent is None:
+			prefix = self._print_prefix
+		else:
+			prefix = self._generate_print_prefix(n_indent)
 
-		self.print(*args, **kwargs)
+		if do_single_line is None:
+			do_single_line = self._do_print_single_line
+
+		total_time = self.__call__()
+		print_data = (prefix, self.name, self._format_time(total_time))
+		end = '' if do_single_line else '\n'
+		print('%s%s time: %s. ' % print_data, end=end)
+
+		return total_time
+
+	def print_split_times(self, total_time,
+		n_indent=None,
+		do_single_line=None):
+		# Print split times for all completed splits
+
+		if n_indent is None:
+			prefix = self._print_prefix
+		else:
+			prefix = self._generate_print_prefix(n_indent)
+
+		if do_single_line is None:
+			do_single_line = self._do_print_single_line
+
+		if do_single_line:
+			print('[', end='')
+
+		idx = 0
+		pct_scale = 100./total_time # for converting to percent of total time
+
+		while self._is_split_complete(idx):
+
+			split_name = self._split_names[idx]
+			split_time = self._get_split_time(idx)
+
+			if do_single_line:
+				print(' %s: %.1f%% (%s);' %
+					(split_name,
+					split_time*pct_scale,
+					self._format_time(split_time)),
+					end='')
+			else:
+				print('%s\t%.1f%% (%s): %s' %
+					(prefix,
+					split_time*pct_scale,
+					self._format_time(split_time),
+					split_name),
+					end='\n')
+
+			idx += 1
+
+		if do_single_line:
+			print(' ]', end='\n')
 
 	@property
 	def total_time(self):
@@ -389,67 +446,6 @@ class Timer(object):
 			self._alloc_len += 1
 
 		return self._idx
-
-	def _print_split_times(self, total_time,
-		n_indent=None,
-		do_single_line=None):
-		# Print split times for all completed splits
-
-		if n_indent is None:
-			prefix = self._print_prefix
-		else:
-			prefix = self._generate_print_prefix(n_indent)
-
-		if do_single_line is None:
-			do_single_line = self._do_print_single_line
-
-		if do_single_line:
-			print('[', end='')
-
-		idx = 0
-		pct_scale = 100./total_time # for converting to percent of total time
-
-		while self._is_split_complete(idx):
-
-			split_name = self._split_names[idx]
-			split_time = self._get_split_time(idx)
-
-			if do_single_line:
-				print(' %s: %.1f%% (%s);' %
-					(split_name,
-					split_time*pct_scale,
-					self._format_time(split_time)),
-					end='')
-			else:
-				print('%s\t%.1f%% (%s): %s' %
-					(prefix,
-					split_time*pct_scale,
-					self._format_time(split_time),
-					split_name),
-					end='\n')
-
-			idx += 1
-
-		if do_single_line:
-			print(' ]', end='\n')
-
-	def _print_total_time(self, n_indent=None, do_single_line=None):
-		# Print total time
-
-		if n_indent is None:
-			prefix = self._print_prefix
-		else:
-			prefix = self._generate_print_prefix(n_indent)
-
-		if do_single_line is None:
-			do_single_line = self._do_print_single_line
-
-		total_time = self.__call__()
-		print_data = (prefix, self.name, self._format_time(total_time))
-		end = '' if do_single_line else '\n'
-		print('%s%s time: %s: ' % print_data, end=end)
-
-		return total_time
 
 	@classmethod
 	def _format_time(cls, t_seconds, do_abbreviate=True, n_sig_figs=3):
@@ -538,8 +534,6 @@ class Timer(object):
 			return str_minutes(t_seconds, do_abbreviate)
 		elif t_seconds<=cls._s_per_day:
 			return str_hours(t_seconds, do_abbreviate)
-		elif t_seconds<=cls._s_per_wk:
-			return str_days(t_seconds, do_abbreviate)
 		else:
 			return str_years(t_seconds, do_abbreviate)
 
