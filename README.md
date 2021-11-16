@@ -5,10 +5,7 @@ Written for Python 3.6.9.
 RecurrentWhisperer is a base class for training recurrent neural networks or other deep learning models using TensorFlow. RecurrentWhisperer provides functionality for:
 
 1) Training a recurrent neural network using modern techniques for
-encouraging stable training, such as adaptive learning rates and adaptive
-gradient norm clipping. This class handles common tasks like splitting
-training data into batches, making gradient steps based on individual
-batches of training data, periodically evaluating validation data, and periodically saving model checkpoints.
+encouraging stable training, such as adaptive learning rate management and adaptive gradient norm clipping. RecurrentWhisperer handles common tasks like splitting training data into batches, making gradient steps based on individual batches of training data, periodically evaluating validation data, and periodically saving model checkpoints.
 
 2) Managing Tensorboard visualizations of training progress.
 
@@ -16,6 +13,13 @@ batches of training data, periodically evaluating validation data, and periodica
 of a model (i.e., with different hyperparameter settings). Previously
 saved models can be readily restored from checkpoints, and training runs
 can be readily resumed if their execution was interrupted or preempted.
+
+**If you are using RecurrentWhisperer in research to be published, please cite our accompanying paper in your publication:**
+
+Golub and Sussillo (2018), "FixedPointFinder: A Tensorflow toolbox for identifying and characterizing fixed points in recurrent neural networks," *Journal of Open Source Software*, 3(31), 1003, https://doi.org/10.21105/joss.01003 .
+
+[![DOI](http://joss.theoj.org/papers/10.21105/joss.01003/status.svg)](https://doi.org/10.21105/joss.01003)
+
 
 ## Recommended Installation
 
