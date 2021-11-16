@@ -1,14 +1,29 @@
 # RecurrentWhisperer - A general class template for training recurrent neural networks using Tensorflow.
 
-Written using Python 2.7.12.
+Written for Python 3.6.9.
+
+RecurrentWhisperer is a base class for training recurrent neural networks or other deep learning models using TensorFlow. RecurrentWhisperer provides functionality for:
+
+1) Training a recurrent neural network using modern techniques for
+encouraging stable training, such as adaptive learning rates and adaptive
+gradient norm clipping. This class handles common tasks like splitting
+training data into batches, making gradient steps based on individual
+batches of training data, periodically evaluating validation data, and periodically saving model checkpoints.
+
+2) Managing Tensorboard visualizations of training progress.
+
+3) Managing a directory structure for maintaining many different variants
+of a model (i.e., with different hyperparameter settings). Previously
+saved models can be readily restored from checkpoints, and training runs
+can be readily resumed if their execution was interrupted or preempted.
 
 ## Recommended Installation
 
 The recommended installation is to assemble all dependencies in a virtual environment. 
 
-To create a new virtual environment specific to Python 2.7, enter at the command line:
+To create a new virtual environment, enter at the command line:
 ```bash
-$ virtualenv --system-site-packages -p python2.7 your-virtual-env-name
+$ python3 -m venv --system-site-packages your-virtual-env-name
 ```
 where `your-virtual-env-name` is a path to the the virtual environment you would like to create (e.g.: `/home/rwhisp`). Then activate your new virtual environment:
 ```bash
@@ -39,7 +54,7 @@ $ deactivate
 
 Advanced Python users may skip the Recommended Installation, opting to instead clone this repository and ensure that compatible versions of the following prerequisites are available:
 
-* **TensorFlow** version 1.10 ([install](https://www.tensorflow.org/install/))
+* **TensorFlow** (requires at least version 1.10) ([install](https://www.tensorflow.org/install/))
 * **NumPy, SciPy and Matplotlib** ([install SciPy stack](https://www.scipy.org/install.html), contains both)
 * **PyYaml** ([install](https://pyyaml.org))
 
