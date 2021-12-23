@@ -846,16 +846,12 @@ class RecurrentWhisperer(object):
             None.
         '''
         hps = self.hps
-        log_dir = hps.log_dir
-        n_folds = hps.n_folds
-        fold_idx = hps.fold_idx
-        run_hash = hps.hash
-        run_dir = self.get_run_dir(log_dir, run_hash, n_folds, fold_idx)
+        run_dir = self.get_run_dir_from_hps_object(hps)
         subdirs, paths = self._build_paths(run_dir)
 
         self._subdirs = subdirs
         self._paths = paths
-        self._run_hash = run_hash
+        self._run_hash = hps.hash
         self._run_dir = run_dir
 
         hps_dir = subdirs['hps']
@@ -3127,6 +3123,39 @@ class RecurrentWhisperer(object):
 
         else:
             return hash_dir
+
+    @classmethod
+    def get_run_dir_from_hps_object(cls, hps):
+        ''' Returns a path to the directory containing all files related to a 
+        given run.
+
+        Args:
+            hps: Hyperparameters object.
+
+        Returns:
+            Path to the run directory.
+        '''
+        log_dir = hps.log_dir
+        n_folds = hps.n_folds
+        fold_idx = hps.fold_idx
+        run_hash = hps.hash
+        run_dir = cls.get_run_dir(log_dir, run_hash, n_folds, fold_idx)
+        return run_dir
+
+    @classmethod
+    def get_run_dir_from_hps_dict(cls, hps_dict):
+        ''' Returns a path to the directory containing all files related to a 
+        given run.
+
+        Args:
+            hps_dict: Dict of model hyperparameters.
+
+        Returns:
+            Path to the run directory.
+        '''
+
+        hps = cls.setup_hps(hps_dict)
+        return cls.get_run_dir_from_hps_object(hps)
 
     @classmethod
     def get_run_info(cls, run_dir):
