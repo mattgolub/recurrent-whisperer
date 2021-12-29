@@ -1815,8 +1815,8 @@ class RecurrentWhisperer(object):
             do_train_mode=True,)
 
         self.prev_loss = self.epoch_loss
-        self.epoch_loss = self._get_summary_item(summary, self._loss_key)
-        self.epoch_grad_norm = self._get_summary_item(
+        self.epoch_loss = self.get_summary_item(summary, self._loss_key)
+        self.epoch_grad_norm = self.get_summary_item(
             summary, self._grad_norm_key)
 
         ''' Note, these updates are intentionally placed before any
@@ -2685,7 +2685,7 @@ class RecurrentWhisperer(object):
         return avg
 
     @classmethod
-    def _get_summary_item(cls, summary, key):
+    def get_summary_item(cls, summary, key):
         # Provided for ease of subclass reimplementation
         return summary[key]
 
@@ -3696,7 +3696,7 @@ class RecurrentWhisperer(object):
             # ... if validation loss is better than previously seen
             hps = self.hps
             version = 'lvl'
-            valid_loss = self._get_summary_item(valid_summary, self._loss_key)
+            valid_loss = self.get_summary_item(valid_summary, self._loss_key)
             print('\tValidation loss: %.2e' % valid_loss)
 
             if self._do_save_lvl_checkpoint(valid_loss):
