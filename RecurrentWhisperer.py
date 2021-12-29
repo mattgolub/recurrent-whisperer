@@ -2685,6 +2685,12 @@ class RecurrentWhisperer(object):
         return avg
 
     @classmethod
+    def get_summary_keys(cls, summary):
+        keys = list(summary.keys())
+        keys.sort()
+        return keys
+
+    @classmethod
     def get_summary_item(cls, summary, key):
         # Provided for ease of subclass reimplementation
         return summary[key]
