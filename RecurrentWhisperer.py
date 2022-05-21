@@ -2633,10 +2633,45 @@ class RecurrentWhisperer(object):
         return summary
 
     @classmethod
+    def _list_batch_summary_vals(cls, batch_summaries, key):
+        ''' Compiles a list of evaluations of a summary statistic across all
+        batches from one epoch. This is all done in Numpy (no Tensorflow).
+
+        Args:
+            batch_summaries: list of dicts, with each dict as returned by
+            _train_batch() and updated to include 'batch_size' (done
+            automatically in _train_epoch).
+
+            key: string name of the statistic in each batch summary dict, whose
+            values are to be averaged.
+
+        Returns:
+            batch_vals: List of the batch_summaries[i][key] values.
+        '''
+
+        batch_vals = []
+
+        assert isinstance(batch_summaries, list),\
+            ('batch_summaries must be a list, '
+             'but has type: %s' % str(type(batch_summaries)))
+
+        assert len(batch_summaries)>=0,\
+            'Cannot compute epoch averages because batch_summaries is empty.'
+
+        for batch_summary in batch_summaries:
+
+            assert key in batch_summary,\
+                ('Did not find key (%s) in batch_summary.' % key)
+
+            batch_vals.append(batch_summary[key])
+
+        return batch_vals
+
+    @classmethod
     def _compute_epoch_average(cls, batch_summaries, key):
-        '''Computes a weighted average of evaluations of a summary
-        statistic across an epoch of data batches. This is all done in
-        numpy (no Tensorflow).
+        '''Computes a weighted average of evaluations of a summary statistic 
+        across an epoch of data batches. This is all done in Numpy (no
+        Tensorflow).
 
         Args:
             batch_summaries: list of dicts, with each dict as returned by
@@ -2652,37 +2687,43 @@ class RecurrentWhisperer(object):
             of each batch_summaries[i][key] value (typically a scalar).
         '''
 
-        BATCH_SIZE_KEY = cls._batch_size_key
-        batch_vals = []
-        batch_sizes = []
+        batch_vals = cls._list_batch_summary_vals(
+            batch_summaries, key)
 
-        assert isinstance(batch_summaries, list),\
-            ('batch_summaries must be a list, '
-             'but has type: %s' % str(type(batch_summaries)))
-
-        assert len(batch_summaries)>=0,\
-            'Cannot compute epoch averages because batch_summaries is empty.'
-
-        for batch_summary in batch_summaries:
-
-            assert key in batch_summary,\
-                ('Did not find key (%s) in batch_summary.' % key)
-
-            assert BATCH_SIZE_KEY in batch_summary,\
-                ('Did not find key (%s) in batch_summary.' % BATCH_SIZE_KEY)
-
-            batch_vals.append(batch_summary[key])
-            batch_sizes.append(batch_summary[BATCH_SIZE_KEY])
-
-        # Deprecated. Only works if batch_summary[key] is scalar.
-        # weights = np.true_divide(batch_sizes, np.sum(batch_sizes))
-        # avg = np.dot(weights, batch_vals)
+        batch_sizes = cls._list_batch_summary_vals(
+            batch_summaries, cls._batch_size_key)
 
         # This supports arbitrary shaped numpy arrays
         # (though by convention only scalars should be in prediction summary.)
         avg = np.average(batch_vals, weights=batch_sizes, axis=0)
 
         return avg
+
+    @classmethod
+    def _compute_epoch_sum(cls, batch_summaries, key):
+        '''Computes a sum of evaluations of a summary statistic across an epoch 
+        of data batches. This is all done in Numpy (no Tensorflow).
+
+        Args:
+            batch_summaries: list of dicts, with each dict as returned by
+            _train_batch() and updated to include 'batch_size' (done
+            automatically in _train_epoch).
+
+            key: string name of the statistic in each batch summary dict, whose
+            values are to be averaged.
+
+        Returns:
+            avg: float or numpy array containing the batch-size-weighted
+            average of the batch_summaries[i][key] values. Shape matches that
+            of each batch_summaries[i][key] value (typically a scalar).
+        '''
+
+        batch_vals = cls._list_batch_summary_vals(
+            batch_summaries, key)
+
+        # This supports arbitrary shaped numpy arrays
+        # (though by convention only scalars should be in prediction summary.)
+        return np.sum(batch_vals, axis=0)
 
     @classmethod
     def get_summary_keys(cls, summary):
