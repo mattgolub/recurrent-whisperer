@@ -15,7 +15,8 @@ import warnings
 import pdb
 
 import tensorflow as tf
-tf.compat.v1.disable_eager_execution()
+tf1 = tf.compat.v1
+tf1.disable_eager_execution()
 
 import numpy as np
 import numpy.random as npr
@@ -25,7 +26,7 @@ import pickle
 import h5py, json, yaml
 import scipy.io as spio
 
-if False: # os.environ.get('DISPLAY','') == '':
+if os.environ.get('DISPLAY','') == '':
     # Ensures smooth running across environments, including servers without
     # graphical backends.
     print('No display found. Using non-interactive Agg backend.')
@@ -409,7 +410,7 @@ class RecurrentWhisperer(object):
         '''Make parameter initializations and data batching reproducible
         across runs.'''
         self.rng = npr.RandomState(hps.random_seed)
-        tf.compat.v1.set_random_seed(hps.random_seed)
+        tf1.set_random_seed(hps.random_seed)
         ''' Note: Currently this state will not transfer across saves and
         restores. Thus behavior will only be reproducible for uninterrupted
         runs (i.e., that do not require restoring from a checkpoint). The fix
@@ -425,7 +426,7 @@ class RecurrentWhisperer(object):
 
         self._setup_devices()
 
-        with tf.compat.v1.variable_scope(hps.name, reuse=tf.compat.v1.AUTO_REUSE):
+        with tf1.variable_scope(hps.name, reuse=tf1.AUTO_REUSE):
 
             with tf.device(self.cpu_device):
                 self._setup_records()
@@ -966,7 +967,7 @@ class RecurrentWhisperer(object):
         update_ops ={}
         increment_ops = {}
 
-        with tf.compat.v1.variable_scope('records', reuse=False):
+        with tf1.variable_scope('records', reuse=False):
             '''Maintain state using TF framework for seamless saving and
             restoring of runs'''
 
@@ -980,7 +981,7 @@ class RecurrentWhisperer(object):
                 name='epoch',
                 trainable=False,
                 dtype=tf.int32)
-            increment_ops['epoch'] = tf.compat.v1.assign_add(ops['epoch'], 1,
+            increment_ops['epoch'] = tf1.assign_add(ops['epoch'], 1,
                 name='increment_epoch')
 
             ''' Timing TF variable to maintain timing information across
@@ -990,9 +991,9 @@ class RecurrentWhisperer(object):
                 name='train_time',
                 trainable=False,
                 dtype=self.dtype)
-            placeholders['train_time'] = tf.compat.v1.placeholder(self.dtype,
+            placeholders['train_time'] = tf1.placeholder(self.dtype,
                 name='train_time')
-            update_ops['train_time'] = tf.compat.v1.assign(
+            update_ops['train_time'] = tf1.assign(
                 ops['train_time'], placeholders['train_time'],
                 name='update_train_time')
 
@@ -1041,19 +1042,19 @@ class RecurrentWhisperer(object):
         op = tf.Variable(
             np.inf, name=version, trainable=False, dtype=self.dtype)
 
-        ph = tf.compat.v1.placeholder(self.dtype, name=version)
+        ph = tf1.placeholder(self.dtype, name=version)
 
-        update_op = tf.compat.v1.assign(op, ph, name='update_%s' % version)
+        update_op = tf1.assign(op, ph, name='update_%s' % version)
 
         epoch_last_improvement = tf.Variable(0,
             name='epoch_last_%s_improvement' % version,
             trainable=False,
             dtype=tf.int32)
 
-        epoch_ph = tf.compat.v1.placeholder(
+        epoch_ph = tf1.placeholder(
             tf.int32, name='epoch_last_%s_improvement' % version)
 
-        update_epoch = tf.compat.v1.assign(epoch_last_improvement, epoch_ph,
+        update_epoch = tf1.assign(epoch_last_improvement, epoch_ph,
             name='update_epoch_last_%s_improvement' % version)
 
         return (op, ph, update_op,
@@ -1132,12 +1133,12 @@ class RecurrentWhisperer(object):
 
         vars_to_train = self.trainable_variables
 
-        with tf.compat.v1.variable_scope('optimizer', reuse=False):
+        with tf1.variable_scope('optimizer', reuse=False):
 
             # Gradient clipping
             grads = tf.gradients(ys=self.loss, xs=vars_to_train)
 
-            self.grad_norm_clip_val = tf.compat.v1.placeholder(
+            self.grad_norm_clip_val = tf1.placeholder(
                 self.dtype, name='grad_norm_clip_val')
 
             clipped_grads, self.grad_global_norm = tf.clip_by_global_norm(
@@ -1150,16 +1151,16 @@ class RecurrentWhisperer(object):
 
             zipped_grads = list(zip(clipped_grads, vars_to_train))
 
-            self.learning_rate = tf.compat.v1.placeholder(
+            self.learning_rate = tf1.placeholder(
                 self.dtype, name='learning_rate')
 
-            self.learning_rate_scale = tf.compat.v1.placeholder(
+            self.learning_rate_scale = tf1.placeholder(
                 self.dtype, name='learning_rate_scale')
 
             self.learning_rate_scaled = \
                 self.learning_rate * self.learning_rate_scale
 
-            self.optimizer = tf.compat.v1.train.AdamOptimizer(
+            self.optimizer = tf1.train.AdamOptimizer(
                 learning_rate=self.learning_rate_scaled,
                 **self.hps.adam_hps)
 
@@ -1199,16 +1200,16 @@ class RecurrentWhisperer(object):
         self.savers = dict()
 
         # save every so often
-        self.savers['seso'] = tf.compat.v1.train.Saver(
-            tf.compat.v1.global_variables(), max_to_keep=self.hps.max_seso_ckpt_to_keep)
+        self.savers['seso'] = tf1.train.Saver(
+            tf1.global_variables(), max_to_keep=self.hps.max_seso_ckpt_to_keep)
 
         # lowest training loss
-        self.savers['ltl'] = tf.compat.v1.train.Saver(
-            tf.compat.v1.global_variables(), max_to_keep=self.hps.max_ltl_ckpt_to_keep)
+        self.savers['ltl'] = tf1.train.Saver(
+            tf1.global_variables(), max_to_keep=self.hps.max_ltl_ckpt_to_keep)
 
         # lowest validation loss
-        self.savers['lvl'] = tf.compat.v1.train.Saver(
-            tf.compat.v1.global_variables(), max_to_keep=self.hps.max_lvl_ckpt_to_keep)
+        self.savers['lvl'] = tf1.train.Saver(
+            tf1.global_variables(), max_to_keep=self.hps.max_lvl_ckpt_to_keep)
 
     def _setup_session(self):
         '''Sets up a Tensorflow session with the desired GPU configuration.
@@ -1222,9 +1223,9 @@ class RecurrentWhisperer(object):
         hps = self.hps
 
         if hps.disable_gpus:
-            config = tf.compat.v1.ConfigProto(device_count={'GPU': 0})
+            config = tf1.ConfigProto(device_count={'GPU': 0})
         else:
-            config = tf.compat.v1.ConfigProto()
+            config = tf1.ConfigProto()
             config.gpu_options.allow_growth = hps.allow_gpu_growth
 
         config.allow_soft_placement = hps.allow_soft_placement
@@ -1234,7 +1235,7 @@ class RecurrentWhisperer(object):
             config.gpu_options.per_process_gpu_memory_fraction = \
                 hps.per_process_gpu_memory_fraction
 
-        self.session = tf.compat.v1.Session(config=config)
+        self.session = tf1.Session(config=config)
         print('\n')
 
     # *************************************************************************
@@ -1267,7 +1268,7 @@ class RecurrentWhisperer(object):
 
         # Initialize new session
         print('Initializing new run (%s).' % self.hps.hash)
-        self.session.run(tf.compat.v1.global_variables_initializer())
+        self.session.run(tf1.global_variables_initializer())
 
         self.hps.save_yaml(hps_yaml_path) # For visual inspection
         self.hps.save(hps_path) # For restoring a run via its run_dir
@@ -1300,8 +1301,8 @@ class RecurrentWhisperer(object):
 
         self.tensorboard = {}
 
-        self.tensorboard['writer'] = tf.compat.v1.summary.FileWriter(self.events_dir)
-        self.tensorboard['writer'].add_graph(tf.compat.v1.get_default_graph())
+        self.tensorboard['writer'] = tf1.summary.FileWriter(self.events_dir)
+        self.tensorboard['writer'].add_graph(tf1.get_default_graph())
 
         if self.hps.do_save_tensorboard_summaries:
             self._setup_tensorboard_summaries()
@@ -1364,10 +1365,10 @@ class RecurrentWhisperer(object):
             self._build_merged_tensorboard_summaries(
                 scope='model',
                 ops_dict=hist_ops,
-                summary_fcn=tf.compat.v1.summary.histogram)
+                summary_fcn=tf1.summary.histogram)
 
     def _build_merged_tensorboard_summaries(self, scope, ops_dict,
-        summary_fcn=tf.compat.v1.summary.scalar):
+        summary_fcn=tf1.summary.scalar):
         ''' Builds and merges Tensorboard summaries.
 
         Args:
@@ -1387,11 +1388,11 @@ class RecurrentWhisperer(object):
         '''
 
         summaries = []
-        with tf.compat.v1.variable_scope(scope, reuse=False):
+        with tf1.variable_scope(scope, reuse=False):
             for name, op in ops_dict.items():
                 summaries.append(summary_fcn(name, op))
 
-        return tf.compat.v1.summary.merge(summaries)
+        return tf1.summary.merge(summaries)
 
     def _update_train_tensorboard(self, feed_dict, ev_ops):
         ''' Updates Tensorboard based on a pass through a single-batch of
@@ -1502,17 +1503,17 @@ class RecurrentWhisperer(object):
             # used for storage--they aren't computed on.
             with tf.device(self.cpu_device):
 
-                images['placeholders'][fig_name] = tf.compat.v1.placeholder(
+                images['placeholders'][fig_name] = tf1.placeholder(
                     tf.uint8, (1, fig_height, fig_width, 3))
 
                 images['summaries'].append(
-                    tf.compat.v1.summary.image(
+                    tf1.summary.image(
                         tb_fig_name,
                         images['placeholders'][fig_name],
                         max_outputs=1))
 
         # Repeated calls will orphan an existing TF op :-(.
-        images['merged_summaries'] = tf.compat.v1.summary.merge(images['summaries'])
+        images['merged_summaries'] = tf1.summary.merge(images['summaries'])
 
         self.tensorboard['images'] = images
 
@@ -3083,7 +3084,7 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        if False: # os.environ.get('DISPLAY','') == '':
+        if os.environ.get('DISPLAY','') == '':
             # If executing on a server with no graphical back-end
             pass
         else:
@@ -3317,7 +3318,7 @@ class RecurrentWhisperer(object):
 
         # Exclude anything a user may have created on the graph that is not
         # part of this model.
-        tf_vars = tf.compat.v1.trainable_variables()
+        tf_vars = tf1.trainable_variables()
         model_vars = [v for v in tf_vars if self.hps.name in v.name]
 
         return model_vars
@@ -3993,7 +3994,7 @@ class RecurrentWhisperer(object):
             return self.restore_from_checkpoint(version,
                 checkpoint_path=ckpt_path)
         else:
-            assert tf.compat.v1.train.checkpoint_exists(checkpoint_path),\
+            assert tf1.train.checkpoint_exists(checkpoint_path),\
                 ('Checkpoint does not exist: %s' % checkpoint_path)
 
             ckpt_dir, ckpt_filename = os.path.split(checkpoint_path)
