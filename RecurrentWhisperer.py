@@ -407,15 +407,18 @@ class RecurrentWhisperer(object):
             self._setup_logger()
             self.timer.split('_setup_logger')
 
-        '''Make parameter initializations and data batching reproducible
-        across runs.'''
+        ''' Make parameter initializations, batching, noise, etc reproducible
+        across runs. 
+
+        Note: Currently this state will not transfer across saves and restores. 
+        Thus behavior will only be reproducible for uninterrupted runs (i.e., 
+        that do not require restoring from a checkpoint). The fix would be to 
+        draw all random numbers needed for a run upon starting or restoring a 
+        run.'''
         self.rng = npr.RandomState(hps.random_seed)
-        tf1.set_random_seed(hps.random_seed)
-        ''' Note: Currently this state will not transfer across saves and
-        restores. Thus behavior will only be reproducible for uninterrupted
-        runs (i.e., that do not require restoring from a checkpoint). The fix
-        would be to draw all random numbers needed for a run upon starting or
-        restoring a run.'''
+        # tf1.set_random_seed(hps.random_seed)
+        tf.random.set_seed(hps.random_seed)
+
         self.timer.split('set_random_seed')
 
         self.adaptive_learning_rate = AdaptiveLearningRate(**hps.alr_hps)
@@ -545,9 +548,8 @@ class RecurrentWhisperer(object):
                                 # for better argparse handling, yaml writing
             'adam_hps': {
                 'epsilon': 0.01,
-                'beta1': 0.9,
-                'beta2': 0.999,
-                'use_locking': False,
+                'beta_1': 0.9,
+                'beta_2': 0.999,
                 'name': 'Adam'
                 },
             'alr_hps': AdaptiveLearningRate.default_hps,
@@ -981,8 +983,8 @@ class RecurrentWhisperer(object):
                 name='epoch',
                 trainable=False,
                 dtype=tf.int32)
-            increment_ops['epoch'] = tf1.assign_add(ops['epoch'], 1,
-                name='increment_epoch')
+            increment_ops['epoch'] = ops['epoch'].assign_add(
+                1, name='increment_epoch')
 
             ''' Timing TF variable to maintain timing information across
             potentially multiple training sessions. Allows for previous
@@ -993,14 +995,11 @@ class RecurrentWhisperer(object):
                 dtype=self.dtype)
             placeholders['train_time'] = tf1.placeholder(self.dtype,
                 name='train_time')
-            update_ops['train_time'] = tf1.assign(
-                ops['train_time'], placeholders['train_time'],
-                name='update_train_time')
+            update_ops['train_time'] = ops['train_time'].assign(
+                placeholders['train_time'], name='update_train_time')
 
-            ops['global_step'] = tf.Variable(0,
-                name='global_step',
-                trainable=False,
-                dtype=tf.int32)
+            # Previously used entry: ops['global_step'], now replaced by
+            # self.optimizer.iterations
 
             # lowest validation loss
             (ops['lvl'],
@@ -1044,7 +1043,7 @@ class RecurrentWhisperer(object):
 
         ph = tf1.placeholder(self.dtype, name=version)
 
-        update_op = tf1.assign(op, ph, name='update_%s' % version)
+        update_op = op.assign(ph, name='update_%s' % version)
 
         epoch_last_improvement = tf.Variable(0,
             name='epoch_last_%s_improvement' % version,
@@ -1054,8 +1053,8 @@ class RecurrentWhisperer(object):
         epoch_ph = tf1.placeholder(
             tf.int32, name='epoch_last_%s_improvement' % version)
 
-        update_epoch = tf1.assign(epoch_last_improvement, epoch_ph,
-            name='update_epoch_last_%s_improvement' % version)
+        update_epoch = epoch_last_improvement.assign(
+            epoch_ph, name='update_epoch_last_%s_improvement' % version)
 
         return (op, ph, update_op,
             epoch_last_improvement, epoch_ph, update_epoch)
@@ -1160,12 +1159,11 @@ class RecurrentWhisperer(object):
             self.learning_rate_scaled = \
                 self.learning_rate * self.learning_rate_scale
 
-            self.optimizer = tf1.train.AdamOptimizer(
+            self.optimizer = tf.keras.optimizers.Adam(
                 learning_rate=self.learning_rate_scaled,
                 **self.hps.adam_hps)
 
-            self.train_op = self.optimizer.apply_gradients(
-                zipped_grads, global_step=self.records['ops']['global_step'])
+            self.train_op = self.optimizer.apply_gradients(zipped_grads)
 
     def _setup_visualizations(self):
         '''Sets up visualizations. Only called if
@@ -1268,6 +1266,8 @@ class RecurrentWhisperer(object):
 
         # Initialize new session
         print('Initializing new run (%s).' % self.hps.hash)
+
+        # This is still required if using some tf.compat.v1 calls.
         self.session.run(tf1.global_variables_initializer())
 
         self.hps.save_yaml(hps_yaml_path) # For visual inspection
@@ -1714,6 +1714,8 @@ class RecurrentWhisperer(object):
             self._print_epoch_summary(train_summary)
 
         self.timer.split('train')
+
+        # To do: Save lvl checkpoint 
 
         self._maybe_save_final_seso_checkpoint()
         self._save_done_file()
@@ -3382,7 +3384,7 @@ class RecurrentWhisperer(object):
         '''
 
         # TO DO: remove "_" from definition
-        return self.session.run(self.records['ops']['global_step'])
+        return self.session.run(self.optimizer.iterations)
 
     @property
     def _epoch_tf(self):
@@ -3582,8 +3584,7 @@ class RecurrentWhisperer(object):
 
         zipped_grads = list(zip(clipped_grads, vars_to_train))
 
-        self.train_op = self.optimizer.apply_gradients(
-            zipped_grads, global_step=self.records['ops']['global_step'])
+        self.train_op = self.optimizer.apply_gradients(zipped_grads)
 
     def print_trainable_variables(self):
         '''Prints the current set of trainable variables.
@@ -3838,8 +3839,7 @@ class RecurrentWhisperer(object):
 
         self._update_train_time()
         saver = self.savers[version]
-        saver.save(self.session, ckpt_path,
-            global_step=self.records['ops']['global_step'])
+        saver.save(self.session, ckpt_path, global_step=self._step)
 
         ckpt_dir, ckpt_fname = os.path.split(ckpt_path)
         self.adaptive_learning_rate.save(ckpt_dir)
