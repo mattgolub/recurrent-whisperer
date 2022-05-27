@@ -10,7 +10,7 @@ import pickle
 import numpy as np
 import numpy.random as npr
 
-if os.environ.get('DISPLAY','') == '':
+if False: # os.environ.get('DISPLAY','') == '':
 	# Ensures smooth running across environments, including servers without
 	# graphical backends.
 	print('No display found. Using non-interactive Agg backend.')

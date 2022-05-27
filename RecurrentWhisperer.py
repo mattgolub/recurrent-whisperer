@@ -15,6 +15,8 @@ import warnings
 import pdb
 
 import tensorflow as tf
+tf.compat.v1.disable_eager_execution()
+
 import numpy as np
 import numpy.random as npr
 
@@ -23,7 +25,7 @@ import pickle
 import h5py, json, yaml
 import scipy.io as spio
 
-if os.environ.get('DISPLAY','') == '':
+if False: # os.environ.get('DISPLAY','') == '':
     # Ensures smooth running across environments, including servers without
     # graphical backends.
     print('No display found. Using non-interactive Agg backend.')
@@ -407,7 +409,7 @@ class RecurrentWhisperer(object):
         '''Make parameter initializations and data batching reproducible
         across runs.'''
         self.rng = npr.RandomState(hps.random_seed)
-        tf.set_random_seed(hps.random_seed)
+        tf.compat.v1.set_random_seed(hps.random_seed)
         ''' Note: Currently this state will not transfer across saves and
         restores. Thus behavior will only be reproducible for uninterrupted
         runs (i.e., that do not require restoring from a checkpoint). The fix
@@ -423,7 +425,7 @@ class RecurrentWhisperer(object):
 
         self._setup_devices()
 
-        with tf.variable_scope(hps.name, reuse=tf.AUTO_REUSE):
+        with tf.compat.v1.variable_scope(hps.name, reuse=tf.compat.v1.AUTO_REUSE):
 
             with tf.device(self.cpu_device):
                 self._setup_records()
@@ -964,7 +966,7 @@ class RecurrentWhisperer(object):
         update_ops ={}
         increment_ops = {}
 
-        with tf.variable_scope('records', reuse=False):
+        with tf.compat.v1.variable_scope('records', reuse=False):
             '''Maintain state using TF framework for seamless saving and
             restoring of runs'''
 
@@ -978,7 +980,7 @@ class RecurrentWhisperer(object):
                 name='epoch',
                 trainable=False,
                 dtype=tf.int32)
-            increment_ops['epoch'] = tf.assign_add(ops['epoch'], 1,
+            increment_ops['epoch'] = tf.compat.v1.assign_add(ops['epoch'], 1,
                 name='increment_epoch')
 
             ''' Timing TF variable to maintain timing information across
@@ -988,9 +990,9 @@ class RecurrentWhisperer(object):
                 name='train_time',
                 trainable=False,
                 dtype=self.dtype)
-            placeholders['train_time'] = tf.placeholder(self.dtype,
+            placeholders['train_time'] = tf.compat.v1.placeholder(self.dtype,
                 name='train_time')
-            update_ops['train_time'] = tf.assign(
+            update_ops['train_time'] = tf.compat.v1.assign(
                 ops['train_time'], placeholders['train_time'],
                 name='update_train_time')
 
@@ -1039,19 +1041,19 @@ class RecurrentWhisperer(object):
         op = tf.Variable(
             np.inf, name=version, trainable=False, dtype=self.dtype)
 
-        ph = tf.placeholder(self.dtype, name=version)
+        ph = tf.compat.v1.placeholder(self.dtype, name=version)
 
-        update_op = tf.assign(op, ph, name='update_%s' % version)
+        update_op = tf.compat.v1.assign(op, ph, name='update_%s' % version)
 
         epoch_last_improvement = tf.Variable(0,
             name='epoch_last_%s_improvement' % version,
             trainable=False,
             dtype=tf.int32)
 
-        epoch_ph = tf.placeholder(
+        epoch_ph = tf.compat.v1.placeholder(
             tf.int32, name='epoch_last_%s_improvement' % version)
 
-        update_epoch = tf.assign(epoch_last_improvement, epoch_ph,
+        update_epoch = tf.compat.v1.assign(epoch_last_improvement, epoch_ph,
             name='update_epoch_last_%s_improvement' % version)
 
         return (op, ph, update_op,
@@ -1093,11 +1095,13 @@ class RecurrentWhisperer(object):
             else:
                 cuda_devices = ''
 
-            print('\n\nCUDA_VISIBLE_DEVICES: %s' % cuda_devices)
-            print('\n\n')
-            print(subprocess.check_output(['nvidia-smi'],
-                universal_newlines=True))
-            print('\n\n')
+            # Temporary bypass while testing on Mac M1 GPU
+            #
+            # print('\n\nCUDA_VISIBLE_DEVICES: %s' % cuda_devices)
+            # print('\n\n')
+            # print(subprocess.check_output(['nvidia-smi'],
+            #     universal_newlines=True))
+            # print('\n\n')
 
     def _setup_model(self):
         '''Defines the Tensorflow model including:
@@ -1128,34 +1132,34 @@ class RecurrentWhisperer(object):
 
         vars_to_train = self.trainable_variables
 
-        with tf.variable_scope('optimizer', reuse=False):
+        with tf.compat.v1.variable_scope('optimizer', reuse=False):
 
             # Gradient clipping
-            grads = tf.gradients(self.loss, vars_to_train)
+            grads = tf.gradients(ys=self.loss, xs=vars_to_train)
 
-            self.grad_norm_clip_val = tf.placeholder(
+            self.grad_norm_clip_val = tf.compat.v1.placeholder(
                 self.dtype, name='grad_norm_clip_val')
 
             clipped_grads, self.grad_global_norm = tf.clip_by_global_norm(
                 grads, self.grad_norm_clip_val)
 
-            self.clipped_grad_global_norm = tf.global_norm(clipped_grads)
+            self.clipped_grad_global_norm = tf.linalg.global_norm(clipped_grads)
 
             self.clipped_grad_norm_diff = \
                 self.grad_global_norm - self.clipped_grad_global_norm
 
             zipped_grads = list(zip(clipped_grads, vars_to_train))
 
-            self.learning_rate = tf.placeholder(
+            self.learning_rate = tf.compat.v1.placeholder(
                 self.dtype, name='learning_rate')
 
-            self.learning_rate_scale = tf.placeholder(
+            self.learning_rate_scale = tf.compat.v1.placeholder(
                 self.dtype, name='learning_rate_scale')
 
             self.learning_rate_scaled = \
                 self.learning_rate * self.learning_rate_scale
 
-            self.optimizer = tf.train.AdamOptimizer(
+            self.optimizer = tf.compat.v1.train.AdamOptimizer(
                 learning_rate=self.learning_rate_scaled,
                 **self.hps.adam_hps)
 
@@ -1195,16 +1199,16 @@ class RecurrentWhisperer(object):
         self.savers = dict()
 
         # save every so often
-        self.savers['seso'] = tf.train.Saver(
-            tf.global_variables(), max_to_keep=self.hps.max_seso_ckpt_to_keep)
+        self.savers['seso'] = tf.compat.v1.train.Saver(
+            tf.compat.v1.global_variables(), max_to_keep=self.hps.max_seso_ckpt_to_keep)
 
         # lowest training loss
-        self.savers['ltl'] = tf.train.Saver(
-            tf.global_variables(), max_to_keep=self.hps.max_ltl_ckpt_to_keep)
+        self.savers['ltl'] = tf.compat.v1.train.Saver(
+            tf.compat.v1.global_variables(), max_to_keep=self.hps.max_ltl_ckpt_to_keep)
 
         # lowest validation loss
-        self.savers['lvl'] = tf.train.Saver(
-            tf.global_variables(), max_to_keep=self.hps.max_lvl_ckpt_to_keep)
+        self.savers['lvl'] = tf.compat.v1.train.Saver(
+            tf.compat.v1.global_variables(), max_to_keep=self.hps.max_lvl_ckpt_to_keep)
 
     def _setup_session(self):
         '''Sets up a Tensorflow session with the desired GPU configuration.
@@ -1218,9 +1222,9 @@ class RecurrentWhisperer(object):
         hps = self.hps
 
         if hps.disable_gpus:
-            config = tf.ConfigProto(device_count={'GPU': 0})
+            config = tf.compat.v1.ConfigProto(device_count={'GPU': 0})
         else:
-            config = tf.ConfigProto()
+            config = tf.compat.v1.ConfigProto()
             config.gpu_options.allow_growth = hps.allow_gpu_growth
 
         config.allow_soft_placement = hps.allow_soft_placement
@@ -1230,7 +1234,7 @@ class RecurrentWhisperer(object):
             config.gpu_options.per_process_gpu_memory_fraction = \
                 hps.per_process_gpu_memory_fraction
 
-        self.session = tf.Session(config=config)
+        self.session = tf.compat.v1.Session(config=config)
         print('\n')
 
     # *************************************************************************
@@ -1263,7 +1267,7 @@ class RecurrentWhisperer(object):
 
         # Initialize new session
         print('Initializing new run (%s).' % self.hps.hash)
-        self.session.run(tf.global_variables_initializer())
+        self.session.run(tf.compat.v1.global_variables_initializer())
 
         self.hps.save_yaml(hps_yaml_path) # For visual inspection
         self.hps.save(hps_path) # For restoring a run via its run_dir
@@ -1296,8 +1300,8 @@ class RecurrentWhisperer(object):
 
         self.tensorboard = {}
 
-        self.tensorboard['writer'] = tf.summary.FileWriter(self.events_dir)
-        self.tensorboard['writer'].add_graph(tf.get_default_graph())
+        self.tensorboard['writer'] = tf.compat.v1.summary.FileWriter(self.events_dir)
+        self.tensorboard['writer'].add_graph(tf.compat.v1.get_default_graph())
 
         if self.hps.do_save_tensorboard_summaries:
             self._setup_tensorboard_summaries()
@@ -1360,10 +1364,10 @@ class RecurrentWhisperer(object):
             self._build_merged_tensorboard_summaries(
                 scope='model',
                 ops_dict=hist_ops,
-                summary_fcn=tf.summary.histogram)
+                summary_fcn=tf.compat.v1.summary.histogram)
 
     def _build_merged_tensorboard_summaries(self, scope, ops_dict,
-        summary_fcn=tf.summary.scalar):
+        summary_fcn=tf.compat.v1.summary.scalar):
         ''' Builds and merges Tensorboard summaries.
 
         Args:
@@ -1383,11 +1387,11 @@ class RecurrentWhisperer(object):
         '''
 
         summaries = []
-        with tf.variable_scope(scope, reuse=False):
+        with tf.compat.v1.variable_scope(scope, reuse=False):
             for name, op in ops_dict.items():
                 summaries.append(summary_fcn(name, op))
 
-        return tf.summary.merge(summaries)
+        return tf.compat.v1.summary.merge(summaries)
 
     def _update_train_tensorboard(self, feed_dict, ev_ops):
         ''' Updates Tensorboard based on a pass through a single-batch of
@@ -1491,24 +1495,24 @@ class RecurrentWhisperer(object):
                 # Don't recreate existing image placeholders
                 continue
 
-            (fig_width, fig_height) = fig.canvas.get_width_height()
+            (fig_width, fig_height) = self._get_fig_width_height(fig)
             tb_fig_name = self._tensorboard_image_name(fig_name)
 
             # Don't use precious GPU memory for these images, which are just
             # used for storage--they aren't computed on.
             with tf.device(self.cpu_device):
 
-                images['placeholders'][fig_name] = tf.placeholder(
+                images['placeholders'][fig_name] = tf.compat.v1.placeholder(
                     tf.uint8, (1, fig_height, fig_width, 3))
 
                 images['summaries'].append(
-                    tf.summary.image(
+                    tf.compat.v1.summary.image(
                         tb_fig_name,
                         images['placeholders'][fig_name],
                         max_outputs=1))
 
         # Repeated calls will orphan an existing TF op :-(.
-        images['merged_summaries'] = tf.summary.merge(images['summaries'])
+        images['merged_summaries'] = tf.compat.v1.summary.merge(images['summaries'])
 
         self.tensorboard['images'] = images
 
@@ -1594,8 +1598,8 @@ class RecurrentWhisperer(object):
 
         return fig_name.replace(key, replacement)
 
-    @staticmethod
-    def _fig2array(fig):
+    @classmethod
+    def _fig2array(cls, fig):
         ''' Convert from matplotlib figure to a numpy array suitable for a
         tensorboard image summary.
 
@@ -1609,18 +1613,27 @@ class RecurrentWhisperer(object):
         # This call is responsible for 1%-5% of fig2array time
         data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
 
-        # The following is responsible for basically 0% of fig2array time,
-        # regardless of VERSION 1 vs VERSION 2.
-
-        # VERSION 1
-        # data_wxhx3 = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-        # data_1xwxhx3 = np.expand_dims(data_wxhx3,axis=0)
-
-        # VERSION 2
-        data_1xwxhx3 = data.reshape(
-            (1,) + fig.canvas.get_width_height()[::-1] + (3,))
+        # The following is responsible for basically 0% of fig2array time.
+        w, h = cls._get_fig_width_height(fig)
+        data_1xwxhx3 = data.reshape((1, h, w, 3))
 
         return data_1xwxhx3
+
+    @classmethod
+    def _get_fig_width_height(cls, fig):
+
+        # On Mac M1, this gives w, h different from fig.canvas.get_width_height()
+        w_in, h_in = fig.get_size_inches()
+        dpi = fig.get_dpi()
+        w = int(w_in * dpi)
+        h = int(h_in * dpi)
+
+        # On Mac M1, below disagrees with above and causes the reshape in
+        # _fig2array() to fail.
+        #
+        # w, h = fig.canvas.get_width_height()
+
+        return w, h
 
     # *************************************************************************
     # Training ****************************************************************
@@ -3070,7 +3083,7 @@ class RecurrentWhisperer(object):
         Returns:
             None.
         '''
-        if os.environ.get('DISPLAY','') == '':
+        if False: # os.environ.get('DISPLAY','') == '':
             # If executing on a server with no graphical back-end
             pass
         else:
@@ -3304,7 +3317,7 @@ class RecurrentWhisperer(object):
 
         # Exclude anything a user may have created on the graph that is not
         # part of this model.
-        tf_vars = tf.trainable_variables()
+        tf_vars = tf.compat.v1.trainable_variables()
         model_vars = [v for v in tf_vars if self.hps.name in v.name]
 
         return model_vars
@@ -3556,12 +3569,12 @@ class RecurrentWhisperer(object):
             self.adaptive_grad_norm_clip = AdaptiveGradNormClip(**hps.agnc_hps)
 
         # Gradient clipping
-        grads = tf.gradients(self.loss, vars_to_train)
+        grads = tf.gradients(ys=self.loss, xs=vars_to_train)
 
         clipped_grads, self.grad_global_norm = tf.clip_by_global_norm(
             grads, self.grad_norm_clip_val)
 
-        self.clipped_grad_global_norm = tf.global_norm(clipped_grads)
+        self.clipped_grad_global_norm = tf.linalg.global_norm(clipped_grads)
 
         self.clipped_grad_norm_diff = \
             self.grad_global_norm - self.clipped_grad_global_norm
@@ -3980,7 +3993,7 @@ class RecurrentWhisperer(object):
             return self.restore_from_checkpoint(version,
                 checkpoint_path=ckpt_path)
         else:
-            assert tf.train.checkpoint_exists(checkpoint_path),\
+            assert tf.compat.v1.train.checkpoint_exists(checkpoint_path),\
                 ('Checkpoint does not exist: %s' % checkpoint_path)
 
             ckpt_dir, ckpt_filename = os.path.split(checkpoint_path)
