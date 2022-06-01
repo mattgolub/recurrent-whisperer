@@ -789,7 +789,7 @@ class RecurrentWhisperer(object):
 
         else:
 
-            cmd_list = ['python', run_script]
+            cmd_list = ['python3', run_script]
             for hp_name in hp_names:
                 val = flat_hps[hp_name]
                 if isinstance(val, dict):
