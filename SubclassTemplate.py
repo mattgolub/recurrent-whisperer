@@ -1,8 +1,8 @@
 '''
 SubclassTemplate.py
-Written using Python 2.7.12 and TensorFlow 1.10
-@ Matt Golub, June 2021.
-Please direct correspondence to mgolub@stanford.edu.
+Written using Python 3.6.9
+@ Matt Golub, June 2021
+Please direct correspondence to mgolub@cs.washington.edu
 '''
 
 from RecurrentWhisperer import RecurrentWhisperer

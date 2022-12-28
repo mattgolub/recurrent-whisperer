@@ -1,8 +1,8 @@
 '''
 AdaptiveLearningRate.py
 Written for Python 3.6.9
-@ Matt Golub, August 2018.
-Please direct correspondence to mgolub@stanford.edu.
+@ Matt Golub, August 2018
+Please direct correspondence to mgolub@cs.washington.edu
 '''
 import os
 import pdb

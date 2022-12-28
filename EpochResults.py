@@ -1,8 +1,8 @@
 '''
 EpochResults.py
 Written for Python 3.6.9
-@ Matt Golub, July 2021.
-Please direct correspondence to mgolub@stanford.edu.
+@ Matt Golub, July 2021
+Please direct correspondence to mgolub@cs.washington.edu
 '''
 
 class EpochResults(object):
