@@ -1,6 +1,6 @@
 # RecurrentWhisperer - A general class template for training recurrent neural networks using Tensorflow.
 
-Written for Python 3.6.9.
+Written for Python 3.9.6.
 
 RecurrentWhisperer is a base class for training recurrent neural networks or other deep learning models using TensorFlow. RecurrentWhisperer provides functionality for:
 
@@ -34,18 +34,10 @@ where `your-virtual-env-name` is a path to the the virtual environment you would
 $ source your-virtual-env-name/bin/activate
 ```
 
-Next, install all dependencies in your virtual environment. This step will depend on whether you require Tensorflow with GPU support.
-
-For GPU-enabled TensorFlow, use:
+Next, install all dependencies in your virtual environment. 
 
 ```bash
-$ pip install -e git+https://github.com/mattgolub/recurrent-whisperer.git@master#egg=v1.5.0[gpu]
-```
-
-For CPU-only TensorFlow, use:
-
-```bash
-$ pip install -e git+https://github.com/mattgolub/recurrent-whisperer.git@master#egg=v1.5.0[cpu]
+$ pip install -e git+https://github.com/mattgolub/recurrent-whisperer.git@master#egg=v1.5.0
 ```
 
 When you are finished working in your virtual environment, enter:
@@ -58,7 +50,7 @@ $ deactivate
 
 Advanced Python users may skip the Recommended Installation, opting to instead clone this repository and ensure that compatible versions of the following prerequisites are available:
 
-* **TensorFlow** (requires at least version 1.14) ([install](https://www.tensorflow.org/install/))
+* **TensorFlow** (recommended version >= 2.8; requires at least version 1.14) ([install](https://www.tensorflow.org/install/)).
 * **NumPy, SciPy and Matplotlib** ([install SciPy stack](https://www.scipy.org/install.html), contains both)
 * **PyYaml** ([install](https://pyyaml.org))
 
