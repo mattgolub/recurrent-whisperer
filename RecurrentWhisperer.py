@@ -16,24 +16,17 @@ import pdb
 
 import tensorflow as tf
 tf1 = tf.compat.v1
-tf1.disable_eager_execution()
+# tf1.disable_eager_execution()
 # tf1.disable_v2_behavior()
 
 import numpy as np
 import numpy.random as npr
+import matplotlib.pyplot as plt
 
 # Imports for saving data, predictions, summaries
 import pickle
 import h5py, json, yaml
 import scipy.io as spio
-
-if os.environ.get('DISPLAY','') == '':
-    # Ensures smooth running across environments, including servers without
-    # graphical backends.
-    print('No display found. Using non-interactive Agg backend.')
-    import matplotlib
-    matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 
 from AdaptiveLearningRate import AdaptiveLearningRate
 from AdaptiveGradNormClip import AdaptiveGradNormClip
