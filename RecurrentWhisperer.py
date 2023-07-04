@@ -350,6 +350,7 @@ class RecurrentWhisperer(object):
                 device_id: Nonnegative integer specifying the CPU core ID
                 (for device_type: 'cpu') or GPU ID (for device_type: 'gpu') of
                 the specific local hardware device to be used for this model.
+                Default: 0.
 
                 cpu_device_id: Nonnegative integer specifying the ID of the
                 CPU core to be used for CPU-only operations. Default: 0.
